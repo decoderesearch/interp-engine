@@ -1,0 +1,151 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  /* The system mono faces are inside `--font-geist-mono` itself, set on the loader
+     in `app/layout.tsx` — they have to be, since Next's own fallback face would
+     otherwise be ahead of anything named here. This tail only covers the variable
+     being undefined at all. */
+  --font-mono: var(--font-geist-mono), monospace;
+  --font-heading: var(--font-inter);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) * 1.3);
+  --radius-xl: calc(var(--radius) * 2);
+  --radius-2xl: calc(var(--radius) * 2.6);
+}
+
+/*
+ * Slate + sky, matching Neuronpedia's palette. Light only: the diagram encodes
+ * meaning in hue, and a second set of hues for dark mode would have to be
+ * re-tuned for contrast rather than just inverted.
+ */
+:root {
+  --background: oklch(0.984 0.003 247.858); /* slate-50 */
+  --foreground: oklch(0.279 0.041 260.031); /* slate-800 */
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.279 0.041 260.031);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.279 0.041 260.031);
+  --primary: oklch(0.5 0.134 242.749); /* sky-700 */
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.968 0.007 247.896); /* slate-100 */
+  --secondary-foreground: oklch(0.372 0.044 257.287); /* slate-700 */
+  --muted: oklch(0.968 0.007 247.896);
+  --muted-foreground: oklch(0.554 0.046 257.417); /* slate-500 */
+  --accent: oklch(0.951 0.026 236.824); /* sky-100 */
+  --accent-foreground: oklch(0.5 0.134 242.749); /* sky-700 */
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.929 0.013 255.508); /* slate-200 */
+  --input: oklch(0.869 0.022 252.894); /* slate-300 */
+  --ring: oklch(0.588 0.158 241.966); /* sky-600 */
+  --radius: 0.375rem; /* rounded-md */
+}
+
+/*
+ * Diagram hues, one per structural role. Referenced by role name from the
+ * graph data so a point's colour is a property of what it is, not of where it
+ * happens to be drawn.
+ */
+@theme {
+  --color-role-resid: oklch(0.5 0.134 242.749); /* sky-700 */
+  --color-role-resid-soft: oklch(0.901 0.058 230.902); /* sky-200 */
+  --color-role-attn: oklch(0.541 0.281 293.009); /* violet-600 */
+  --color-role-attn-soft: oklch(0.894 0.057 293.283); /* violet-200 */
+  --color-role-mlp: oklch(0.596 0.145 163.225); /* emerald-600 */
+  --color-role-mlp-soft: oklch(0.905 0.093 164.15); /* emerald-200 */
+  --color-role-route: oklch(0.666 0.179 58.318); /* amber-600 */
+  --color-role-route-soft: oklch(0.924 0.12 95.746); /* amber-200 */
+  --color-role-global: oklch(0.554 0.046 257.417); /* slate-500 */
+  --color-role-global-soft: oklch(0.929 0.013 255.508); /* slate-200 */
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground text-xs;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+@layer utilities {
+  /* Hidden by default, as in Neuronpedia; opt back in where a scroll affordance matters. */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .thin-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--input) 80%, transparent)
+      transparent;
+  }
+}
+
+/*
+ * The ripple a point plays when a trait rewrites its derivation.
+ *
+ * CSS rather than SVG <animate>: SMIL's `begin` is measured from the start of
+ * the document timeline, so an element inserted thirty seconds into a session
+ * is already past its active duration and never draws. A CSS animation runs
+ * from when the element mounts, which is what a one-shot cue needs.
+ *
+ * The ring is drawn at its final radius and scaled up from the glyph's edge,
+ * which the node passes in as `--ripple-from`.
+ *
+ * There is no `prefers-reduced-motion` branch here or anywhere else. The one
+ * animation that warranted one — a light travelling the length of the diagram,
+ * continuously and forever — is gone; what is left is short, one-shot and tied
+ * to something the reader just did.
+ */
+@keyframes hook-ripple {
+  from {
+    transform: scale(var(--ripple-from, 0.3));
+    opacity: 0;
+  }
+  22% {
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+.hook-ripple {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: hook-ripple 0.85s ease-out both;
+}
+
+.hook-ripple-late {
+  animation-delay: 0.26s;
+}

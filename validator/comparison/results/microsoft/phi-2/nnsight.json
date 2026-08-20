@@ -1,0 +1,368 @@
+{
+  "captured_at": "2026-08-11",
+  "device": "cuda",
+  "dtype": "float32",
+  "engine": "nnsight",
+  "hf_id": "microsoft/phi-2",
+  "known_bug": null,
+  "points": {
+    "attn_in.0": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999989,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "attn_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 8
+    },
+    "attn_in.16": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999978,
+      "layer": 16,
+      "max_abs_diff": 0.0,
+      "point": "attn_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 0
+    },
+    "attn_in.24": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999989,
+      "layer": 24,
+      "max_abs_diff": 0.0,
+      "point": "attn_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 6
+    },
+    "attn_in.31": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999989,
+      "layer": 31,
+      "max_abs_diff": 0.0,
+      "point": "attn_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 6
+    },
+    "attn_out.0": {
+      "cos": 0.9999999999999998,
+      "cos_worst_token": 0.9999999999999988,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "attn_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 11
+    },
+    "attn_out.16": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999973,
+      "layer": 16,
+      "max_abs_diff": 0.0,
+      "point": "attn_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 9
+    },
+    "attn_out.24": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999978,
+      "layer": 24,
+      "max_abs_diff": 0.0,
+      "point": "attn_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 3
+    },
+    "attn_out.31": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999996,
+      "layer": 31,
+      "max_abs_diff": 0.0,
+      "point": "attn_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 8
+    },
+    "mlp_act.0": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 1.0000000000000002,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "mlp_act",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 6
+    },
+    "mlp_act.16": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 1.000000000000005,
+      "layer": 16,
+      "max_abs_diff": 0.0,
+      "point": "mlp_act",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 1
+    },
+    "mlp_act.24": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 1.0000000000000024,
+      "layer": 24,
+      "max_abs_diff": 0.0,
+      "point": "mlp_act",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 4
+    },
+    "mlp_act.31": {
+      "cos": 1.0,
+      "cos_worst_token": 1.0000000000000056,
+      "layer": 31,
+      "max_abs_diff": 0.0,
+      "point": "mlp_act",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 5
+    },
+    "mlp_out.0": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999991,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "mlp_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 5
+    },
+    "mlp_out.16": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999967,
+      "layer": 16,
+      "max_abs_diff": 0.0,
+      "point": "mlp_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 0
+    },
+    "mlp_out.24": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.999999999999997,
+      "layer": 24,
+      "max_abs_diff": 0.0,
+      "point": "mlp_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 9
+    },
+    "mlp_out.31": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999992,
+      "layer": 31,
+      "max_abs_diff": 0.0,
+      "point": "mlp_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 7
+    },
+    "mlp_pre.0": {
+      "cos": 1.0,
+      "cos_worst_token": 1.000000000000001,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "mlp_pre",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 5
+    },
+    "mlp_pre.16": {
+      "cos": 1.0,
+      "cos_worst_token": 1.0000000000000047,
+      "layer": 16,
+      "max_abs_diff": 0.0,
+      "point": "mlp_pre",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 0
+    },
+    "mlp_pre.24": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 1.000000000000006,
+      "layer": 24,
+      "max_abs_diff": 0.0,
+      "point": "mlp_pre",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 12
+    },
+    "mlp_pre.31": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 1.0000000000000049,
+      "layer": 31,
+      "max_abs_diff": 0.0,
+      "point": "mlp_pre",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 9
+    },
+    "resid_mid.0": {
+      "expected": "parallel block: attention and the MLP both read the layer input, so no residual exists *between* them. The module a resid_mid would be read from is still there -- GPT-NeoX and phi-2 keep `post_attention_layernorm` -- but it is applied to resid_pre, so an engine that hooks it returns resid_pre under this name: vLLM's came back bit-identical to the embeddings before interp-engine refused the point on that backend too. Read resid_pre or resid_post; nnterp still hands one back",
+      "layer": 0,
+      "missing": "reference",
+      "point": "resid_mid",
+      "status": "N/A"
+    },
+    "resid_mid.16": {
+      "expected": "parallel block: attention and the MLP both read the layer input, so no residual exists *between* them. The module a resid_mid would be read from is still there -- GPT-NeoX and phi-2 keep `post_attention_layernorm` -- but it is applied to resid_pre, so an engine that hooks it returns resid_pre under this name: vLLM's came back bit-identical to the embeddings before interp-engine refused the point on that backend too. Read resid_pre or resid_post; nnterp still hands one back",
+      "layer": 16,
+      "missing": "reference",
+      "point": "resid_mid",
+      "status": "N/A"
+    },
+    "resid_mid.24": {
+      "expected": "parallel block: attention and the MLP both read the layer input, so no residual exists *between* them. The module a resid_mid would be read from is still there -- GPT-NeoX and phi-2 keep `post_attention_layernorm` -- but it is applied to resid_pre, so an engine that hooks it returns resid_pre under this name: vLLM's came back bit-identical to the embeddings before interp-engine refused the point on that backend too. Read resid_pre or resid_post; nnterp still hands one back",
+      "layer": 24,
+      "missing": "reference",
+      "point": "resid_mid",
+      "status": "N/A"
+    },
+    "resid_mid.31": {
+      "expected": "parallel block: attention and the MLP both read the layer input, so no residual exists *between* them. The module a resid_mid would be read from is still there -- GPT-NeoX and phi-2 keep `post_attention_layernorm` -- but it is applied to resid_pre, so an engine that hooks it returns resid_pre under this name: vLLM's came back bit-identical to the embeddings before interp-engine refused the point on that backend too. Read resid_pre or resid_post; nnterp still hands one back",
+      "layer": 31,
+      "missing": "reference",
+      "point": "resid_mid",
+      "status": "N/A"
+    },
+    "resid_post.0": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999982,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "resid_post",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 9
+    },
+    "resid_post.16": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999987,
+      "layer": 16,
+      "max_abs_diff": 0.0,
+      "point": "resid_post",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 3
+    },
+    "resid_post.24": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999992,
+      "layer": 24,
+      "max_abs_diff": 0.0,
+      "point": "resid_post",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 5
+    },
+    "resid_post.31": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999992,
+      "layer": 31,
+      "max_abs_diff": 0.0,
+      "point": "resid_post",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 3
+    }
+  },
+  "reason": "",
+  "reference": "eager",
+  "run": {
+    "date_utc": "2026-08-12T03:31:40+00:00",
+    "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
+    "eager_only": false,
+    "gpu": {
+      "memory_total": "183359 MiB",
+      "name": "NVIDIA B200"
+    },
+    "native_dtype": "float32",
+    "reference_status": {
+      "device": "cuda",
+      "dtype": "float32",
+      "reason": "",
+      "status": "ok"
+    },
+    "replicate": [
+      "export HF_TOKEN=$(grep -m1 '^HF_TOKEN=' .env | cut -d= -f2- | tr -d '\"')",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.tokenize_inputs --dumps dumps --models microsoft/phi-2",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine eager --dumps dumps --model microsoft/phi-2 --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine nnsight --dumps dumps --model microsoft/phi-2 --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.aggregate --dumps dumps"
+    ]
+  },
+  "sae": {},
+  "status": "ok",
+  "verdict": "\u2705",
+  "versions": {
+    "nnsight": {
+      "version": "0.7.0"
+    },
+    "nnterp": {
+      "version": "1.3.0"
+    },
+    "torch": {
+      "version": "2.13.0"
+    },
+    "transformers": {
+      "version": "5.15.0"
+    }
+  }
+}

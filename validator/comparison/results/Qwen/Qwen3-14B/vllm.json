@@ -1,0 +1,645 @@
+{
+  "captured_at": "2026-08-12",
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "engine": "vllm",
+  "hf_id": "Qwen/Qwen3-14B",
+  "known_bug": null,
+  "points": {
+    "attn_in.0": {
+      "cos": 0.9999964028698695,
+      "cos_worst_token": 0.9999956590948881,
+      "layer": 0,
+      "max_abs_diff": 0.0009765625,
+      "point": "attn_in",
+      "rel_diff": 0.002684177416972027,
+      "rel_worst_token": 0.0029473886665180695,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 5
+    },
+    "attn_in.20": {
+      "cos": 0.9998807405682733,
+      "cos_worst_token": 0.999800973319436,
+      "layer": 20,
+      "max_abs_diff": 0.125,
+      "point": "attn_in",
+      "rel_diff": 0.015444205459721591,
+      "rel_worst_token": 0.020340440661388667,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 7
+    },
+    "attn_in.30": {
+      "cos": 0.9998908952254205,
+      "cos_worst_token": 0.9998265386644383,
+      "layer": 30,
+      "max_abs_diff": 0.5,
+      "point": "attn_in",
+      "rel_diff": 0.014823156861598146,
+      "rel_worst_token": 0.018661804054556155,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 8
+    },
+    "attn_in.39": {
+      "cos": 0.9998621074003223,
+      "cos_worst_token": 0.9996645005523933,
+      "layer": 39,
+      "max_abs_diff": 1.0,
+      "point": "attn_in",
+      "rel_diff": 0.016626104214376467,
+      "rel_worst_token": 0.025951020338968307,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "attn_out.0": {
+      "cos": 0.9999916944388557,
+      "cos_worst_token": 0.9999826384586528,
+      "layer": 0,
+      "max_abs_diff": 0.015625,
+      "point": "attn_out",
+      "rel_diff": 0.004084757377190896,
+      "rel_worst_token": 0.006001957208570719,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 2
+    },
+    "attn_out.20": {
+      "cos": 0.9996023745245672,
+      "cos_worst_token": 0.9992338256102186,
+      "layer": 20,
+      "max_abs_diff": 0.125,
+      "point": "attn_out",
+      "rel_diff": 0.028210051168393712,
+      "rel_worst_token": 0.03922881029816007,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 9
+    },
+    "attn_out.30": {
+      "cos": 0.9995306083040846,
+      "cos_worst_token": 0.9988581828234978,
+      "layer": 30,
+      "max_abs_diff": 0.375,
+      "point": "attn_out",
+      "rel_diff": 0.03087369994038181,
+      "rel_worst_token": 0.04801419240425984,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 9
+    },
+    "attn_out.39": {
+      "cos": 0.999997529085952,
+      "cos_worst_token": 0.9995223957419418,
+      "layer": 39,
+      "max_abs_diff": 4.0,
+      "point": "attn_out",
+      "rel_diff": 0.0022256234230163593,
+      "rel_worst_token": 0.03090734881213556,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "attn_out_post.0": {
+      "cos": 0.9999916944388557,
+      "cos_worst_token": 0.9999826384586528,
+      "layer": 0,
+      "max_abs_diff": 0.015625,
+      "point": "attn_out_post",
+      "rel_diff": 0.004084757377190896,
+      "rel_worst_token": 0.006001957208570719,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 2
+    },
+    "attn_out_post.20": {
+      "cos": 0.9996023745245672,
+      "cos_worst_token": 0.9992338256102186,
+      "layer": 20,
+      "max_abs_diff": 0.125,
+      "point": "attn_out_post",
+      "rel_diff": 0.028210051168393712,
+      "rel_worst_token": 0.03922881029816007,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 9
+    },
+    "attn_out_post.30": {
+      "cos": 0.9995306083040846,
+      "cos_worst_token": 0.9988581828234978,
+      "layer": 30,
+      "max_abs_diff": 0.375,
+      "point": "attn_out_post",
+      "rel_diff": 0.03087369994038181,
+      "rel_worst_token": 0.04801419240425984,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 9
+    },
+    "attn_out_post.39": {
+      "cos": 0.999997529085952,
+      "cos_worst_token": 0.9995223957419418,
+      "layer": 39,
+      "max_abs_diff": 4.0,
+      "point": "attn_out_post",
+      "rel_diff": 0.0022256234230163593,
+      "rel_worst_token": 0.03090734881213556,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "attn_scores.0": {
+      "cos": 0.9999954971392464,
+      "layer": 0,
+      "masked_out": 3120,
+      "max_abs_diff": 0.11012458801269531,
+      "point": "attn_scores",
+      "rel_diff": 0.003029266028023796,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "attn_scores.20": {
+      "cos": 0.9999830965686644,
+      "layer": 20,
+      "masked_out": 3120,
+      "max_abs_diff": 0.21891117095947266,
+      "point": "attn_scores",
+      "rel_diff": 0.006001288460781807,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "attn_scores.30": {
+      "cos": 0.9999845289061847,
+      "layer": 30,
+      "masked_out": 3120,
+      "max_abs_diff": 0.2796459197998047,
+      "point": "attn_scores",
+      "rel_diff": 0.005562599907358128,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "attn_scores.39": {
+      "cos": 0.9999833614288021,
+      "layer": 39,
+      "masked_out": 3120,
+      "max_abs_diff": 0.18887615203857422,
+      "point": "attn_scores",
+      "rel_diff": 0.0057770195718997285,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "embeddings": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999999,
+      "layer": null,
+      "max_abs_diff": 0.0,
+      "point": "embeddings",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 3
+    },
+    "final_norm": {
+      "cos": 0.999884966075908,
+      "cos_worst_token": 0.9994079663958865,
+      "layer": null,
+      "max_abs_diff": 2.5,
+      "point": "final_norm",
+      "rel_diff": 0.01519443973981538,
+      "rel_worst_token": 0.04458934281188305,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 0
+    },
+    "k_norm_in.0": {
+      "cos": 0.9999991041943472,
+      "layer": 0,
+      "max_abs_diff": 0.001953125,
+      "point": "k_norm_in",
+      "rel_diff": 0.001346842440268003,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "k_norm_in.20": {
+      "cos": 0.9999545450534986,
+      "layer": 20,
+      "max_abs_diff": 0.09375,
+      "point": "k_norm_in",
+      "rel_diff": 0.009557630165296453,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "k_norm_in.30": {
+      "cos": 0.9999538729215264,
+      "layer": 30,
+      "max_abs_diff": 0.1953125,
+      "point": "k_norm_in",
+      "rel_diff": 0.009647280457103384,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "k_norm_in.39": {
+      "cos": 0.9999478676684953,
+      "layer": 39,
+      "max_abs_diff": 0.5,
+      "point": "k_norm_in",
+      "rel_diff": 0.01021096593571572,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "k_norm_out.0": {
+      "cos": 0.9999957602993123,
+      "layer": 0,
+      "max_abs_diff": 0.5,
+      "point": "k_norm_out",
+      "rel_diff": 0.002914833946088143,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "k_norm_out.20": {
+      "cos": 0.9999528206153125,
+      "layer": 20,
+      "max_abs_diff": 0.265625,
+      "point": "k_norm_out",
+      "rel_diff": 0.009714309313942012,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "k_norm_out.30": {
+      "cos": 0.9999548505600099,
+      "layer": 30,
+      "max_abs_diff": 0.1328125,
+      "point": "k_norm_out",
+      "rel_diff": 0.00950302376051163,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "k_norm_out.39": {
+      "cos": 0.9999599062346533,
+      "layer": 39,
+      "max_abs_diff": 0.25,
+      "point": "k_norm_out",
+      "rel_diff": 0.008968727720857767,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "mlp_act.0": {
+      "cos": 0.9999829203778613,
+      "cos_worst_token": 0.9999585792170048,
+      "layer": 0,
+      "max_abs_diff": 0.03125,
+      "point": "mlp_act",
+      "rel_diff": 0.006110061414383769,
+      "rel_worst_token": 0.009179494466451107,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 4
+    },
+    "mlp_act.20": {
+      "cos": 0.9996961314490899,
+      "cos_worst_token": 0.9994695238292427,
+      "layer": 20,
+      "max_abs_diff": 0.25,
+      "point": "mlp_act",
+      "rel_diff": 0.024664595367611408,
+      "rel_worst_token": 0.03300079138215179,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 7
+    },
+    "mlp_act.30": {
+      "cos": 0.9997319654514931,
+      "cos_worst_token": 0.9995749643548147,
+      "layer": 30,
+      "max_abs_diff": 0.625,
+      "point": "mlp_act",
+      "rel_diff": 0.02328515503713947,
+      "rel_worst_token": 0.029219189757171183,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 7
+    },
+    "mlp_act.39": {
+      "cos": 0.9997533079192952,
+      "cos_worst_token": 0.9980768287893862,
+      "layer": 39,
+      "max_abs_diff": 17.0,
+      "point": "mlp_act",
+      "rel_diff": 0.02231979514345267,
+      "rel_worst_token": 0.07488353602051026,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "mlp_out.0": {
+      "cos": 0.9999911800477499,
+      "cos_worst_token": 0.9999815510204674,
+      "layer": 0,
+      "max_abs_diff": 0.125,
+      "point": "mlp_out",
+      "rel_diff": 0.004497503876386339,
+      "rel_worst_token": 0.0061737170259724035,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "mlp_out.20": {
+      "cos": 0.999796729994488,
+      "cos_worst_token": 0.9995482697278255,
+      "layer": 20,
+      "max_abs_diff": 0.5,
+      "point": "mlp_out",
+      "rel_diff": 0.020178844720464762,
+      "rel_worst_token": 0.030065602050966846,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 7
+    },
+    "mlp_out.30": {
+      "cos": 0.9997731263071644,
+      "cos_worst_token": 0.9996683960214547,
+      "layer": 30,
+      "max_abs_diff": 0.625,
+      "point": "mlp_out",
+      "rel_diff": 0.021424600386894102,
+      "rel_worst_token": 0.02594614373858046,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 9
+    },
+    "mlp_out.39": {
+      "cos": 0.9997439771544487,
+      "cos_worst_token": 0.9972414660282845,
+      "layer": 39,
+      "max_abs_diff": 36.0,
+      "point": "mlp_out",
+      "rel_diff": 0.02263898462523913,
+      "rel_worst_token": 0.07484974126925285,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "mlp_out_post.0": {
+      "cos": 0.9999911800477499,
+      "cos_worst_token": 0.9999815510204674,
+      "layer": 0,
+      "max_abs_diff": 0.125,
+      "point": "mlp_out_post",
+      "rel_diff": 0.004497503876386339,
+      "rel_worst_token": 0.0061737170259724035,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "mlp_out_post.20": {
+      "cos": 0.999796729994488,
+      "cos_worst_token": 0.9995482697278255,
+      "layer": 20,
+      "max_abs_diff": 0.5,
+      "point": "mlp_out_post",
+      "rel_diff": 0.020178844720464762,
+      "rel_worst_token": 0.030065602050966846,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 7
+    },
+    "mlp_out_post.30": {
+      "cos": 0.9997731263071644,
+      "cos_worst_token": 0.9996683960214547,
+      "layer": 30,
+      "max_abs_diff": 0.625,
+      "point": "mlp_out_post",
+      "rel_diff": 0.021424600386894102,
+      "rel_worst_token": 0.02594614373858046,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 9
+    },
+    "mlp_out_post.39": {
+      "cos": 0.9997439771544487,
+      "cos_worst_token": 0.9972414660282845,
+      "layer": 39,
+      "max_abs_diff": 36.0,
+      "point": "mlp_out_post",
+      "rel_diff": 0.02263898462523913,
+      "rel_worst_token": 0.07484974126925285,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "q_norm_in.0": {
+      "cos": 0.9999988052236156,
+      "layer": 0,
+      "max_abs_diff": 0.001953125,
+      "point": "q_norm_in",
+      "rel_diff": 0.0015498307619530914,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "q_norm_in.20": {
+      "cos": 0.9999679103391373,
+      "layer": 20,
+      "max_abs_diff": 0.158203125,
+      "point": "q_norm_in",
+      "rel_diff": 0.008036374099657793,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "q_norm_in.30": {
+      "cos": 0.9999667320042461,
+      "layer": 30,
+      "max_abs_diff": 0.5,
+      "point": "q_norm_in",
+      "rel_diff": 0.008158696777779868,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "q_norm_in.39": {
+      "cos": 0.9999524414839378,
+      "layer": 39,
+      "max_abs_diff": 1.0,
+      "point": "q_norm_in",
+      "rel_diff": 0.009801292492843559,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "q_norm_out.0": {
+      "cos": 0.999994754496909,
+      "layer": 0,
+      "max_abs_diff": 0.0625,
+      "point": "q_norm_out",
+      "rel_diff": 0.003238993514397273,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "q_norm_out.20": {
+      "cos": 0.9999396808530875,
+      "layer": 20,
+      "max_abs_diff": 0.1328125,
+      "point": "q_norm_out",
+      "rel_diff": 0.010984701785098291,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "q_norm_out.30": {
+      "cos": 0.999948256299091,
+      "layer": 30,
+      "max_abs_diff": 0.28125,
+      "point": "q_norm_out",
+      "rel_diff": 0.010184498083053162,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "q_norm_out.39": {
+      "cos": 0.999927598887461,
+      "layer": 39,
+      "max_abs_diff": 0.2177734375,
+      "point": "q_norm_out",
+      "rel_diff": 0.012041766457578703,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "resid_mid.0": {
+      "cos": 0.9999921684380378,
+      "cos_worst_token": 0.9999819882089169,
+      "layer": 0,
+      "max_abs_diff": 0.015625,
+      "point": "resid_mid",
+      "rel_diff": 0.003966796757200881,
+      "rel_worst_token": 0.006086459043813651,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 2
+    },
+    "resid_mid.20": {
+      "cos": 0.9999997451786944,
+      "cos_worst_token": 0.9998119934069738,
+      "layer": 20,
+      "max_abs_diff": 128.0,
+      "point": "resid_mid",
+      "rel_diff": 0.010253373514339812,
+      "rel_worst_token": 0.02024163414114037,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 7
+    },
+    "resid_mid.30": {
+      "cos": 0.9999975399904768,
+      "cos_worst_token": 0.9998340406277271,
+      "layer": 30,
+      "max_abs_diff": 128.0,
+      "point": "resid_mid",
+      "rel_diff": 0.010273458453276822,
+      "rel_worst_token": 0.018359718239547098,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 4
+    },
+    "resid_mid.39": {
+      "cos": 0.9998717263628262,
+      "cos_worst_token": 0.9998462712083434,
+      "layer": 39,
+      "max_abs_diff": 128.0,
+      "point": "resid_mid",
+      "rel_diff": 0.018065299013851604,
+      "rel_worst_token": 0.027515767497546317,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "resid_post.0": {
+      "cos": 0.999992254534906,
+      "cos_worst_token": 0.9999833743529561,
+      "layer": 0,
+      "max_abs_diff": 0.125,
+      "point": "resid_post",
+      "rel_diff": 0.004096150143698718,
+      "rel_worst_token": 0.005801366398959958,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "resid_post.20": {
+      "cos": 0.9999997023786847,
+      "cos_worst_token": 0.9998457219590139,
+      "layer": 20,
+      "max_abs_diff": 128.0,
+      "point": "resid_post",
+      "rel_diff": 0.010202190383785517,
+      "rel_worst_token": 0.01857450510625544,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 7
+    },
+    "resid_post.30": {
+      "cos": 0.9999969878178991,
+      "cos_worst_token": 0.9998492236730577,
+      "layer": 30,
+      "max_abs_diff": 128.0,
+      "point": "resid_post",
+      "rel_diff": 0.010287876531006355,
+      "rel_worst_token": 0.017469733699390873,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 4
+    },
+    "resid_post.39": {
+      "cos": 0.9998574675033404,
+      "cos_worst_token": 0.9994626410499657,
+      "layer": 39,
+      "max_abs_diff": 96.0,
+      "point": "resid_post",
+      "rel_diff": 0.017619179009124325,
+      "rel_worst_token": 0.04439270821241316,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 10
+    }
+  },
+  "reason": "",
+  "reference": "eager",
+  "run": {
+    "date_utc": "2026-08-12T03:31:40+00:00",
+    "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
+    "eager_only": false,
+    "gpu": {
+      "memory_total": "183359 MiB",
+      "name": "NVIDIA B200"
+    },
+    "native_dtype": "bfloat16",
+    "reference_status": {
+      "device": "cuda",
+      "dtype": "bfloat16",
+      "reason": "",
+      "status": "ok"
+    },
+    "replicate": [
+      "export HF_TOKEN=$(grep -m1 '^HF_TOKEN=' .env | cut -d= -f2- | tr -d '\"')",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.tokenize_inputs --dumps dumps --models Qwen/Qwen3-14B",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine eager --dumps dumps --model Qwen/Qwen3-14B --device cuda",
+      "docker run --rm --gpus all -v \"$PWD:/work\" -v ~/.cache/huggingface:/root/.cache/huggingface -e HF_TOKEN -e HF_HOME=/root/.cache/huggingface -e PYTHONPATH=/work -e VLLM_USE_FLASHINFER_SAMPLER=0 -w /work --entrypoint python3 vllm/vllm-openai:latest -m comparison.run_engine --engine vllm --dumps /work/dumps --model Qwen/Qwen3-14B --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.aggregate --dumps dumps"
+    ]
+  },
+  "sae": {},
+  "status": "ok",
+  "verdict": "\u2705",
+  "versions": {
+    "interp_engine": {
+      "commit": "c08e9f537dcf77f24d047e85c4637a797f46e6d8",
+      "version": "1.0.1"
+    },
+    "torch": {
+      "version": "2.11.0"
+    },
+    "transformers": {
+      "version": "5.15.0"
+    },
+    "vllm": {
+      "version": "0.26.0"
+    }
+  }
+}

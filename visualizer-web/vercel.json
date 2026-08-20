@@ -1,0 +1,6 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "outputDirectory": null,
+  "ignoreCommand": "git rev-parse --verify -q HEAD^ >/dev/null && git diff --quiet HEAD^ HEAD -- ./ ../docs ../README.md ../interp_engine"
+}

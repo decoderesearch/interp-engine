@@ -1,0 +1,435 @@
+{
+  "captured_at": "2026-08-11",
+  "device": "cuda",
+  "dtype": "float32",
+  "engine": "nnsight",
+  "hf_id": "bigscience/bloom-560m",
+  "known_bug": {
+    "link": "https://github.com/ndif-team/nnterp/issues/51",
+    "mechanism": "BloomAttention and BloomMLP take `residual` as a forward argument and add it before returning, so the module output is resid_mid/resid_post. The standardized accessors return it unchanged, which is the sublayer contribution plus a whole residual stream.",
+    "points": [],
+    "title": "Cross-architecture semantic inconsistency: attentions_output / mlps_output include the residual on BLOOM",
+    "url": "https://github.com/ndif-team/nnterp/issues/51",
+    "workaround": "Hook self_attention.dense and mlp.dense_4h_to_h, the output projections, directly."
+  },
+  "points": {
+    "attn_in.0": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999987,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "attn_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 1
+    },
+    "attn_in.12": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999984,
+      "layer": 12,
+      "max_abs_diff": 0.0,
+      "point": "attn_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 5
+    },
+    "attn_in.18": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999987,
+      "layer": 18,
+      "max_abs_diff": 0.0,
+      "point": "attn_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 4
+    },
+    "attn_in.23": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999993,
+      "layer": 23,
+      "max_abs_diff": 0.0,
+      "point": "attn_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 3
+    },
+    "attn_out.0": {
+      "cos": 0.40038567167747857,
+      "cos_worst_token": 0.1671955949622731,
+      "engine_bug": {
+        "mechanism": "BloomAttention and BloomMLP take `residual` as a forward argument and add it before returning, so the module output is resid_mid/resid_post. The standardized accessors return it unchanged, which is the sublayer contribution plus a whole residual stream.",
+        "title": "Cross-architecture semantic inconsistency: attentions_output / mlps_output include the residual on BLOOM",
+        "url": "https://github.com/ndif-team/nnterp/issues/51"
+      },
+      "layer": 0,
+      "max_abs_diff": 8.179665118455887,
+      "point": "attn_out",
+      "rel_diff": 2.3257471061042594,
+      "rel_worst_token": 3.5434278753496153,
+      "status": "FAIL",
+      "tier": "raw_hf",
+      "worst_token": 2
+    },
+    "attn_out.12": {
+      "cos": 0.05324582590600801,
+      "cos_worst_token": 0.14040873156758518,
+      "engine_bug": {
+        "mechanism": "BloomAttention and BloomMLP take `residual` as a forward argument and add it before returning, so the module output is resid_mid/resid_post. The standardized accessors return it unchanged, which is the sublayer contribution plus a whole residual stream.",
+        "title": "Cross-architecture semantic inconsistency: attentions_output / mlps_output include the residual on BLOOM",
+        "url": "https://github.com/ndif-team/nnterp/issues/51"
+      },
+      "layer": 12,
+      "max_abs_diff": 516.9155092090368,
+      "point": "attn_out",
+      "rel_diff": 56.290925889454776,
+      "rel_worst_token": 576.9689279962716,
+      "status": "FAIL",
+      "tier": "raw_hf",
+      "worst_token": 0
+    },
+    "attn_out.18": {
+      "cos": 0.06140186962192756,
+      "cos_worst_token": -0.06855338407444699,
+      "engine_bug": {
+        "mechanism": "BloomAttention and BloomMLP take `residual` as a forward argument and add it before returning, so the module output is resid_mid/resid_post. The standardized accessors return it unchanged, which is the sublayer contribution plus a whole residual stream.",
+        "title": "Cross-architecture semantic inconsistency: attentions_output / mlps_output include the residual on BLOOM",
+        "url": "https://github.com/ndif-team/nnterp/issues/51"
+      },
+      "layer": 18,
+      "max_abs_diff": 521.5596906542778,
+      "point": "attn_out",
+      "rel_diff": 47.64591239338737,
+      "rel_worst_token": 465.2298877319158,
+      "status": "FAIL",
+      "tier": "raw_hf",
+      "worst_token": 0
+    },
+    "attn_out.23": {
+      "cos": 0.36946138614292495,
+      "cos_worst_token": 0.13360997171812095,
+      "engine_bug": {
+        "mechanism": "BloomAttention and BloomMLP take `residual` as a forward argument and add it before returning, so the module output is resid_mid/resid_post. The standardized accessors return it unchanged, which is the sublayer contribution plus a whole residual stream.",
+        "title": "Cross-architecture semantic inconsistency: attentions_output / mlps_output include the residual on BLOOM",
+        "url": "https://github.com/ndif-team/nnterp/issues/51"
+      },
+      "layer": 23,
+      "max_abs_diff": 50.20835018157959,
+      "point": "attn_out",
+      "rel_diff": 13.407466011423878,
+      "rel_worst_token": 22.857486801278718,
+      "status": "FAIL",
+      "tier": "raw_hf",
+      "worst_token": 0
+    },
+    "mlp_act.0": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999992,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "mlp_act",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 10
+    },
+    "mlp_act.12": {
+      "cos": 1.0,
+      "cos_worst_token": 1.0000000000000009,
+      "layer": 12,
+      "max_abs_diff": 0.0,
+      "point": "mlp_act",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 5
+    },
+    "mlp_act.18": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 1.0000000000000009,
+      "layer": 18,
+      "max_abs_diff": 0.0,
+      "point": "mlp_act",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 3
+    },
+    "mlp_act.23": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 1.0000000000000022,
+      "layer": 23,
+      "max_abs_diff": 0.0,
+      "point": "mlp_act",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 6
+    },
+    "mlp_out.0": {
+      "cos": 0.6528458609650025,
+      "cos_worst_token": 0.40030773412875403,
+      "engine_bug": {
+        "mechanism": "BloomAttention and BloomMLP take `residual` as a forward argument and add it before returning, so the module output is resid_mid/resid_post. The standardized accessors return it unchanged, which is the sublayer contribution plus a whole residual stream.",
+        "title": "Cross-architecture semantic inconsistency: attentions_output / mlps_output include the residual on BLOOM",
+        "url": "https://github.com/ndif-team/nnterp/issues/51"
+      },
+      "layer": 0,
+      "max_abs_diff": 8.154168739914894,
+      "point": "mlp_out",
+      "rel_diff": 1.470095605595128,
+      "rel_worst_token": 3.3006416849959646,
+      "status": "FAIL",
+      "tier": "raw_hf",
+      "worst_token": 3
+    },
+    "mlp_out.12": {
+      "cos": 0.08355789763614409,
+      "cos_worst_token": 0.007759378670030245,
+      "engine_bug": {
+        "mechanism": "BloomAttention and BloomMLP take `residual` as a forward argument and add it before returning, so the module output is resid_mid/resid_post. The standardized accessors return it unchanged, which is the sublayer contribution plus a whole residual stream.",
+        "title": "Cross-architecture semantic inconsistency: attentions_output / mlps_output include the residual on BLOOM",
+        "url": "https://github.com/ndif-team/nnterp/issues/51"
+      },
+      "layer": 12,
+      "max_abs_diff": 517.0174848437309,
+      "point": "mlp_out",
+      "rel_diff": 34.27518411706998,
+      "rel_worst_token": 145.89655032839727,
+      "status": "FAIL",
+      "tier": "raw_hf",
+      "worst_token": 10
+    },
+    "mlp_out.18": {
+      "cos": 0.06937063268743687,
+      "cos_worst_token": 0.05207752424941912,
+      "engine_bug": {
+        "mechanism": "BloomAttention and BloomMLP take `residual` as a forward argument and add it before returning, so the module output is resid_mid/resid_post. The standardized accessors return it unchanged, which is the sublayer contribution plus a whole residual stream.",
+        "title": "Cross-architecture semantic inconsistency: attentions_output / mlps_output include the residual on BLOOM",
+        "url": "https://github.com/ndif-team/nnterp/issues/51"
+      },
+      "layer": 18,
+      "max_abs_diff": 521.4424589499831,
+      "point": "mlp_out",
+      "rel_diff": 25.560895080210482,
+      "rel_worst_token": 183.881362549481,
+      "status": "FAIL",
+      "tier": "raw_hf",
+      "worst_token": 0
+    },
+    "mlp_out.23": {
+      "cos": 0.036178894352551984,
+      "cos_worst_token": -0.25160679152961973,
+      "engine_bug": {
+        "mechanism": "BloomAttention and BloomMLP take `residual` as a forward argument and add it before returning, so the module output is resid_mid/resid_post. The standardized accessors return it unchanged, which is the sublayer contribution plus a whole residual stream.",
+        "title": "Cross-architecture semantic inconsistency: attentions_output / mlps_output include the residual on BLOOM",
+        "url": "https://github.com/ndif-team/nnterp/issues/51"
+      },
+      "layer": 23,
+      "max_abs_diff": 52.74753963947296,
+      "point": "mlp_out",
+      "rel_diff": 15.003709120006649,
+      "rel_worst_token": 26.65489437035878,
+      "status": "FAIL",
+      "tier": "raw_hf",
+      "worst_token": 11
+    },
+    "mlp_pre.0": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999978,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "mlp_pre",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 2
+    },
+    "mlp_pre.12": {
+      "cos": 0.9999999999999998,
+      "cos_worst_token": 0.9999999999999982,
+      "layer": 12,
+      "max_abs_diff": 0.0,
+      "point": "mlp_pre",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 9
+    },
+    "mlp_pre.18": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999982,
+      "layer": 18,
+      "max_abs_diff": 0.0,
+      "point": "mlp_pre",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 10
+    },
+    "mlp_pre.23": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999996,
+      "layer": 23,
+      "max_abs_diff": 0.0,
+      "point": "mlp_pre",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 1
+    },
+    "resid_mid.0": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.999999999999998,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "resid_mid",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 3
+    },
+    "resid_mid.12": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999983,
+      "layer": 12,
+      "max_abs_diff": 0.0,
+      "point": "resid_mid",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 9
+    },
+    "resid_mid.18": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999991,
+      "layer": 18,
+      "max_abs_diff": 0.0,
+      "point": "resid_mid",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 12
+    },
+    "resid_mid.23": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999999,
+      "layer": 23,
+      "max_abs_diff": 0.0,
+      "point": "resid_mid",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 10
+    },
+    "resid_post.0": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999983,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "resid_post",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 1
+    },
+    "resid_post.12": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999981,
+      "layer": 12,
+      "max_abs_diff": 0.0,
+      "point": "resid_post",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 0
+    },
+    "resid_post.18": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.999999999999999,
+      "layer": 18,
+      "max_abs_diff": 0.0,
+      "point": "resid_post",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 12
+    },
+    "resid_post.23": {
+      "cos": 1.0,
+      "cos_worst_token": 1.0,
+      "layer": 23,
+      "max_abs_diff": 0.0,
+      "point": "resid_post",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 5
+    }
+  },
+  "reason": "",
+  "reference": "eager",
+  "run": {
+    "date_utc": "2026-08-12T03:31:40+00:00",
+    "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
+    "eager_only": false,
+    "gpu": {
+      "memory_total": "183359 MiB",
+      "name": "NVIDIA B200"
+    },
+    "native_dtype": "float32",
+    "reference_status": {
+      "device": "cuda",
+      "dtype": "float32",
+      "reason": "",
+      "status": "ok"
+    },
+    "replicate": [
+      "export HF_TOKEN=$(grep -m1 '^HF_TOKEN=' .env | cut -d= -f2- | tr -d '\"')",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.tokenize_inputs --dumps dumps --models bigscience/bloom-560m",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine eager --dumps dumps --model bigscience/bloom-560m --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine nnsight --dumps dumps --model bigscience/bloom-560m --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.aggregate --dumps dumps"
+    ]
+  },
+  "sae": {},
+  "status": "ok",
+  "verdict": "\ud83d\udc1e",
+  "versions": {
+    "nnsight": {
+      "version": "0.7.0"
+    },
+    "nnterp": {
+      "version": "1.3.0"
+    },
+    "torch": {
+      "version": "2.13.0"
+    },
+    "transformers": {
+      "version": "5.15.0"
+    }
+  }
+}

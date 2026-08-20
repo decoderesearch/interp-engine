@@ -1,0 +1,384 @@
+{
+  "captured_at": "2026-08-12",
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "engine": "vllm",
+  "hf_id": "google/gemma-4-31B",
+  "known_bug": {
+    "link": "https://github.com/vllm-project/vllm/issues/51744",
+    "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+    "points": [],
+    "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+    "url": "https://github.com/vllm-project/vllm/issues/51744",
+    "workaround": "transformers 5.14.1, or a vLLM carrying vllm-project/vllm#48432, which reads the max over per_layer_config."
+  },
+  "points": {
+    "attn_in.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "attn_in",
+      "status": "N/A"
+    },
+    "attn_in.30": {
+      "layer": 30,
+      "missing": "engine",
+      "point": "attn_in",
+      "status": "N/A"
+    },
+    "attn_in.45": {
+      "layer": 45,
+      "missing": "engine",
+      "point": "attn_in",
+      "status": "N/A"
+    },
+    "attn_in.59": {
+      "layer": 59,
+      "missing": "engine",
+      "point": "attn_in",
+      "status": "N/A"
+    },
+    "attn_out.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "attn_out",
+      "status": "N/A"
+    },
+    "attn_out.30": {
+      "layer": 30,
+      "missing": "engine",
+      "point": "attn_out",
+      "status": "N/A"
+    },
+    "attn_out.45": {
+      "layer": 45,
+      "missing": "engine",
+      "point": "attn_out",
+      "status": "N/A"
+    },
+    "attn_out.59": {
+      "layer": 59,
+      "missing": "engine",
+      "point": "attn_out",
+      "status": "N/A"
+    },
+    "attn_out_post.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "attn_out_post",
+      "status": "N/A"
+    },
+    "attn_out_post.30": {
+      "layer": 30,
+      "missing": "engine",
+      "point": "attn_out_post",
+      "status": "N/A"
+    },
+    "attn_out_post.45": {
+      "layer": 45,
+      "missing": "engine",
+      "point": "attn_out_post",
+      "status": "N/A"
+    },
+    "attn_out_post.59": {
+      "layer": 59,
+      "missing": "engine",
+      "point": "attn_out_post",
+      "status": "N/A"
+    },
+    "attn_scores.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "attn_scores",
+      "status": "N/A"
+    },
+    "attn_scores.30": {
+      "layer": 30,
+      "missing": "engine",
+      "point": "attn_scores",
+      "status": "N/A"
+    },
+    "attn_scores.45": {
+      "layer": 45,
+      "missing": "engine",
+      "point": "attn_scores",
+      "status": "N/A"
+    },
+    "attn_scores.59": {
+      "layer": 59,
+      "missing": "engine",
+      "point": "attn_scores",
+      "status": "N/A"
+    },
+    "embeddings": {
+      "layer": null,
+      "missing": "engine",
+      "point": "embeddings",
+      "status": "N/A"
+    },
+    "final_norm": {
+      "layer": null,
+      "missing": "engine",
+      "point": "final_norm",
+      "status": "N/A"
+    },
+    "k_norm_in.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "k_norm_in",
+      "status": "N/A"
+    },
+    "k_norm_in.30": {
+      "layer": 30,
+      "missing": "engine",
+      "point": "k_norm_in",
+      "status": "N/A"
+    },
+    "k_norm_in.45": {
+      "layer": 45,
+      "missing": "engine",
+      "point": "k_norm_in",
+      "status": "N/A"
+    },
+    "k_norm_in.59": {
+      "layer": 59,
+      "missing": "engine",
+      "point": "k_norm_in",
+      "status": "N/A"
+    },
+    "k_norm_out.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "k_norm_out",
+      "status": "N/A"
+    },
+    "k_norm_out.30": {
+      "layer": 30,
+      "missing": "engine",
+      "point": "k_norm_out",
+      "status": "N/A"
+    },
+    "k_norm_out.45": {
+      "layer": 45,
+      "missing": "engine",
+      "point": "k_norm_out",
+      "status": "N/A"
+    },
+    "k_norm_out.59": {
+      "layer": 59,
+      "missing": "engine",
+      "point": "k_norm_out",
+      "status": "N/A"
+    },
+    "mlp_act.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.30": {
+      "layer": 30,
+      "missing": "engine",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.45": {
+      "layer": 45,
+      "missing": "engine",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.59": {
+      "layer": 59,
+      "missing": "engine",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_out.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "mlp_out",
+      "status": "N/A"
+    },
+    "mlp_out.30": {
+      "layer": 30,
+      "missing": "engine",
+      "point": "mlp_out",
+      "status": "N/A"
+    },
+    "mlp_out.45": {
+      "layer": 45,
+      "missing": "engine",
+      "point": "mlp_out",
+      "status": "N/A"
+    },
+    "mlp_out.59": {
+      "layer": 59,
+      "missing": "engine",
+      "point": "mlp_out",
+      "status": "N/A"
+    },
+    "mlp_out_post.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "mlp_out_post",
+      "status": "N/A"
+    },
+    "mlp_out_post.30": {
+      "layer": 30,
+      "missing": "engine",
+      "point": "mlp_out_post",
+      "status": "N/A"
+    },
+    "mlp_out_post.45": {
+      "layer": 45,
+      "missing": "engine",
+      "point": "mlp_out_post",
+      "status": "N/A"
+    },
+    "mlp_out_post.59": {
+      "layer": 59,
+      "missing": "engine",
+      "point": "mlp_out_post",
+      "status": "N/A"
+    },
+    "q_norm_in.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "q_norm_in",
+      "status": "N/A"
+    },
+    "q_norm_in.30": {
+      "layer": 30,
+      "missing": "engine",
+      "point": "q_norm_in",
+      "status": "N/A"
+    },
+    "q_norm_in.45": {
+      "layer": 45,
+      "missing": "engine",
+      "point": "q_norm_in",
+      "status": "N/A"
+    },
+    "q_norm_in.59": {
+      "layer": 59,
+      "missing": "engine",
+      "point": "q_norm_in",
+      "status": "N/A"
+    },
+    "q_norm_out.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "q_norm_out",
+      "status": "N/A"
+    },
+    "q_norm_out.30": {
+      "layer": 30,
+      "missing": "engine",
+      "point": "q_norm_out",
+      "status": "N/A"
+    },
+    "q_norm_out.45": {
+      "layer": 45,
+      "missing": "engine",
+      "point": "q_norm_out",
+      "status": "N/A"
+    },
+    "q_norm_out.59": {
+      "layer": 59,
+      "missing": "engine",
+      "point": "q_norm_out",
+      "status": "N/A"
+    },
+    "resid_mid.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "resid_mid",
+      "status": "N/A"
+    },
+    "resid_mid.30": {
+      "layer": 30,
+      "missing": "engine",
+      "point": "resid_mid",
+      "status": "N/A"
+    },
+    "resid_mid.45": {
+      "layer": 45,
+      "missing": "engine",
+      "point": "resid_mid",
+      "status": "N/A"
+    },
+    "resid_mid.59": {
+      "layer": 59,
+      "missing": "engine",
+      "point": "resid_mid",
+      "status": "N/A"
+    },
+    "resid_post.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "resid_post",
+      "status": "N/A"
+    },
+    "resid_post.30": {
+      "layer": 30,
+      "missing": "engine",
+      "point": "resid_post",
+      "status": "N/A"
+    },
+    "resid_post.45": {
+      "layer": 45,
+      "missing": "engine",
+      "point": "resid_post",
+      "status": "N/A"
+    },
+    "resid_post.59": {
+      "layer": 59,
+      "missing": "engine",
+      "point": "resid_post",
+      "status": "N/A"
+    }
+  },
+  "reason": "AmbiguousGlobalPerLayerAttributeError: 'head_dim' is a per-layer attribute and may vary across layers. Access it via the individual layer configs instead (e.g. config.per_layer_config[i].head_dim). To read the global config value from conf",
+  "reference": "eager",
+  "run": {
+    "date_utc": "2026-08-12T03:31:40+00:00",
+    "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
+    "eager_only": false,
+    "gpu": {
+      "memory_total": "183359 MiB",
+      "name": "NVIDIA B200"
+    },
+    "native_dtype": "bfloat16",
+    "reference_status": {
+      "device": "cuda",
+      "dtype": "bfloat16",
+      "reason": "",
+      "status": "ok"
+    },
+    "replicate": [
+      "export HF_TOKEN=$(grep -m1 '^HF_TOKEN=' .env | cut -d= -f2- | tr -d '\"')",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.tokenize_inputs --dumps dumps --models google/gemma-4-31B",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine eager --dumps dumps --model google/gemma-4-31B --device cuda",
+      "docker run --rm --gpus all -v \"$PWD:/work\" -v ~/.cache/huggingface:/root/.cache/huggingface -e HF_TOKEN -e HF_HOME=/root/.cache/huggingface -e PYTHONPATH=/work -e VLLM_USE_FLASHINFER_SAMPLER=0 -w /work --entrypoint python3 vllm/vllm-openai:latest -m comparison.run_engine --engine vllm --dumps /work/dumps --model google/gemma-4-31B --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.aggregate --dumps dumps"
+    ]
+  },
+  "sae": {},
+  "status": "error",
+  "verdict": "\ud83d\udc1e",
+  "versions": {
+    "interp_engine": {
+      "commit": "c08e9f537dcf77f24d047e85c4637a797f46e6d8",
+      "version": "1.0.1"
+    },
+    "torch": {
+      "version": "2.11.0"
+    },
+    "transformers": {
+      "version": "5.15.0"
+    },
+    "vllm": {
+      "version": "0.26.0"
+    }
+  }
+}

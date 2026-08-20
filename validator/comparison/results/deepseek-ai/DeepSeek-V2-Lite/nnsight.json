@@ -1,0 +1,364 @@
+{
+  "captured_at": "2026-08-12",
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "engine": "nnsight",
+  "hf_id": "deepseek-ai/DeepSeek-V2-Lite",
+  "known_bug": null,
+  "points": {
+    "attn_in.0": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999999,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "attn_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 4
+    },
+    "attn_in.13": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999999,
+      "layer": 13,
+      "max_abs_diff": 0.0,
+      "point": "attn_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 1
+    },
+    "attn_in.20": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 20,
+      "max_abs_diff": 0.0,
+      "point": "attn_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 3
+    },
+    "attn_in.26": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999999,
+      "layer": 26,
+      "max_abs_diff": 0.0,
+      "point": "attn_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 1
+    },
+    "attn_out.0": {
+      "cos": 0.9999999999999998,
+      "cos_worst_token": 0.9999999999999999,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "attn_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 0
+    },
+    "attn_out.13": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 13,
+      "max_abs_diff": 0.0,
+      "point": "attn_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 10
+    },
+    "attn_out.20": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 20,
+      "max_abs_diff": 0.0,
+      "point": "attn_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 3
+    },
+    "attn_out.26": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 26,
+      "max_abs_diff": 0.0,
+      "point": "attn_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 6
+    },
+    "mlp_act.0": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "mlp_act",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 3
+    },
+    "mlp_act.13": {
+      "layer": 13,
+      "missing": "both",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.20": {
+      "layer": 20,
+      "missing": "both",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.26": {
+      "layer": 26,
+      "missing": "both",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_out.0": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999999,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "mlp_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 11
+    },
+    "mlp_out.13": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 13,
+      "max_abs_diff": 0.0,
+      "point": "mlp_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 1
+    },
+    "mlp_out.20": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 20,
+      "max_abs_diff": 0.0,
+      "point": "mlp_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 3
+    },
+    "mlp_out.26": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 26,
+      "max_abs_diff": 0.0,
+      "point": "mlp_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 4
+    },
+    "mlp_pre.0": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "mlp_pre",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 1
+    },
+    "mlp_pre.13": {
+      "layer": 13,
+      "missing": "both",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "mlp_pre.20": {
+      "layer": 20,
+      "missing": "both",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "mlp_pre.26": {
+      "layer": 26,
+      "missing": "both",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "mlp_pre_linear.0": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "mlp_pre_linear",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 8
+    },
+    "resid_mid.0": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999999,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "resid_mid",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 2
+    },
+    "resid_mid.13": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 13,
+      "max_abs_diff": 0.0,
+      "point": "resid_mid",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 3
+    },
+    "resid_mid.20": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 20,
+      "max_abs_diff": 0.0,
+      "point": "resid_mid",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 1
+    },
+    "resid_mid.26": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 26,
+      "max_abs_diff": 0.0,
+      "point": "resid_mid",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 7
+    },
+    "resid_post.0": {
+      "cos": 0.9999999999999998,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "resid_post",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 6
+    },
+    "resid_post.13": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 13,
+      "max_abs_diff": 0.0,
+      "point": "resid_post",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 6
+    },
+    "resid_post.20": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 20,
+      "max_abs_diff": 0.0,
+      "point": "resid_post",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 11
+    },
+    "resid_post.26": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 26,
+      "max_abs_diff": 0.0,
+      "point": "resid_post",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "raw_hf",
+      "worst_token": 5
+    }
+  },
+  "reason": "",
+  "reference": "eager",
+  "run": {
+    "date_utc": "2026-08-12T03:31:40+00:00",
+    "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
+    "eager_only": false,
+    "gpu": {
+      "memory_total": "183359 MiB",
+      "name": "NVIDIA B200"
+    },
+    "native_dtype": "bfloat16",
+    "reference_status": {
+      "device": "cuda",
+      "dtype": "bfloat16",
+      "reason": "",
+      "status": "ok"
+    },
+    "replicate": [
+      "export HF_TOKEN=$(grep -m1 '^HF_TOKEN=' .env | cut -d= -f2- | tr -d '\"')",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.tokenize_inputs --dumps dumps --models deepseek-ai/DeepSeek-V2-Lite",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine eager --dumps dumps --model deepseek-ai/DeepSeek-V2-Lite --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine nnsight --dumps dumps --model deepseek-ai/DeepSeek-V2-Lite --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.aggregate --dumps dumps"
+    ]
+  },
+  "sae": {},
+  "status": "ok",
+  "verdict": "\u2705",
+  "versions": {
+    "nnsight": {
+      "version": "0.7.0"
+    },
+    "nnterp": {
+      "version": "1.3.0"
+    },
+    "torch": {
+      "version": "2.13.0"
+    },
+    "transformers": {
+      "version": "5.15.0"
+    }
+  }
+}

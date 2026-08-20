@@ -1,0 +1,415 @@
+{
+  "captured_at": "2026-08-12",
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "engine": "vllm",
+  "hf_id": "Qwen/Qwen3-Next-80B-A3B-Instruct",
+  "known_bug": null,
+  "points": {
+    "attn_in.47": {
+      "cos": 0.999616335016615,
+      "cos_worst_token": 0.999221122054107,
+      "layer": 47,
+      "max_abs_diff": 0.625,
+      "point": "attn_in",
+      "rel_diff": 0.027713178773336296,
+      "rel_worst_token": 0.03947514345638012,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 1
+    },
+    "attn_out.47": {
+      "cos": 0.9995613138251352,
+      "cos_worst_token": 0.9992831278999745,
+      "layer": 47,
+      "max_abs_diff": 0.59375,
+      "point": "attn_out",
+      "rel_diff": 0.03057261671758908,
+      "rel_worst_token": 0.05623373712053491,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 5
+    },
+    "attn_out_post.47": {
+      "cos": 0.9995613138251352,
+      "cos_worst_token": 0.9992831278999745,
+      "layer": 47,
+      "max_abs_diff": 0.59375,
+      "point": "attn_out_post",
+      "rel_diff": 0.03057261671758908,
+      "rel_worst_token": 0.05623373712053491,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 5
+    },
+    "attn_scores.47": {
+      "cos": 0.9999785772372969,
+      "layer": 47,
+      "masked_out": 1248,
+      "max_abs_diff": 0.3138923645019531,
+      "point": "attn_scores",
+      "rel_diff": 0.006891767508643962,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "embeddings": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": null,
+      "max_abs_diff": 0.0,
+      "point": "embeddings",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 7
+    },
+    "final_norm": {
+      "cos": 0.9991946702608848,
+      "cos_worst_token": 0.998254010466657,
+      "layer": null,
+      "max_abs_diff": 0.75,
+      "point": "final_norm",
+      "rel_diff": 0.040162567123506146,
+      "rel_worst_token": 0.05947953704858336,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 4
+    },
+    "k_norm_in.47": {
+      "expected": "the fused QK-norm-RoPE-gate kernel is handed the norms' *weights* rather than calling the modules, so a hook on them installs and never fires. interp-engine refuses the point (`vllm_capture._tree.absent_point_reason`) instead of returning nothing silently; eager serves them on the same checkpoint",
+      "layer": 47,
+      "missing": "engine",
+      "point": "k_norm_in",
+      "status": "N/A"
+    },
+    "k_norm_out.47": {
+      "expected": "the fused QK-norm-RoPE-gate kernel is handed the norms' *weights* rather than calling the modules, so a hook on them installs and never fires. interp-engine refuses the point (`vllm_capture._tree.absent_point_reason`) instead of returning nothing silently; eager serves them on the same checkpoint",
+      "layer": 47,
+      "missing": "engine",
+      "point": "k_norm_out",
+      "status": "N/A"
+    },
+    "mlp_act.0": {
+      "layer": 0,
+      "missing": "both",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.24": {
+      "layer": 24,
+      "missing": "both",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.36": {
+      "layer": 36,
+      "missing": "both",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.47": {
+      "layer": 47,
+      "missing": "both",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_out.0": {
+      "cos": 0.99993957201339,
+      "cos_worst_token": 0.9996697194618421,
+      "layer": 0,
+      "max_abs_diff": 0.002166748046875,
+      "point": "mlp_out",
+      "rel_diff": 0.011443530586065684,
+      "rel_worst_token": 0.025701565245274838,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 0
+    },
+    "mlp_out.24": {
+      "cos": 0.9950954919803274,
+      "cos_worst_token": 0.9853342454574806,
+      "layer": 24,
+      "max_abs_diff": 0.171875,
+      "point": "mlp_out",
+      "rel_diff": 0.09913263185689454,
+      "rel_worst_token": 0.1873344010594467,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 7
+    },
+    "mlp_out.36": {
+      "cos": 0.9947044329729455,
+      "cos_worst_token": 0.9810862878886214,
+      "layer": 36,
+      "max_abs_diff": 0.19140625,
+      "point": "mlp_out",
+      "rel_diff": 0.10293689903361185,
+      "rel_worst_token": 0.196510660351617,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 6
+    },
+    "mlp_out.47": {
+      "cos": 0.9994619318897887,
+      "cos_worst_token": 0.9986852043741371,
+      "layer": 47,
+      "max_abs_diff": 0.8125,
+      "point": "mlp_out",
+      "rel_diff": 0.03282581092434524,
+      "rel_worst_token": 0.05266709938153624,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 4
+    },
+    "mlp_out_post.0": {
+      "cos": 0.99993957201339,
+      "cos_worst_token": 0.9996697194618421,
+      "layer": 0,
+      "max_abs_diff": 0.002166748046875,
+      "point": "mlp_out_post",
+      "rel_diff": 0.011443530586065684,
+      "rel_worst_token": 0.025701565245274838,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 0
+    },
+    "mlp_out_post.24": {
+      "cos": 0.9950954919803274,
+      "cos_worst_token": 0.9853342454574806,
+      "layer": 24,
+      "max_abs_diff": 0.171875,
+      "point": "mlp_out_post",
+      "rel_diff": 0.09913263185689454,
+      "rel_worst_token": 0.1873344010594467,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 7
+    },
+    "mlp_out_post.36": {
+      "cos": 0.9947044329729455,
+      "cos_worst_token": 0.9810862878886214,
+      "layer": 36,
+      "max_abs_diff": 0.19140625,
+      "point": "mlp_out_post",
+      "rel_diff": 0.10293689903361185,
+      "rel_worst_token": 0.196510660351617,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 6
+    },
+    "mlp_out_post.47": {
+      "cos": 0.9994619318897887,
+      "cos_worst_token": 0.9986852043741371,
+      "layer": 47,
+      "max_abs_diff": 0.8125,
+      "point": "mlp_out_post",
+      "rel_diff": 0.03282581092434524,
+      "rel_worst_token": 0.05266709938153624,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 4
+    },
+    "q_norm_in.47": {
+      "expected": "the fused QK-norm-RoPE-gate kernel is handed the norms' *weights* rather than calling the modules, so a hook on them installs and never fires. interp-engine refuses the point (`vllm_capture._tree.absent_point_reason`) instead of returning nothing silently; eager serves them on the same checkpoint",
+      "layer": 47,
+      "missing": "engine",
+      "point": "q_norm_in",
+      "status": "N/A"
+    },
+    "q_norm_out.47": {
+      "expected": "the fused QK-norm-RoPE-gate kernel is handed the norms' *weights* rather than calling the modules, so a hook on them installs and never fires. interp-engine refuses the point (`vllm_capture._tree.absent_point_reason`) instead of returning nothing silently; eager serves them on the same checkpoint",
+      "layer": 47,
+      "missing": "engine",
+      "point": "q_norm_out",
+      "status": "N/A"
+    },
+    "resid_mid.0": {
+      "cos": 0.9999948146305074,
+      "cos_worst_token": 0.9999955891050945,
+      "layer": 0,
+      "max_abs_diff": 0.015625,
+      "point": "resid_mid",
+      "rel_diff": 0.0032302516316099704,
+      "rel_worst_token": 0.005848741828864448,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 3
+    },
+    "resid_mid.24": {
+      "cos": 0.9997623743670684,
+      "cos_worst_token": 0.9964852502423474,
+      "layer": 24,
+      "max_abs_diff": 0.25,
+      "point": "resid_mid",
+      "rel_diff": 0.02233416891275518,
+      "rel_worst_token": 0.08439846482259031,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 7
+    },
+    "resid_mid.36": {
+      "cos": 0.9996311157644844,
+      "cos_worst_token": 0.998396461485894,
+      "layer": 36,
+      "max_abs_diff": 0.25,
+      "point": "resid_mid",
+      "rel_diff": 0.027459536048784896,
+      "rel_worst_token": 0.05758907862668676,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 6
+    },
+    "resid_mid.47": {
+      "cos": 0.9993973098382622,
+      "cos_worst_token": 0.9983887401690709,
+      "layer": 47,
+      "max_abs_diff": 0.75,
+      "point": "resid_mid",
+      "rel_diff": 0.03489085010707529,
+      "rel_worst_token": 0.0567450552847682,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 1
+    },
+    "resid_post.0": {
+      "cos": 0.9999884293145567,
+      "cos_worst_token": 0.9999561560486397,
+      "layer": 0,
+      "max_abs_diff": 0.015625,
+      "point": "resid_post",
+      "rel_diff": 0.0048205487177329,
+      "rel_worst_token": 0.00936902973224498,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 0
+    },
+    "resid_post.24": {
+      "cos": 0.9997435863860675,
+      "cos_worst_token": 0.9967253258994161,
+      "layer": 24,
+      "max_abs_diff": 0.25,
+      "point": "resid_post",
+      "rel_diff": 0.02313777111573204,
+      "rel_worst_token": 0.08092607819318821,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 7
+    },
+    "resid_post.36": {
+      "cos": 0.9995934768486174,
+      "cos_worst_token": 0.9982300744195954,
+      "layer": 36,
+      "max_abs_diff": 0.25,
+      "point": "resid_post",
+      "rel_diff": 0.02869892647722786,
+      "rel_worst_token": 0.05955855854225453,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 6
+    },
+    "resid_post.47": {
+      "cos": 0.9991879288641684,
+      "cos_worst_token": 0.998409578029501,
+      "layer": 47,
+      "max_abs_diff": 1.125,
+      "point": "resid_post",
+      "rel_diff": 0.04030387082778662,
+      "rel_worst_token": 0.06105532055686369,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 4
+    },
+    "router_logits.0": {
+      "cos": 0.9999953732663742,
+      "cos_worst_token": 0.99999603793425,
+      "layer": 0,
+      "max_abs_diff": 0.0625,
+      "point": "router_logits",
+      "rel_diff": 0.0030660866606290983,
+      "rel_worst_token": 0.004744141680322006,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 9
+    },
+    "router_logits.24": {
+      "cos": 0.9999720044573752,
+      "cos_worst_token": 0.9999240333934891,
+      "layer": 24,
+      "max_abs_diff": 0.34375,
+      "point": "router_logits",
+      "rel_diff": 0.00754696614536855,
+      "rel_worst_token": 0.012862671744290271,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 7
+    },
+    "router_logits.36": {
+      "cos": 0.9999781586405504,
+      "cos_worst_token": 0.9999502547069152,
+      "layer": 36,
+      "max_abs_diff": 0.28125,
+      "point": "router_logits",
+      "rel_diff": 0.006624000787255914,
+      "rel_worst_token": 0.010627389516992564,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 6
+    },
+    "router_logits.47": {
+      "cos": 0.9999861878040783,
+      "cos_worst_token": 0.9999827962747605,
+      "layer": 47,
+      "max_abs_diff": 0.1875,
+      "point": "router_logits",
+      "rel_diff": 0.005256869011577934,
+      "rel_worst_token": 0.007128520255372394,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 0
+    }
+  },
+  "reason": "",
+  "reference": "eager",
+  "run": {
+    "date_utc": "2026-08-12T03:31:40+00:00",
+    "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
+    "eager_only": false,
+    "gpu": {
+      "memory_total": "183359 MiB",
+      "name": "NVIDIA B200"
+    },
+    "native_dtype": "bfloat16",
+    "reference_status": {
+      "device": "cuda",
+      "dtype": "bfloat16",
+      "reason": "",
+      "status": "ok"
+    },
+    "replicate": [
+      "export HF_TOKEN=$(grep -m1 '^HF_TOKEN=' .env | cut -d= -f2- | tr -d '\"')",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.tokenize_inputs --dumps dumps --models Qwen/Qwen3-Next-80B-A3B-Instruct",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine eager --dumps dumps --model Qwen/Qwen3-Next-80B-A3B-Instruct --device cuda",
+      "docker run --rm --gpus all -v \"$PWD:/work\" -v ~/.cache/huggingface:/root/.cache/huggingface -e HF_TOKEN -e HF_HOME=/root/.cache/huggingface -e PYTHONPATH=/work -e VLLM_USE_FLASHINFER_SAMPLER=0 -w /work --entrypoint python3 vllm/vllm-openai:latest -m comparison.run_engine --engine vllm --dumps /work/dumps --model Qwen/Qwen3-Next-80B-A3B-Instruct --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.aggregate --dumps dumps"
+    ]
+  },
+  "sae": {},
+  "status": "ok",
+  "verdict": "\u2705",
+  "versions": {
+    "interp_engine": {
+      "commit": "c08e9f537dcf77f24d047e85c4637a797f46e6d8",
+      "version": "1.0.1"
+    },
+    "torch": {
+      "version": "2.11.0"
+    },
+    "transformers": {
+      "version": "5.15.0"
+    },
+    "vllm": {
+      "version": "0.26.0"
+    }
+  }
+}

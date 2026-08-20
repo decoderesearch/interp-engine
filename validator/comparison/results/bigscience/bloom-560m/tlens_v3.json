@@ -1,0 +1,520 @@
+{
+  "captured_at": "2026-08-11",
+  "device": "cuda",
+  "dtype": "float32",
+  "engine": "tlens_v3",
+  "hf_id": "bigscience/bloom-560m",
+  "known_bug": {
+    "link": "https://github.com/TransformerLensOrg/TransformerLens/issues/1639",
+    "mechanism": "Same cause as the nnterp bug: the bridge exposes the HF module's output, and BLOOM's sublayers add the residual internally. Breaks TL's own decomposition -- resid_pre + attn_out != resid_mid, off by a full residual (rel 0.90-1.00) -- while TL2's HookedTransformer is exact.",
+    "points": [],
+    "title": "BLOOM TransformerBridge maps hook_attn_out / hook_mlp_out to residual-added states, breaking HookedTransformer residual identities",
+    "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1639",
+    "workaround": "tlens_v2 (HookedTransformer) is correct on this family."
+  },
+  "points": {
+    "attn_out.0": {
+      "cos": 0.4003856741523725,
+      "cos_worst_token": 0.16719549358103578,
+      "engine_bug": {
+        "mechanism": "Same cause as the nnterp bug: the bridge exposes the HF module's output, and BLOOM's sublayers add the residual internally. Breaks TL's own decomposition -- resid_pre + attn_out != resid_mid, off by a full residual (rel 0.90-1.00) -- while TL2's HookedTransformer is exact.",
+        "title": "BLOOM TransformerBridge maps hook_attn_out / hook_mlp_out to residual-added states, breaking HookedTransformer residual identities",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1639"
+      },
+      "layer": 0,
+      "max_abs_diff": 8.17966702580452,
+      "point": "attn_out",
+      "rel_diff": 2.325747200172626,
+      "rel_worst_token": 3.5434282045714722,
+      "status": "FAIL",
+      "tier": "tlens",
+      "worst_token": 2
+    },
+    "attn_out.12": {
+      "cos": 0.05324581017399395,
+      "cos_worst_token": 0.14040873305203233,
+      "engine_bug": {
+        "mechanism": "Same cause as the nnterp bug: the bridge exposes the HF module's output, and BLOOM's sublayers add the residual internally. Breaks TL's own decomposition -- resid_pre + attn_out != resid_mid, off by a full residual (rel 0.90-1.00) -- while TL2's HookedTransformer is exact.",
+        "title": "BLOOM TransformerBridge maps hook_attn_out / hook_mlp_out to residual-added states, breaking HookedTransformer residual identities",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1639"
+      },
+      "layer": 12,
+      "max_abs_diff": 516.9155092090368,
+      "point": "attn_out",
+      "rel_diff": 56.29092578905682,
+      "rel_worst_token": 576.9689275187338,
+      "status": "FAIL",
+      "tier": "tlens",
+      "worst_token": 0
+    },
+    "attn_out.18": {
+      "cos": 0.061401879740937956,
+      "cos_worst_token": -0.06855338231223979,
+      "engine_bug": {
+        "mechanism": "Same cause as the nnterp bug: the bridge exposes the HF module's output, and BLOOM's sublayers add the residual internally. Breaks TL's own decomposition -- resid_pre + attn_out != resid_mid, off by a full residual (rel 0.90-1.00) -- while TL2's HookedTransformer is exact.",
+        "title": "BLOOM TransformerBridge maps hook_attn_out / hook_mlp_out to residual-added states, breaking HookedTransformer residual identities",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1639"
+      },
+      "layer": 18,
+      "max_abs_diff": 521.5596906542778,
+      "point": "attn_out",
+      "rel_diff": 47.64591244240715,
+      "rel_worst_token": 465.2298874813127,
+      "status": "FAIL",
+      "tier": "tlens",
+      "worst_token": 0
+    },
+    "attn_out.23": {
+      "cos": 0.3694614336827951,
+      "cos_worst_token": 0.13360993217758246,
+      "engine_bug": {
+        "mechanism": "Same cause as the nnterp bug: the bridge exposes the HF module's output, and BLOOM's sublayers add the residual internally. Breaks TL's own decomposition -- resid_pre + attn_out != resid_mid, off by a full residual (rel 0.90-1.00) -- while TL2's HookedTransformer is exact.",
+        "title": "BLOOM TransformerBridge maps hook_attn_out / hook_mlp_out to residual-added states, breaking HookedTransformer residual identities",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1639"
+      },
+      "layer": 23,
+      "max_abs_diff": 50.20836925506592,
+      "point": "attn_out",
+      "rel_diff": 13.407463157103548,
+      "rel_worst_token": 22.85746007577659,
+      "status": "FAIL",
+      "tier": "tlens",
+      "worst_token": 0
+    },
+    "attn_out_post.0": {
+      "cos": 0.4003856741523725,
+      "cos_worst_token": 0.16719549358103578,
+      "engine_bug": {
+        "mechanism": "Same cause as the nnterp bug: the bridge exposes the HF module's output, and BLOOM's sublayers add the residual internally. Breaks TL's own decomposition -- resid_pre + attn_out != resid_mid, off by a full residual (rel 0.90-1.00) -- while TL2's HookedTransformer is exact.",
+        "title": "BLOOM TransformerBridge maps hook_attn_out / hook_mlp_out to residual-added states, breaking HookedTransformer residual identities",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1639"
+      },
+      "layer": 0,
+      "max_abs_diff": 8.17966702580452,
+      "point": "attn_out_post",
+      "rel_diff": 2.325747200172626,
+      "rel_worst_token": 3.5434282045714722,
+      "status": "FAIL",
+      "tier": "tlens",
+      "worst_token": 2
+    },
+    "attn_out_post.12": {
+      "cos": 0.05324581017399395,
+      "cos_worst_token": 0.14040873305203233,
+      "engine_bug": {
+        "mechanism": "Same cause as the nnterp bug: the bridge exposes the HF module's output, and BLOOM's sublayers add the residual internally. Breaks TL's own decomposition -- resid_pre + attn_out != resid_mid, off by a full residual (rel 0.90-1.00) -- while TL2's HookedTransformer is exact.",
+        "title": "BLOOM TransformerBridge maps hook_attn_out / hook_mlp_out to residual-added states, breaking HookedTransformer residual identities",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1639"
+      },
+      "layer": 12,
+      "max_abs_diff": 516.9155092090368,
+      "point": "attn_out_post",
+      "rel_diff": 56.29092578905682,
+      "rel_worst_token": 576.9689275187338,
+      "status": "FAIL",
+      "tier": "tlens",
+      "worst_token": 0
+    },
+    "attn_out_post.18": {
+      "cos": 0.061401879740937956,
+      "cos_worst_token": -0.06855338231223979,
+      "engine_bug": {
+        "mechanism": "Same cause as the nnterp bug: the bridge exposes the HF module's output, and BLOOM's sublayers add the residual internally. Breaks TL's own decomposition -- resid_pre + attn_out != resid_mid, off by a full residual (rel 0.90-1.00) -- while TL2's HookedTransformer is exact.",
+        "title": "BLOOM TransformerBridge maps hook_attn_out / hook_mlp_out to residual-added states, breaking HookedTransformer residual identities",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1639"
+      },
+      "layer": 18,
+      "max_abs_diff": 521.5596906542778,
+      "point": "attn_out_post",
+      "rel_diff": 47.64591244240715,
+      "rel_worst_token": 465.2298874813127,
+      "status": "FAIL",
+      "tier": "tlens",
+      "worst_token": 0
+    },
+    "attn_out_post.23": {
+      "cos": 0.3694614336827951,
+      "cos_worst_token": 0.13360993217758246,
+      "engine_bug": {
+        "mechanism": "Same cause as the nnterp bug: the bridge exposes the HF module's output, and BLOOM's sublayers add the residual internally. Breaks TL's own decomposition -- resid_pre + attn_out != resid_mid, off by a full residual (rel 0.90-1.00) -- while TL2's HookedTransformer is exact.",
+        "title": "BLOOM TransformerBridge maps hook_attn_out / hook_mlp_out to residual-added states, breaking HookedTransformer residual identities",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1639"
+      },
+      "layer": 23,
+      "max_abs_diff": 50.20836925506592,
+      "point": "attn_out_post",
+      "rel_diff": 13.407463157103548,
+      "rel_worst_token": 22.85746007577659,
+      "status": "FAIL",
+      "tier": "tlens",
+      "worst_token": 0
+    },
+    "mlp_act.0": {
+      "cos": 0.9999999999990961,
+      "cos_worst_token": 0.9999999999948801,
+      "layer": 0,
+      "max_abs_diff": 6.318092346191406e-06,
+      "point": "mlp_act",
+      "rel_diff": 1.3452546744015666e-06,
+      "rel_worst_token": 3.2237371361003562e-06,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 2
+    },
+    "mlp_act.12": {
+      "cos": 0.9999999999875148,
+      "cos_worst_token": 0.9999999998797419,
+      "layer": 12,
+      "max_abs_diff": 2.765655517578125e-05,
+      "point": "mlp_act",
+      "rel_diff": 4.999695146237925e-06,
+      "rel_worst_token": 1.553567375940228e-05,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 12
+    },
+    "mlp_act.18": {
+      "cos": 0.9999999999968898,
+      "cos_worst_token": 0.9999999999849903,
+      "layer": 18,
+      "max_abs_diff": 1.290440559387207e-05,
+      "point": "mlp_act",
+      "rel_diff": 2.4951684994423177e-06,
+      "rel_worst_token": 5.487362475437247e-06,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 12
+    },
+    "mlp_act.23": {
+      "cos": 0.9999999999965941,
+      "cos_worst_token": 0.999999999991619,
+      "layer": 23,
+      "max_abs_diff": 1.615285873413086e-05,
+      "point": "mlp_act",
+      "rel_diff": 2.6099366993270865e-06,
+      "rel_worst_token": 4.131921240896153e-06,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 11
+    },
+    "mlp_out.0": {
+      "cos": 0.6528457899421155,
+      "cos_worst_token": 0.40030780387219383,
+      "engine_bug": {
+        "mechanism": "Same cause as the nnterp bug: the bridge exposes the HF module's output, and BLOOM's sublayers add the residual internally. Breaks TL's own decomposition -- resid_pre + attn_out != resid_mid, off by a full residual (rel 0.90-1.00) -- while TL2's HookedTransformer is exact.",
+        "title": "BLOOM TransformerBridge maps hook_attn_out / hook_mlp_out to residual-added states, breaking HookedTransformer residual identities",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1639"
+      },
+      "layer": 0,
+      "max_abs_diff": 8.154170647263527,
+      "point": "mlp_out",
+      "rel_diff": 1.4700955834007041,
+      "rel_worst_token": 3.300641991067968,
+      "status": "WARN",
+      "tier": "tlens",
+      "worst_token": 3
+    },
+    "mlp_out.12": {
+      "cos": 0.08355788792269354,
+      "cos_worst_token": 0.007759248268628251,
+      "engine_bug": {
+        "mechanism": "Same cause as the nnterp bug: the bridge exposes the HF module's output, and BLOOM's sublayers add the residual internally. Breaks TL's own decomposition -- resid_pre + attn_out != resid_mid, off by a full residual (rel 0.90-1.00) -- while TL2's HookedTransformer is exact.",
+        "title": "BLOOM TransformerBridge maps hook_attn_out / hook_mlp_out to residual-added states, breaking HookedTransformer residual identities",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1639"
+      },
+      "layer": 12,
+      "max_abs_diff": 517.0174848437309,
+      "point": "mlp_out",
+      "rel_diff": 34.27518406441446,
+      "rel_worst_token": 145.8965502327817,
+      "status": "FAIL",
+      "tier": "tlens",
+      "worst_token": 10
+    },
+    "mlp_out.18": {
+      "cos": 0.06937063855333131,
+      "cos_worst_token": 0.052077528532791864,
+      "engine_bug": {
+        "mechanism": "Same cause as the nnterp bug: the bridge exposes the HF module's output, and BLOOM's sublayers add the residual internally. Breaks TL's own decomposition -- resid_pre + attn_out != resid_mid, off by a full residual (rel 0.90-1.00) -- while TL2's HookedTransformer is exact.",
+        "title": "BLOOM TransformerBridge maps hook_attn_out / hook_mlp_out to residual-added states, breaking HookedTransformer residual identities",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1639"
+      },
+      "layer": 18,
+      "max_abs_diff": 521.4424589499831,
+      "point": "mlp_out",
+      "rel_diff": 25.56089510091972,
+      "rel_worst_token": 183.88136245099116,
+      "status": "FAIL",
+      "tier": "tlens",
+      "worst_token": 0
+    },
+    "mlp_out.23": {
+      "cos": 0.03617895406059035,
+      "cos_worst_token": -0.2516066576887824,
+      "engine_bug": {
+        "mechanism": "Same cause as the nnterp bug: the bridge exposes the HF module's output, and BLOOM's sublayers add the residual internally. Breaks TL's own decomposition -- resid_pre + attn_out != resid_mid, off by a full residual (rel 0.90-1.00) -- while TL2's HookedTransformer is exact.",
+        "title": "BLOOM TransformerBridge maps hook_attn_out / hook_mlp_out to residual-added states, breaking HookedTransformer residual identities",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1639"
+      },
+      "layer": 23,
+      "max_abs_diff": 52.74755871295929,
+      "point": "mlp_out",
+      "rel_diff": 15.003705469060973,
+      "rel_worst_token": 26.654880550107453,
+      "status": "FAIL",
+      "tier": "tlens",
+      "worst_token": 11
+    },
+    "mlp_out_post.0": {
+      "cos": 0.6528457899421155,
+      "cos_worst_token": 0.40030780387219383,
+      "engine_bug": {
+        "mechanism": "Same cause as the nnterp bug: the bridge exposes the HF module's output, and BLOOM's sublayers add the residual internally. Breaks TL's own decomposition -- resid_pre + attn_out != resid_mid, off by a full residual (rel 0.90-1.00) -- while TL2's HookedTransformer is exact.",
+        "title": "BLOOM TransformerBridge maps hook_attn_out / hook_mlp_out to residual-added states, breaking HookedTransformer residual identities",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1639"
+      },
+      "layer": 0,
+      "max_abs_diff": 8.154170647263527,
+      "point": "mlp_out_post",
+      "rel_diff": 1.4700955834007041,
+      "rel_worst_token": 3.300641991067968,
+      "status": "WARN",
+      "tier": "tlens",
+      "worst_token": 3
+    },
+    "mlp_out_post.12": {
+      "cos": 0.08355788792269354,
+      "cos_worst_token": 0.007759248268628251,
+      "engine_bug": {
+        "mechanism": "Same cause as the nnterp bug: the bridge exposes the HF module's output, and BLOOM's sublayers add the residual internally. Breaks TL's own decomposition -- resid_pre + attn_out != resid_mid, off by a full residual (rel 0.90-1.00) -- while TL2's HookedTransformer is exact.",
+        "title": "BLOOM TransformerBridge maps hook_attn_out / hook_mlp_out to residual-added states, breaking HookedTransformer residual identities",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1639"
+      },
+      "layer": 12,
+      "max_abs_diff": 517.0174848437309,
+      "point": "mlp_out_post",
+      "rel_diff": 34.27518406441446,
+      "rel_worst_token": 145.8965502327817,
+      "status": "FAIL",
+      "tier": "tlens",
+      "worst_token": 10
+    },
+    "mlp_out_post.18": {
+      "cos": 0.06937063855333131,
+      "cos_worst_token": 0.052077528532791864,
+      "engine_bug": {
+        "mechanism": "Same cause as the nnterp bug: the bridge exposes the HF module's output, and BLOOM's sublayers add the residual internally. Breaks TL's own decomposition -- resid_pre + attn_out != resid_mid, off by a full residual (rel 0.90-1.00) -- while TL2's HookedTransformer is exact.",
+        "title": "BLOOM TransformerBridge maps hook_attn_out / hook_mlp_out to residual-added states, breaking HookedTransformer residual identities",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1639"
+      },
+      "layer": 18,
+      "max_abs_diff": 521.4424589499831,
+      "point": "mlp_out_post",
+      "rel_diff": 25.56089510091972,
+      "rel_worst_token": 183.88136245099116,
+      "status": "FAIL",
+      "tier": "tlens",
+      "worst_token": 0
+    },
+    "mlp_out_post.23": {
+      "cos": 0.03617895406059035,
+      "cos_worst_token": -0.2516066576887824,
+      "engine_bug": {
+        "mechanism": "Same cause as the nnterp bug: the bridge exposes the HF module's output, and BLOOM's sublayers add the residual internally. Breaks TL's own decomposition -- resid_pre + attn_out != resid_mid, off by a full residual (rel 0.90-1.00) -- while TL2's HookedTransformer is exact.",
+        "title": "BLOOM TransformerBridge maps hook_attn_out / hook_mlp_out to residual-added states, breaking HookedTransformer residual identities",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1639"
+      },
+      "layer": 23,
+      "max_abs_diff": 52.74755871295929,
+      "point": "mlp_out_post",
+      "rel_diff": 15.003705469060973,
+      "rel_worst_token": 26.654880550107453,
+      "status": "FAIL",
+      "tier": "tlens",
+      "worst_token": 11
+    },
+    "mlp_pre.0": {
+      "cos": 0.9999999999998135,
+      "cos_worst_token": 0.999999999999481,
+      "layer": 0,
+      "max_abs_diff": 9.238719940185547e-06,
+      "point": "mlp_pre",
+      "rel_diff": 6.112698442439382e-07,
+      "rel_worst_token": 1.1031623461024242e-06,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 2
+    },
+    "mlp_pre.12": {
+      "cos": 0.9999999999978272,
+      "cos_worst_token": 0.9999999999744744,
+      "layer": 12,
+      "max_abs_diff": 5.435943603515625e-05,
+      "point": "mlp_pre",
+      "rel_diff": 2.084679135585062e-06,
+      "rel_worst_token": 7.147196426402879e-06,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 12
+    },
+    "mlp_pre.18": {
+      "cos": 0.9999999999994249,
+      "cos_worst_token": 0.9999999999964578,
+      "layer": 18,
+      "max_abs_diff": 2.09808349609375e-05,
+      "point": "mlp_pre",
+      "rel_diff": 1.0727405759618004e-06,
+      "rel_worst_token": 2.668404975161841e-06,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 12
+    },
+    "mlp_pre.23": {
+      "cos": 0.9999999999991126,
+      "cos_worst_token": 0.9999999999979081,
+      "layer": 23,
+      "max_abs_diff": 2.2292137145996094e-05,
+      "point": "mlp_pre",
+      "rel_diff": 1.336113086296253e-06,
+      "rel_worst_token": 2.0841624422685618e-06,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 12
+    },
+    "resid_mid.0": {
+      "cos": 0.9999999999997805,
+      "cos_worst_token": 0.9999999999987293,
+      "layer": 0,
+      "max_abs_diff": 5.900859832763672e-06,
+      "point": "resid_mid",
+      "rel_diff": 6.638767327019992e-07,
+      "rel_worst_token": 1.5954940036451435e-06,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 2
+    },
+    "resid_mid.12": {
+      "cos": 0.9999999999999052,
+      "cos_worst_token": 0.9999999999329378,
+      "layer": 12,
+      "max_abs_diff": 2.2232532501220703e-05,
+      "point": "resid_mid",
+      "rel_diff": 4.3440997273331315e-07,
+      "rel_worst_token": 1.165518022824456e-05,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 12
+    },
+    "resid_mid.18": {
+      "cos": 0.9999999999999512,
+      "cos_worst_token": 0.9999999999883353,
+      "layer": 18,
+      "max_abs_diff": 2.193450927734375e-05,
+      "point": "resid_mid",
+      "rel_diff": 3.0951616691253554e-07,
+      "rel_worst_token": 4.83592594285323e-06,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 12
+    },
+    "resid_mid.23": {
+      "cos": 0.9999999999994875,
+      "cos_worst_token": 0.9999999999987398,
+      "layer": 23,
+      "max_abs_diff": 5.7220458984375e-05,
+      "point": "resid_mid",
+      "rel_diff": 1.0335230524922002e-06,
+      "rel_worst_token": 1.8358340051844102e-06,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 12
+    },
+    "resid_post.0": {
+      "cos": 0.9999999999998671,
+      "cos_worst_token": 0.9999999999996081,
+      "layer": 0,
+      "max_abs_diff": 1.049041748046875e-05,
+      "point": "resid_post",
+      "rel_diff": 5.203884987336433e-07,
+      "rel_worst_token": 1.0528731730190958e-06,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 2
+    },
+    "resid_post.12": {
+      "cos": 0.9999999999999256,
+      "cos_worst_token": 0.9999999999434427,
+      "layer": 12,
+      "max_abs_diff": 1.9669532775878906e-05,
+      "point": "resid_post",
+      "rel_diff": 3.8759441525947824e-07,
+      "rel_worst_token": 1.0669274993237124e-05,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 12
+    },
+    "resid_post.18": {
+      "cos": 0.9999999999999539,
+      "cos_worst_token": 0.999999999990059,
+      "layer": 18,
+      "max_abs_diff": 2.2411346435546875e-05,
+      "point": "resid_post",
+      "rel_diff": 3.0322945634715336e-07,
+      "rel_worst_token": 4.467013609745167e-06,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 12
+    },
+    "resid_post.23": {
+      "cos": 0.9999999999994402,
+      "cos_worst_token": 0.9999999999986007,
+      "layer": 23,
+      "max_abs_diff": 6.4849853515625e-05,
+      "point": "resid_post",
+      "rel_diff": 1.0848478801104362e-06,
+      "rel_worst_token": 1.9732744953138792e-06,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 12
+    }
+  },
+  "reason": "",
+  "reference": "eager",
+  "run": {
+    "date_utc": "2026-08-12T03:31:40+00:00",
+    "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
+    "eager_only": false,
+    "gpu": {
+      "memory_total": "183359 MiB",
+      "name": "NVIDIA B200"
+    },
+    "native_dtype": "float32",
+    "reference_status": {
+      "device": "cuda",
+      "dtype": "float32",
+      "reason": "",
+      "status": "ok"
+    },
+    "replicate": [
+      "export HF_TOKEN=$(grep -m1 '^HF_TOKEN=' .env | cut -d= -f2- | tr -d '\"')",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.tokenize_inputs --dumps dumps --models bigscience/bloom-560m",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine eager --dumps dumps --model bigscience/bloom-560m --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine tlens_v3 --dumps dumps --model bigscience/bloom-560m --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.aggregate --dumps dumps"
+    ]
+  },
+  "sae": {},
+  "status": "ok",
+  "verdict": "\ud83d\udc1e",
+  "versions": {
+    "torch": {
+      "version": "2.13.0"
+    },
+    "transformer_lens": {
+      "version": "3.7.0"
+    },
+    "transformers": {
+      "version": "5.15.0"
+    }
+  }
+}

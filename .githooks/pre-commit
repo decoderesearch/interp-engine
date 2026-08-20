@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+#
+# The cheap half: everything that can be repaired without a judgement call, repaired and staged
+# so the commit is already correct. The gates that can only report -- ruff's lint rules, pyright,
+# the visualizer's own checks -- are in pre-push, because they take a minute and a commit is not
+# where you want to spend it.
+#
+# Two things are fixed here:
+#
+#   1. `ruff format` over the staged Python. CI's format gate is a `--check`, so a file that was
+#      never formatted is a red build that a person then fixes by running the formatter -- an
+#      errand with no decision in it.
+#   2. The chat panel's knowledge bundle, which is compiled from docs/, the README and four engine
+#      modules and is committed (see visualizer-web/scripts/build-knowledge.mjs for why it has to
+#      be). Forgetting it is the failure this hook was written for: nothing local complains, the
+#      page still builds, and the bot answers out of the previous release.
+
+# shellcheck source=./common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+
+hooks_disabled pre-commit && exit 0
+
+cd "$ROOT"
+
+mapfile -d '' -t STAGED < <(git diff --cached --name-only --diff-filter=ACMR -z)
+((${#STAGED[@]})) || exit 0
+
+# `git commit -- <path>` writes a temporary index, and anything staged from a hook is discarded
+# with it. Better to say so than to report a fix that silently did not make the commit.
+if [ -n "${GIT_INDEX_FILE:-}" ] && [ "$(basename "$GIT_INDEX_FILE")" != "index" ]; then
+  warn "this looks like a pathspec commit (\`git commit -- <path>\`)."
+  note "Fixes staged below will not be part of it; commit them separately."
+fi
+
+# Files with both staged and unstaged changes are left alone. Formatting one means either writing
+# over work in progress or staging a hunk that was deliberately held back, and neither is a thing
+# a hook should decide.
+mapfile -d '' -t UNSTAGED < <(git diff --name-only -z)
+is_unstaged() {
+  local candidate="$1" f
+  for f in ${UNSTAGED[@]+"${UNSTAGED[@]}"}; do
+    [ "$f" = "$candidate" ] && return 0
+  done
+  return 1
+}
+
+format=()
+skipped=()
+for f in "${STAGED[@]}"; do
+  case "$f" in
+  *.py) ;;
+  *) continue ;;
+  esac
+  if is_unstaged "$f"; then skipped+=("$f"); else format+=("$f"); fi
+done
+
+if ((${#format[@]})); then
+  if have uv; then
+    say "ruff format (${#format[@]} staged Python file(s))"
+    # Ruff resolves settings per file, so validator/ files are formatted under validator's own
+    # config -- which this project keeps verbatim identical anyway.
+    uv run --quiet ruff format -- "${format[@]}"
+    git add -- "${format[@]}"
+  else
+    missing_tool uv "ruff format" "Install uv: https://docs.astral.sh/uv/getting-started/installation/"
+  fi
+fi
+
+if ((${#skipped[@]})); then
+  warn "not formatted, because these have unstaged changes as well as staged ones:"
+  for f in "${skipped[@]}"; do note "$f"; done
+fi
+
+# Wider than the manifest, deliberately, and for the reason visualizer-tests.yml gives for its
+# trigger paths: a second copy of knowledge/manifest.mjs here is a thing to keep in step, and being
+# wrong costs a stale bot rather than a red build. A needless regeneration costs a second and
+# writes nothing when the bundle already matches.
+touches_knowledge=0
+for f in "${STAGED[@]}"; do
+  case "$f" in
+  docs/* | README.md | interp_engine/* | visualizer-web/data/* | visualizer-web/README.md | visualizer-web/knowledge/manifest.mjs)
+    touches_knowledge=1
+    break
+    ;;
+  esac
+done
+
+if ((touches_knowledge)); then
+  if have npm; then
+    say "rebuilding the chat panel's knowledge bundle"
+    # Deliberately not silenced: it prints the document count and size, and a jump in either is
+    # worth seeing. It reads the working tree, so unstaged edits to a source it names land in the
+    # bundle -- harmless, since the next commit rebuilds it from the same sources.
+    (cd visualizer-web && npm run --silent knowledge)
+    git add -- visualizer-web/knowledge/bundle.generated.ts
+  else
+    missing_tool npm "the knowledge bundle rebuild" "Node >=20.9 gives you npm; see visualizer-web/package.json."
+  fi
+fi

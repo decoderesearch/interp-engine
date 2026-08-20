@@ -1,0 +1,275 @@
+{
+  "captured_at": "2026-08-11",
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "engine": "tlens_v2",
+  "hf_id": "ibm-granite/granite-3.3-2b-instruct",
+  "known_bug": {
+    "link": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648",
+    "mechanism": "Granite multiplies each sublayer output by `residual_multiplier` (0.22 on these checkpoints) after the module returns and before adding it, and the adapter leaves the aliases on the module output, so the hooks are the unscaled contribution.",
+    "points": [
+      "attn_out_post",
+      "mlp_out_post"
+    ],
+    "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
+    "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648",
+    "workaround": "Multiply by `config.residual_multiplier` to recover the residual contribution; there is no hook at the scaled tensor, so an intervention cannot be placed correctly at all."
+  },
+  "points": {
+    "attn_out.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "attn_out",
+      "status": "N/A"
+    },
+    "attn_out.20": {
+      "layer": 20,
+      "missing": "engine",
+      "point": "attn_out",
+      "status": "N/A"
+    },
+    "attn_out.30": {
+      "layer": 30,
+      "missing": "engine",
+      "point": "attn_out",
+      "status": "N/A"
+    },
+    "attn_out.39": {
+      "layer": 39,
+      "missing": "engine",
+      "point": "attn_out",
+      "status": "N/A"
+    },
+    "attn_out_post.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "attn_out_post",
+      "status": "N/A"
+    },
+    "attn_out_post.20": {
+      "layer": 20,
+      "missing": "engine",
+      "point": "attn_out_post",
+      "status": "N/A"
+    },
+    "attn_out_post.30": {
+      "layer": 30,
+      "missing": "engine",
+      "point": "attn_out_post",
+      "status": "N/A"
+    },
+    "attn_out_post.39": {
+      "layer": 39,
+      "missing": "engine",
+      "point": "attn_out_post",
+      "status": "N/A"
+    },
+    "mlp_act.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.20": {
+      "layer": 20,
+      "missing": "engine",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.30": {
+      "layer": 30,
+      "missing": "engine",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.39": {
+      "layer": 39,
+      "missing": "engine",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_out.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "mlp_out",
+      "status": "N/A"
+    },
+    "mlp_out.20": {
+      "layer": 20,
+      "missing": "engine",
+      "point": "mlp_out",
+      "status": "N/A"
+    },
+    "mlp_out.30": {
+      "layer": 30,
+      "missing": "engine",
+      "point": "mlp_out",
+      "status": "N/A"
+    },
+    "mlp_out.39": {
+      "layer": 39,
+      "missing": "engine",
+      "point": "mlp_out",
+      "status": "N/A"
+    },
+    "mlp_out_post.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "mlp_out_post",
+      "status": "N/A"
+    },
+    "mlp_out_post.20": {
+      "layer": 20,
+      "missing": "engine",
+      "point": "mlp_out_post",
+      "status": "N/A"
+    },
+    "mlp_out_post.30": {
+      "layer": 30,
+      "missing": "engine",
+      "point": "mlp_out_post",
+      "status": "N/A"
+    },
+    "mlp_out_post.39": {
+      "layer": 39,
+      "missing": "engine",
+      "point": "mlp_out_post",
+      "status": "N/A"
+    },
+    "mlp_pre.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "mlp_pre.20": {
+      "layer": 20,
+      "missing": "engine",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "mlp_pre.30": {
+      "layer": 30,
+      "missing": "engine",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "mlp_pre.39": {
+      "layer": 39,
+      "missing": "engine",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "mlp_pre_linear.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "mlp_pre_linear",
+      "status": "N/A"
+    },
+    "mlp_pre_linear.20": {
+      "layer": 20,
+      "missing": "engine",
+      "point": "mlp_pre_linear",
+      "status": "N/A"
+    },
+    "mlp_pre_linear.30": {
+      "layer": 30,
+      "missing": "engine",
+      "point": "mlp_pre_linear",
+      "status": "N/A"
+    },
+    "mlp_pre_linear.39": {
+      "layer": 39,
+      "missing": "engine",
+      "point": "mlp_pre_linear",
+      "status": "N/A"
+    },
+    "resid_mid.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "resid_mid",
+      "status": "N/A"
+    },
+    "resid_mid.20": {
+      "layer": 20,
+      "missing": "engine",
+      "point": "resid_mid",
+      "status": "N/A"
+    },
+    "resid_mid.30": {
+      "layer": 30,
+      "missing": "engine",
+      "point": "resid_mid",
+      "status": "N/A"
+    },
+    "resid_mid.39": {
+      "layer": 39,
+      "missing": "engine",
+      "point": "resid_mid",
+      "status": "N/A"
+    },
+    "resid_post.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "resid_post",
+      "status": "N/A"
+    },
+    "resid_post.20": {
+      "layer": 20,
+      "missing": "engine",
+      "point": "resid_post",
+      "status": "N/A"
+    },
+    "resid_post.30": {
+      "layer": 30,
+      "missing": "engine",
+      "point": "resid_post",
+      "status": "N/A"
+    },
+    "resid_post.39": {
+      "layer": 39,
+      "missing": "engine",
+      "point": "resid_post",
+      "status": "N/A"
+    }
+  },
+  "reason": "ValueError: ibm-granite/granite-3.3-2b-instruct not found. Valid official model names (excl aliases): ['01-ai/Yi-34B', '01-ai/Yi-34B-Chat', '01-ai/Yi-6B', '01-ai/Yi-6B-Chat', 'ai-forever/mGPT', 'allenai/OLMo-1B-h",
+  "reference": "eager",
+  "run": {
+    "date_utc": "2026-08-12T03:31:40+00:00",
+    "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
+    "eager_only": false,
+    "gpu": {
+      "memory_total": "183359 MiB",
+      "name": "NVIDIA B200"
+    },
+    "native_dtype": "bfloat16",
+    "reference_status": {
+      "device": "cuda",
+      "dtype": "bfloat16",
+      "reason": "",
+      "status": "ok"
+    },
+    "replicate": [
+      "export HF_TOKEN=$(grep -m1 '^HF_TOKEN=' .env | cut -d= -f2- | tr -d '\"')",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.tokenize_inputs --dumps dumps --models ibm-granite/granite-3.3-2b-instruct",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine eager --dumps dumps --model ibm-granite/granite-3.3-2b-instruct --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine tlens_v2 --dumps dumps --model ibm-granite/granite-3.3-2b-instruct --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.aggregate --dumps dumps"
+    ]
+  },
+  "sae": {},
+  "status": "skip",
+  "verdict": "unsupported",
+  "versions": {
+    "torch": {
+      "version": "2.13.0"
+    },
+    "transformer_lens": {
+      "version": "3.7.0"
+    },
+    "transformers": {
+      "version": "5.15.0"
+    }
+  }
+}

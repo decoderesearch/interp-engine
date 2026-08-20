@@ -1,0 +1,241 @@
+{
+  "captured_at": "2026-08-11",
+  "device": "cuda",
+  "dtype": "float32",
+  "engine": "tlens_v2",
+  "hf_id": "bigcode/gpt_bigcode-santacoder",
+  "known_bug": null,
+  "points": {
+    "attn_out.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "attn_out",
+      "status": "N/A"
+    },
+    "attn_out.12": {
+      "layer": 12,
+      "missing": "engine",
+      "point": "attn_out",
+      "status": "N/A"
+    },
+    "attn_out.18": {
+      "layer": 18,
+      "missing": "engine",
+      "point": "attn_out",
+      "status": "N/A"
+    },
+    "attn_out.23": {
+      "layer": 23,
+      "missing": "engine",
+      "point": "attn_out",
+      "status": "N/A"
+    },
+    "attn_out_post.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "attn_out_post",
+      "status": "N/A"
+    },
+    "attn_out_post.12": {
+      "layer": 12,
+      "missing": "engine",
+      "point": "attn_out_post",
+      "status": "N/A"
+    },
+    "attn_out_post.18": {
+      "layer": 18,
+      "missing": "engine",
+      "point": "attn_out_post",
+      "status": "N/A"
+    },
+    "attn_out_post.23": {
+      "layer": 23,
+      "missing": "engine",
+      "point": "attn_out_post",
+      "status": "N/A"
+    },
+    "mlp_act.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.12": {
+      "layer": 12,
+      "missing": "engine",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.18": {
+      "layer": 18,
+      "missing": "engine",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.23": {
+      "layer": 23,
+      "missing": "engine",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_out.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "mlp_out",
+      "status": "N/A"
+    },
+    "mlp_out.12": {
+      "layer": 12,
+      "missing": "engine",
+      "point": "mlp_out",
+      "status": "N/A"
+    },
+    "mlp_out.18": {
+      "layer": 18,
+      "missing": "engine",
+      "point": "mlp_out",
+      "status": "N/A"
+    },
+    "mlp_out.23": {
+      "layer": 23,
+      "missing": "engine",
+      "point": "mlp_out",
+      "status": "N/A"
+    },
+    "mlp_out_post.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "mlp_out_post",
+      "status": "N/A"
+    },
+    "mlp_out_post.12": {
+      "layer": 12,
+      "missing": "engine",
+      "point": "mlp_out_post",
+      "status": "N/A"
+    },
+    "mlp_out_post.18": {
+      "layer": 18,
+      "missing": "engine",
+      "point": "mlp_out_post",
+      "status": "N/A"
+    },
+    "mlp_out_post.23": {
+      "layer": 23,
+      "missing": "engine",
+      "point": "mlp_out_post",
+      "status": "N/A"
+    },
+    "mlp_pre.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "mlp_pre.12": {
+      "layer": 12,
+      "missing": "engine",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "mlp_pre.18": {
+      "layer": 18,
+      "missing": "engine",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "mlp_pre.23": {
+      "layer": 23,
+      "missing": "engine",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "resid_mid.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "resid_mid",
+      "status": "N/A"
+    },
+    "resid_mid.12": {
+      "layer": 12,
+      "missing": "engine",
+      "point": "resid_mid",
+      "status": "N/A"
+    },
+    "resid_mid.18": {
+      "layer": 18,
+      "missing": "engine",
+      "point": "resid_mid",
+      "status": "N/A"
+    },
+    "resid_mid.23": {
+      "layer": 23,
+      "missing": "engine",
+      "point": "resid_mid",
+      "status": "N/A"
+    },
+    "resid_post.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "resid_post",
+      "status": "N/A"
+    },
+    "resid_post.12": {
+      "layer": 12,
+      "missing": "engine",
+      "point": "resid_post",
+      "status": "N/A"
+    },
+    "resid_post.18": {
+      "layer": 18,
+      "missing": "engine",
+      "point": "resid_post",
+      "status": "N/A"
+    },
+    "resid_post.23": {
+      "layer": 23,
+      "missing": "engine",
+      "point": "resid_post",
+      "status": "N/A"
+    }
+  },
+  "reason": "ValueError: bigcode/gpt_bigcode-santacoder not found. Valid official model names (excl aliases): ['01-ai/Yi-34B', '01-ai/Yi-34B-Chat', '01-ai/Yi-6B', '01-ai/Yi-6B-Chat', 'ai-forever/mGPT', 'allenai/OLMo-1B-hf', '",
+  "reference": "eager",
+  "run": {
+    "date_utc": "2026-08-12T03:31:40+00:00",
+    "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
+    "eager_only": false,
+    "gpu": {
+      "memory_total": "183359 MiB",
+      "name": "NVIDIA B200"
+    },
+    "native_dtype": "float32",
+    "reference_status": {
+      "device": "cuda",
+      "dtype": "float32",
+      "reason": "",
+      "status": "ok"
+    },
+    "replicate": [
+      "export HF_TOKEN=$(grep -m1 '^HF_TOKEN=' .env | cut -d= -f2- | tr -d '\"')",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.tokenize_inputs --dumps dumps --models bigcode/gpt_bigcode-santacoder",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine eager --dumps dumps --model bigcode/gpt_bigcode-santacoder --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine tlens_v2 --dumps dumps --model bigcode/gpt_bigcode-santacoder --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.aggregate --dumps dumps"
+    ]
+  },
+  "sae": {},
+  "status": "skip",
+  "verdict": "unsupported",
+  "versions": {
+    "torch": {
+      "version": "2.13.0"
+    },
+    "transformer_lens": {
+      "version": "3.7.0"
+    },
+    "transformers": {
+      "version": "5.15.0"
+    }
+  }
+}

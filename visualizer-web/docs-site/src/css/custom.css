@@ -1,0 +1,50 @@
+/* Infima's knobs only. The visualizer next door is Tailwind, and the two do not
+   share a stylesheet — what they share is the slate/indigo palette below, so that
+   crossing between them does not read as leaving the site. */
+
+:root {
+  --ifm-color-primary: #4f46e5;
+  --ifm-color-primary-dark: #4338ca;
+  --ifm-color-primary-darker: #3f37c9;
+  --ifm-color-primary-darkest: #372fb5;
+  --ifm-color-primary-light: #6366f1;
+  --ifm-color-primary-lighter: #7c7bf3;
+  --ifm-color-primary-lightest: #a5b4fc;
+
+  --ifm-font-family-monospace:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --ifm-code-font-size: 88%;
+  --ifm-heading-font-weight: 600;
+  --ifm-navbar-height: 3.25rem;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="dark"] {
+  --ifm-color-primary: #a5b4fc;
+  --ifm-color-primary-dark: #8f9ffa;
+  --ifm-color-primary-darker: #8493f9;
+  --ifm-color-primary-darkest: #6373f7;
+  --ifm-color-primary-light: #bbc9fe;
+  --ifm-color-primary-lighter: #c6d1fe;
+  --ifm-color-primary-lightest: #e0e7ff;
+  --docusaurus-highlighted-code-line-bg: rgba(255, 255, 255, 0.1);
+}
+
+/* These pages are mostly code, so the prose column is set by the widest snippet
+   rather than by a measure. */
+.markdown h1:first-child {
+  --ifm-h1-font-size: 1.9rem;
+}
+
+.markdown > h2 {
+  --ifm-h2-font-size: 1.35rem;
+  margin-top: 2rem;
+}
+
+.markdown > h3 {
+  --ifm-h3-font-size: 1.05rem;
+}
+
+.theme-code-block {
+  --ifm-pre-line-height: 1.5;
+}

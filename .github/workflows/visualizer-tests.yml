@@ -1,0 +1,82 @@
+name: Visualizer - Checks
+
+# visualizer-web/ is a Next.js diagram of the engine's point / naming / trait model, plus the Ask Riz
+# chat panel. Until this file existed it had no CI at all: `npm run lint` and `npm run typecheck` were
+# something a person remembered to run, and engine-tests.yml carried a comment asserting that this
+# directory had its own workflow, which it did not. That is the gap this closes.
+#
+# The job worth having here is the third one. `knowledge:check` asserts that
+# visualizer-web/knowledge/bundle.generated.ts still matches the files knowledge/manifest.mjs names --
+# the engine README, docs/, four interp_engine modules and this directory's own data tables. That
+# bundle is the entire knowledge of the chat panel, so a docs edit that lands without a regenerated
+# bundle ships a bot confidently describing the previous release. Nothing about that failure is
+# visible: the page builds, the panel answers, and the answers are quietly stale.
+#
+# Hence the trigger paths, which are wider than this directory. A pull request touching only docs/
+# changes nothing in visualizer-web/ and would not otherwise run anything here, which is exactly the
+# pull request that breaks the bundle.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'visualizer-web/**'
+      - 'docs/**'
+      - 'README.md'
+      # Broader than the four modules the manifest names, deliberately. Listing them here would be a
+      # second copy of the manifest to keep in step, and the cost of being wrong is a silent gap
+      # rather than a red build. A redundant run is a minute.
+      - 'interp_engine/**'
+      - '.github/workflows/visualizer-tests.yml'
+  pull_request:
+    paths:
+      - 'visualizer-web/**'
+      - 'docs/**'
+      - 'README.md'
+      - 'interp_engine/**'
+      - '.github/workflows/visualizer-tests.yml'
+
+concurrency:
+  group: visualizer-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+    working-directory: visualizer-web
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # package.json wants >=20.9.0; 22 is the LTS line that satisfies it.
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: visualizer-web/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Check linting
+        run: npm run lint
+      - name: Type checking
+        # The script runs `next typegen` first, and has to: `LayoutProps` and friends are written by
+        # Next into .next/types, which a fresh checkout does not have, so a bare `tsc --noEmit` fails
+        # on app/layout.tsx with "Cannot find name 'LayoutProps'" while every editor is happy -- a
+        # local .next/ from `npm run dev` hides it.
+        run: npm run typecheck
+      - name: Check the chatbot's docs bundle is current
+        # Must run BEFORE the build. `npm run build` has a `prebuild` hook that regenerates the
+        # bundle, so running it first would repair the very drift this step exists to report.
+        run: npm run knowledge:check
+      - name: Check the point links in docs/SUPPORTED_POINTS.md still open a card
+        # docs/SUPPORTED_POINTS.md links each point to this app, naming an architecture that has it.
+        # A point renamed here, or a trait gate tightened, turns one of those into a diagram with no
+        # card -- which looks like a working link. This builds each linked graph and looks.
+        run: npm run links:check
+      - name: Build
+        # The build is a check in its own right here: this app has no test suite, and `next build`
+        # is the only thing that exercises the route handler's module graph -- an import that
+        # resolves under `tsc --noEmit` can still fail to bundle for the server runtime.
+        run: npm run build

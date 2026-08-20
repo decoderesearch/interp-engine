@@ -1,0 +1,216 @@
+# Name kept as-is so an existing required status check ("Engine - Parity Tests / cpu") keeps
+# reporting; the suite is broader than parity now.
+name: Engine - Parity Tests
+
+# The engine test suite. Three jobs, all firing on non-Markdown changes to the engine's own
+# directories (validator/ and visualizer-web/ have their own workflows -- validator-tests.yml and
+# visualizer-tests.yml):
+#
+#   cpu (ubuntu-latest)     `-m "not gpu and not xl"` — gpt2 golden parity vs TransformerLens
+#                           plus the three small models (see tests/harness.py)
+#                           eagerly. Also owns the ruff lint/format gate for the engine
+#                           (source-only, so it does not run again on the paid GPU runner).
+#                           validator-tests.yml owns the same gate for validator/.
+#   gpu (managed L4)        `-m "gpu and not xl"`     — the same small models on CUDA/bf16, the
+#                           configuration Neuronpedia's inference service actually serves, PLUS the
+#                           vLLM backend against a real engine.
+#   floor (ubuntu-latest)   the config-only tests on the OLDEST transformers this package accepts.
+#                           The other two jobs run whatever resolves today, so the floor in
+#                           pyproject.toml is a claim nothing checked -- and the way it breaks is
+#                           config reads, which need no weights and take two seconds. See
+#                           docs/COMPATIBILITY.md.
+#
+# The cpu job installs `.[dev,parity]`, where `parity` is just TransformerLens for the gpt2 golden
+# gate -- the only third-party engine any test loads. The gpu job adds `vllm`, because vLLM is an
+# optional extra (Linux/CUDA-only and heavy, so it cannot be a base dep) and the backend's own GPU
+# tests import-skip without it: `test_vllm_capture_gpu.py` and `test_vllm_graphs_on_gpu.py` ran
+# NOWHERE automatically while this job installed only `.[dev,parity]`, and reported green for it.
+# IE_REQUIRE_VLLM below is what stops that from coming back.
+#
+# The `xl` models (gemma-2-2b softcapping, gpt-oss-20b MXFP4 sinks, Qwen3.6-27B) run NOWHERE
+# automatically — tens of GB of weights, so they're a local `pytest -m xl` on a big box.
+
+# The engine is the repo root, so these name its own directories rather than excluding the two
+# subprojects. validator/ and visualizer-web/ have their own workflows and cannot affect this
+# suite; the engine's `uv.lock` can, since the cpu job resolves against it.
+#
+# Note the traffic in the other direction: visualizer-tests.yml watches `interp_engine/**` and
+# `docs/**`, because the chat panel's knowledge bundle is compiled from them. An engine change can
+# therefore make that workflow red without making this one red, which is the point.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'interp_engine/**'
+      - 'tests/**'
+      - 'benchmarks/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '!**/*.md'
+      - '.github/workflows/engine-tests.yml'
+  pull_request:
+    paths:
+      - 'interp_engine/**'
+      - 'tests/**'
+      - 'benchmarks/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '!**/*.md'
+      - '.github/workflows/engine-tests.yml'
+
+concurrency:
+  group: engine-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  # A missing TransformerLens or a cold gpt2 cache would turn the golden gate into a *skip*
+  # (pytest.importorskip / skip-on-load-failure), silently retiring it. In CI those are failures.
+  IE_REQUIRE_PARITY: '1'
+
+jobs:
+  cpu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Set up venv (engine + dev tooling + TransformerLens for the parity gate)
+        run: |
+          uv venv --python 3.12 .venv-ci
+          uv pip install --python .venv-ci -e '.[dev,parity]'
+      # Lint/format gate lives on the cpu job only: it is source-only, so paying for it again on
+      # the per-minute GPU runner would buy nothing.
+      - name: Check linting
+        run: .venv-ci/bin/ruff check .
+      - name: Check formatting
+        run: .venv-ci/bin/ruff format --check .
+      - name: Type checking
+        # Uses [tool.pyright] include=interp_engine (not tests, which need
+        # optional extras). --pythonpath is required: this job's venv is `.venv-ci`, and
+        # pyright only auto-discovers `.venv` / `venv`, so without it every `import torch`
+        # becomes reportMissingImports (and a pile of follow-on false positives).
+        # Locally: `uv run pyright` or `make check-type` after `uv sync --extra dev`.
+        run: .venv-ci/bin/pyright --pythonpath .venv-ci/bin/python
+      - name: Cache HF weights (gpt2 + gemma-3-270m-it + Qwen3.5-0.8B, ~3GB)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface/hub
+          # Keyed on both files that can name a model — the spec table and the expectations
+          # rows, which may carry an hfId of their own — so editing either invalidates it.
+          # Shared with the gpu job: whichever finishes first saves, the other restores.
+          key: hf-engine-${{ hashFiles('tests/harness.py', 'tests/model_expectations.yaml') }}
+          restore-keys: |
+            hf-engine-
+      - name: Check the reference backend imports (parity must not silently skip)
+        # `[parity]` deliberately omits torchvision (only TL 3's multimodal bridges want it), so
+        # prove the import works here rather than discovering it as a skipped golden gate.
+        run: |
+          .venv-ci/bin/python - <<'PY'
+          from importlib.metadata import version
+
+          from transformer_lens import HookedTransformer  # noqa: F401
+
+          print("transformer-lens", version("transformer-lens"))
+          PY
+      - name: Run CPU suite (golden parity + the three small models; gpu/xl excluded)
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_HUB_OFFLINE: '0'
+          TRANSFORMERS_OFFLINE: '0'
+        run: .venv-ci/bin/python -m pytest tests -m "not gpu and not xl" -q
+
+  floor:
+    # Config arithmetic against the oldest supported transformers. No weights and no network, so this
+    # is a couple of minutes of a free runner -- cheap enough that the floor stops being folklore.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Set up venv at the declared floor
+        # The version is written out rather than derived from pyproject.toml: if an edit raises the
+        # floor, this line should show up in that diff and be part of the same decision.
+        run: |
+          uv venv --python 3.12 .venv-floor
+          uv pip install --python .venv-floor -e '.[dev]' 'transformers==4.57.1'
+      - name: Run the config-facing tests
+        # These files resolve model facts from configs the tests build themselves. Anything that loads
+        # weights belongs in the cpu job -- HF_HUB_OFFLINE is what keeps that boundary honest here,
+        # since a test that starts reaching for the hub will fail rather than quietly download.
+        #
+        # `not hub` is the one deliberate exception, and it is a deselection rather than a skip so that
+        # it is visible in the count: a handful of drift guards compare the two backends on the REAL
+        # gpt2/pythia configs, which cannot be built locally without defeating the point. They run in
+        # the cpu job, which has the network and the cache. Everything else here needs neither, and
+        # `load_model` already turns an unreachable checkpoint into a readable skip.
+        env:
+          HF_HUB_OFFLINE: '1'
+        run: |
+          .venv-floor/bin/python -m pytest -q -m "not hub" \
+            tests/test_facts.py \
+            tests/test_per_layer_attn_dims.py \
+            tests/test_mappers.py \
+            tests/test_layer_kinds.py \
+            tests/test_points_registry.py
+
+  gpu:
+    # Managed GPU label. Keep ENGINE_GPU_RUNS_ON a *repository* (or org) variable: `runs-on` is
+    # evaluated before a job's environment is resolved, so an environment-scoped variable reads as
+    # empty and falls back to the default. Renamed from INFERENCE_GPU_RUNS_ON, which it shared with
+    # the Neuronpedia monorepo's GPU workflows while the engine lived there.
+    runs-on: ${{ vars.ENGINE_GPU_RUNS_ON || 'machine/gpu=l4' }}
+    # Managed GPU runners bill per minute. The small-model suite is a few minutes including
+    # downloads, so cap well above that and pay minutes rather than GitHub's 6-hour default.
+    # Raised from 30 with the vLLM extra: installing that wheel and booting three EngineCores (a boot
+    # is ~a minute, and test_vllm_graphs_on_gpu.py pays for graph capture) puts this closer to
+    # inference-gpu-tests.yml, which caps at 45 for the same reason -- a wedged EngineCore hangs a test
+    # rather than failing it.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: GPU sanity (driver present)
+        run: nvidia-smi || { echo "::error::No GPU visible on this runner"; exit 1; }
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Set up venv (engine + dev tooling + the vLLM backend)
+        run: |
+          uv venv --python 3.12 .venv-ci
+          uv pip install --python .venv-ci -e '.[dev,parity,vllm]'
+      - name: Cache HF weights (same three models as the cpu job)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface/hub
+          key: hf-engine-${{ hashFiles('tests/harness.py', 'tests/model_expectations.yaml') }}
+          restore-keys: |
+            hf-engine-
+      - name: Run GPU suite (the three small models on CUDA/bf16 + the vLLM backend; xl excluded)
+        env:
+          # Provided as a repo/org secret. When absent, the suite warns (start + end) and skips
+          # @pytest.mark.gated tests instead of failing (see tests/conftest.py).
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_HUB_OFFLINE: '0'
+          TRANSFORMERS_OFFLINE: '0'
+          # The install above asked for the vllm extra, so an import-skip here means the install
+          # silently did not deliver it -- which is the failure this job existed to catch and did not.
+          # See tests/harness.py::require_vllm.
+          IE_REQUIRE_VLLM: '1'
+          # vLLM's FlashInfer sampler JIT-compiles a CUDA extension on first use, shelling out to
+          # `ninja` and `nvcc`. machine.dev images ship CUDA, but keep the portable sampler path so a
+          # runner image without a toolchain fails on a real assertion rather than on a build --
+          # inference-gpu-tests.yml sets the same variable for the same reason.
+          VLLM_USE_FLASHINFER_SAMPLER: '0'
+          # The vLLM tests turn this down themselves (gpt2 needs almost nothing and a second engine
+          # has to fit beside the first), but an L4 is 24GB and shared, so do not leave the 0.9 default
+          # in reach of anything that forgets.
+          VLLM_GPU_MEMORY_UTILIZATION: '0.5'
+        run: .venv-ci/bin/python -m pytest tests -m "gpu and not xl" -q

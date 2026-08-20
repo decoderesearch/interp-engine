@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+#
+# The gates that can only report. This is CI's static half, run before the push instead of after
+# it: ruff's lint rules, both pyright configs, the lint-config parity check, the weight-free
+# guard tests, and the visualizer's own checks. Each corresponds to a step in
+# .github/workflows/{engine,validator,visualizer}-tests.yml, and each is the reason a push has
+# gone red on work that was already finished.
+#
+# What it does NOT run is the model suites -- they want weights, a network and minutes, and
+# `make test` is where they belong. So this is not a promise that CI will be green; it is the
+# part of CI that is free.
+#
+# Scoped by what the push carries, using the same path groups the workflows trigger on, so a
+# docs-only push does not pay for two pyright runs. Every check reports; the push is refused once
+# at the end with the whole list, because fixing three things one red run at a time is the thing
+# this hook exists to stop.
+
+# shellcheck source=./common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+
+hooks_disabled pre-push && exit 0
+
+cd "$ROOT"
+
+# --------------------------------------------------------------------------- what is changing --
+
+# git feeds a pre-push hook one line per ref: <local ref> <local sha> <remote ref> <remote sha>.
+# A terminal on stdin means a person ran this file directly, and reading would just hang; check
+# everything instead.
+SCOPED=1
+REFS=0
+CHANGED=""
+[ -t 0 ] && SCOPED=0
+while [ "$SCOPED" = 1 ] && read -r _local_ref local_sha _remote_ref remote_sha; do
+  [ -z "$local_sha" ] && continue
+  # An all-zero local sha is a branch deletion: nothing to check.
+  case "$local_sha" in
+  *[!0]*) ;;
+  *) continue ;;
+  esac
+  REFS=$((REFS + 1))
+
+  base=""
+  case "$remote_sha" in
+  *[!0]*) git cat-file -e "${remote_sha}^{commit}" 2>/dev/null && base="$remote_sha" ;;
+  esac
+  # A branch the remote has never seen: compare against where it left main.
+  [ -n "$base" ] || base="$(git merge-base "$local_sha" origin/main 2>/dev/null || true)"
+  # No base at all (a fresh clone with no origin/main). Rather than guess at a narrow scope,
+  # widen to everything -- an unnecessary minute is cheaper than a check that quietly did not run.
+  if [ -z "$base" ]; then
+    SCOPED=0
+    break
+  fi
+  CHANGED+="$(git diff --name-only "$base" "$local_sha")"$'\n'
+done
+
+# Run by hand rather than by git, so there is no ref on stdin to scope with.
+((REFS)) || SCOPED=0
+
+touches() {
+  ((SCOPED)) || return 0
+  printf '%s' "$CHANGED" | grep -qE "$1"
+}
+
+# ---------------------------------------------------------------------------------- the gates --
+
+FAILED=()
+
+# Runs a check in a subshell so a `cd` cannot leak into the next one, and records the failure
+# instead of aborting: the point is one list at the end.
+gate() {
+  local label="$1" dir="$2"
+  shift 2
+  printf '\n'
+  say "$label"
+  if (cd "$ROOT/$dir" && "$@"); then return 0; fi
+  FAILED+=("$label")
+}
+
+if have uv; then
+  if touches '\.py$|^pyproject\.toml$|^uv\.lock$'; then
+    gate "engine: ruff lint" . uv run --quiet ruff check .
+    gate "engine: ruff format" . uv run --quiet ruff format --check .
+    # pyright reads [tool.pyright] include=interp_engine; tests need optional extras and are out.
+    gate "engine: pyright" . uv run --quiet pyright
+  fi
+
+  # The suite's weight-free guards, and the ones that fail for having forgotten a generator:
+  # the three files that must agree on a version, the published benchmark tables, the foreign-name
+  # boundary, the code fences in docs/, and the three docs that transcribe the point table. A
+  # couple of seconds for the whole set -- the four tests in test_points_registry.py that want
+  # GPT-2 skip themselves when the weights are not cached rather than fetching them.
+  #
+  # The samples site is in the path list because engine-tests.yml excludes `**/*.md` and never
+  # sees it, so a push that edits only that page is checked here or nowhere. The other direction
+  # -- a point added to points.py while the docs stay put -- is covered by `\.py$` and by CI.
+  if touches '\.py$|^docs/|^benchmarks/|^README\.md$|^pyproject\.toml$|^uv\.lock$|^visualizer-web/data/|^visualizer-web/docs-site/docs/'; then
+    gate "engine: packaging, published tables, vocabulary boundary, doc fences, point tables" . \
+      uv run --quiet pytest -q --no-header \
+      tests/test_packaging.py \
+      tests/test_published_benchmarks.py \
+      tests/test_vocabulary_boundary.py \
+      tests/test_doc_code_fences.py \
+      tests/test_points_registry.py
+  fi
+
+  if touches '^validator/'; then
+    gate "validator: ruff lint" validator uv run --quiet ruff check .
+    gate "validator: ruff format" validator uv run --quiet ruff format --check .
+    gate "validator: pyright" validator uv run --quiet pyright
+  fi
+else
+  missing_tool uv "the Python checks" "Install uv: https://docs.astral.sh/uv/getting-started/installation/"
+fi
+
+if touches '^pyproject\.toml$|^validator/pyproject\.toml$'; then
+  gate "repo: ruff/pyright config parity between the two Python projects" . \
+    python3 .github/scripts/check_lint_config_parity.py
+fi
+
+if have npm; then
+  # Unscoped on purpose, and cheap: the bundle is compiled from docs/, the README and four engine
+  # modules, so the push that breaks it usually touches nothing in visualizer-web/. pre-commit
+  # normally has it rebuilt and staged already; this catches the commit that skipped the hook.
+  gate "visualizer: the chat panel's knowledge bundle is current" visualizer-web \
+    npm run --silent knowledge:check
+
+  if touches '^visualizer-web/'; then
+    if [ -d visualizer-web/node_modules ]; then
+      gate "visualizer: eslint" visualizer-web npm run --silent lint
+      gate "visualizer: tsc" visualizer-web npm run --silent typecheck
+      gate "visualizer: the point links in docs/SUPPORTED_POINTS.md still open a card" \
+        visualizer-web npm run --silent links:check
+      # `next build` is a check of its own in CI. It is minutes, and it is the one thing here that
+      # a push can afford to learn from CI.
+    else
+      missing_tool "visualizer-web/node_modules" "eslint, tsc and the link check" "Run: make viz-install"
+    fi
+  fi
+else
+  missing_tool npm "the visualizer checks" "Node >=20.9 gives you npm; see visualizer-web/package.json."
+fi
+
+# ------------------------------------------------------------------------------------- verdict --
+
+printf '\n'
+if ((${#FAILED[@]})); then
+  err "not pushing. These would be red in CI:"
+  for label in "${FAILED[@]}"; do note "$label"; done
+  note ""
+  note "Fix and push again, or push anyway with: IE_SKIP_HOOKS=1 git push"
+  exit 1
+fi
+
+say "static checks passed."
+note "The model suites are not run here -- \`make test\` and CI own those."

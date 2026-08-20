@@ -1,0 +1,368 @@
+{
+  "captured_at": "2026-08-19",
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "engine": "vllm-static",
+  "hf_id": "Qwen/Qwen3-Next-80B-A3B-Instruct",
+  "known_bug": null,
+  "points": {
+    "attn_in.47": {
+      "cos": 0.9995783362391896,
+      "cos_worst_token": 0.9991808843189158,
+      "layer": 47,
+      "max_abs_diff": 0.375,
+      "point": "attn_in",
+      "rel_diff": 0.029038374661689948,
+      "rel_worst_token": 0.040558035326712615,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 3
+    },
+    "attn_out.47": {
+      "cos": 0.9996460031397217,
+      "cos_worst_token": 0.9987997830477969,
+      "layer": 47,
+      "max_abs_diff": 0.34375,
+      "point": "attn_out",
+      "rel_diff": 0.027301726354156997,
+      "rel_worst_token": 0.049529515580751464,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 3
+    },
+    "attn_out_post.47": {
+      "cos": 0.9996460031397217,
+      "cos_worst_token": 0.9987997830477969,
+      "layer": 47,
+      "max_abs_diff": 0.34375,
+      "point": "attn_out_post",
+      "rel_diff": 0.027301726354156997,
+      "rel_worst_token": 0.049529515580751464,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 3
+    },
+    "attn_scores.47": {
+      "cos": 0.9999711676800839,
+      "layer": 47,
+      "masked_out": 1248,
+      "max_abs_diff": 0.27890491485595703,
+      "point": "attn_scores",
+      "rel_diff": 0.00765681909458163,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "k_norm_in.47": {
+      "expected": "the fused QK-norm-RoPE-gate kernel is handed the norms' *weights* rather than calling the modules, so a hook on them installs and never fires. interp-engine refuses the point (`vllm_capture._tree.absent_point_reason`) instead of returning nothing silently; eager serves them on the same checkpoint",
+      "layer": 47,
+      "missing": "engine",
+      "point": "k_norm_in",
+      "status": "N/A"
+    },
+    "k_norm_out.47": {
+      "expected": "the fused QK-norm-RoPE-gate kernel is handed the norms' *weights* rather than calling the modules, so a hook on them installs and never fires. interp-engine refuses the point (`vllm_capture._tree.absent_point_reason`) instead of returning nothing silently; eager serves them on the same checkpoint",
+      "layer": 47,
+      "missing": "engine",
+      "point": "k_norm_out",
+      "status": "N/A"
+    },
+    "mlp_out.0": {
+      "cos": 0.99993957201339,
+      "cos_worst_token": 0.9996697194618421,
+      "layer": 0,
+      "max_abs_diff": 0.002166748046875,
+      "point": "mlp_out",
+      "rel_diff": 0.011443530586065684,
+      "rel_worst_token": 0.025701565245274838,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 0
+    },
+    "mlp_out.24": {
+      "cos": 0.9917662168051562,
+      "cos_worst_token": 0.9727269249733621,
+      "layer": 24,
+      "max_abs_diff": 0.2890625,
+      "point": "mlp_out",
+      "rel_diff": 0.12882960070471805,
+      "rel_worst_token": 0.24517482024875162,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 6
+    },
+    "mlp_out.36": {
+      "cos": 0.9936855494130302,
+      "cos_worst_token": 0.9758276691108144,
+      "layer": 36,
+      "max_abs_diff": 0.13037109375,
+      "point": "mlp_out",
+      "rel_diff": 0.11269384821237279,
+      "rel_worst_token": 0.23540698329358353,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 6
+    },
+    "mlp_out.47": {
+      "cos": 0.999525929066294,
+      "cos_worst_token": 0.996268923138466,
+      "layer": 47,
+      "max_abs_diff": 0.86328125,
+      "point": "mlp_out",
+      "rel_diff": 0.030809272049250477,
+      "rel_worst_token": 0.08632047019094535,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 1
+    },
+    "mlp_out_post.0": {
+      "cos": 0.99993957201339,
+      "cos_worst_token": 0.9996697194618421,
+      "layer": 0,
+      "max_abs_diff": 0.002166748046875,
+      "point": "mlp_out_post",
+      "rel_diff": 0.011443530586065684,
+      "rel_worst_token": 0.025701565245274838,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 0
+    },
+    "mlp_out_post.24": {
+      "cos": 0.9917662168051562,
+      "cos_worst_token": 0.9727269249733621,
+      "layer": 24,
+      "max_abs_diff": 0.2890625,
+      "point": "mlp_out_post",
+      "rel_diff": 0.12882960070471805,
+      "rel_worst_token": 0.24517482024875162,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 6
+    },
+    "mlp_out_post.36": {
+      "cos": 0.9936855494130302,
+      "cos_worst_token": 0.9758276691108144,
+      "layer": 36,
+      "max_abs_diff": 0.13037109375,
+      "point": "mlp_out_post",
+      "rel_diff": 0.11269384821237279,
+      "rel_worst_token": 0.23540698329358353,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 6
+    },
+    "mlp_out_post.47": {
+      "cos": 0.999525929066294,
+      "cos_worst_token": 0.996268923138466,
+      "layer": 47,
+      "max_abs_diff": 0.86328125,
+      "point": "mlp_out_post",
+      "rel_diff": 0.030809272049250477,
+      "rel_worst_token": 0.08632047019094535,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 1
+    },
+    "q_norm_in.47": {
+      "expected": "the fused QK-norm-RoPE-gate kernel is handed the norms' *weights* rather than calling the modules, so a hook on them installs and never fires. interp-engine refuses the point (`vllm_capture._tree.absent_point_reason`) instead of returning nothing silently; eager serves them on the same checkpoint",
+      "layer": 47,
+      "missing": "engine",
+      "point": "q_norm_in",
+      "status": "N/A"
+    },
+    "q_norm_out.47": {
+      "expected": "the fused QK-norm-RoPE-gate kernel is handed the norms' *weights* rather than calling the modules, so a hook on them installs and never fires. interp-engine refuses the point (`vllm_capture._tree.absent_point_reason`) instead of returning nothing silently; eager serves them on the same checkpoint",
+      "layer": 47,
+      "missing": "engine",
+      "point": "q_norm_out",
+      "status": "N/A"
+    },
+    "resid_mid.0": {
+      "cos": 0.9999948146305074,
+      "cos_worst_token": 0.9999955891050945,
+      "layer": 0,
+      "max_abs_diff": 0.015625,
+      "point": "resid_mid",
+      "rel_diff": 0.0032302516316099704,
+      "rel_worst_token": 0.005848741828864448,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 3
+    },
+    "resid_mid.24": {
+      "cos": 0.999654494471115,
+      "cos_worst_token": 0.9955305620939923,
+      "layer": 24,
+      "max_abs_diff": 0.25,
+      "point": "resid_mid",
+      "rel_diff": 0.026866953495833325,
+      "rel_worst_token": 0.0946276892673238,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 7
+    },
+    "resid_mid.36": {
+      "cos": 0.9994903596092334,
+      "cos_worst_token": 0.997064782990986,
+      "layer": 36,
+      "max_abs_diff": 0.25,
+      "point": "resid_mid",
+      "rel_diff": 0.032057368221252915,
+      "rel_worst_token": 0.07657995649380236,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 6
+    },
+    "resid_mid.47": {
+      "cos": 0.9993276170938586,
+      "cos_worst_token": 0.9987291497304465,
+      "layer": 47,
+      "max_abs_diff": 0.5,
+      "point": "resid_mid",
+      "rel_diff": 0.03667142848905327,
+      "rel_worst_token": 0.05149449560562036,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 6
+    },
+    "resid_post.0": {
+      "cos": 0.9999884293145567,
+      "cos_worst_token": 0.9999561560486397,
+      "layer": 0,
+      "max_abs_diff": 0.015625,
+      "point": "resid_post",
+      "rel_diff": 0.0048205487177329,
+      "rel_worst_token": 0.00936902973224498,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 0
+    },
+    "resid_post.24": {
+      "cos": 0.9996324397378616,
+      "cos_worst_token": 0.9961224822236364,
+      "layer": 24,
+      "max_abs_diff": 0.25,
+      "point": "resid_post",
+      "rel_diff": 0.02757611784415124,
+      "rel_worst_token": 0.08910256942900754,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 7
+    },
+    "resid_post.36": {
+      "cos": 0.999440429507645,
+      "cos_worst_token": 0.9968030162729712,
+      "layer": 36,
+      "max_abs_diff": 0.25,
+      "point": "resid_post",
+      "rel_diff": 0.033564371200936485,
+      "rel_worst_token": 0.07992713726819906,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 6
+    },
+    "resid_post.47": {
+      "cos": 0.999203494544283,
+      "cos_worst_token": 0.997538082548961,
+      "layer": 47,
+      "max_abs_diff": 0.75,
+      "point": "resid_post",
+      "rel_diff": 0.03992206621044461,
+      "rel_worst_token": 0.07016301559694414,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 1
+    },
+    "router_logits.0": {
+      "cos": 0.9999953732663742,
+      "cos_worst_token": 0.99999603793425,
+      "layer": 0,
+      "max_abs_diff": 0.0625,
+      "point": "router_logits",
+      "rel_diff": 0.0030660866606290983,
+      "rel_worst_token": 0.004744141680322006,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 9
+    },
+    "router_logits.24": {
+      "cos": 0.9999591830964505,
+      "cos_worst_token": 0.999867787051338,
+      "layer": 24,
+      "max_abs_diff": 0.5,
+      "point": "router_logits",
+      "rel_diff": 0.009057328124444972,
+      "rel_worst_token": 0.016283329083135657,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 6
+    },
+    "router_logits.36": {
+      "cos": 0.9999692410732544,
+      "cos_worst_token": 0.9999110013749645,
+      "layer": 36,
+      "max_abs_diff": 0.3125,
+      "point": "router_logits",
+      "rel_diff": 0.007950284569593357,
+      "rel_worst_token": 0.015168742148649888,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 6
+    },
+    "router_logits.47": {
+      "cos": 0.9999887209963221,
+      "cos_worst_token": 0.9999826493537547,
+      "layer": 47,
+      "max_abs_diff": 0.21875,
+      "point": "router_logits",
+      "rel_diff": 0.004756827190313839,
+      "rel_worst_token": 0.00681305654396284,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 3
+    }
+  },
+  "reason": "",
+  "reference": "eager",
+  "run": {
+    "date_utc": "2026-08-19T13:14:09+00:00",
+    "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
+    "eager_only": false,
+    "gpu": {
+      "memory_total": "183359 MiB",
+      "name": "NVIDIA B200"
+    },
+    "native_dtype": "bfloat16",
+    "reference_status": {
+      "device": "cuda",
+      "dtype": "bfloat16",
+      "reason": "",
+      "status": "ok"
+    },
+    "replicate": [
+      "export HF_TOKEN=$(grep -m1 '^HF_TOKEN=' .env | cut -d= -f2- | tr -d '\"')",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.tokenize_inputs --dumps dumps --models Qwen/Qwen3-Next-80B-A3B-Instruct",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine eager --dumps dumps --model Qwen/Qwen3-Next-80B-A3B-Instruct --device cuda",
+      "docker run --rm --gpus all -v \"$PWD:/work\" -v ~/.cache/huggingface:/root/.cache/huggingface -e HF_TOKEN -e HF_HOME=/root/.cache/huggingface -e PYTHONPATH=/work -e VLLM_USE_FLASHINFER_SAMPLER=0 -w /work --entrypoint python3 vllm/vllm-openai:latest -m comparison.run_engine --engine vllm-static --dumps /work/dumps --model Qwen/Qwen3-Next-80B-A3B-Instruct --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.aggregate --dumps dumps"
+    ]
+  },
+  "sae": {},
+  "status": "ok",
+  "verdict": "\u2705",
+  "versions": {
+    "interp_engine": {
+      "commit": "640b8a739c68219ab65ebb0bac33f61b6ee9b1f1",
+      "dirty": true,
+      "version": "1.1.0"
+    },
+    "torch": {
+      "version": "2.13.0"
+    },
+    "transformers": {
+      "version": "5.15.0"
+    },
+    "vllm": {
+      "version": "0.27.1"
+    }
+  }
+}

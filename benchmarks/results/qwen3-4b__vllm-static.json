@@ -1,0 +1,177 @@
+{
+  "schema": 2,
+  "started_at": "2026-08-19T18:48:18+00:00",
+  "command": "python -m benchmarks.run_bench --model qwen3-4b --variant vllm-static",
+  "python": "python",
+  "model": {
+    "key": "qwen3-4b",
+    "hf_id": "Qwen/Qwen3-4B",
+    "family": "Qwen3",
+    "params": "4.0B",
+    "dtype": "bfloat16",
+    "min_gpu_gib": 0.0,
+    "capture_point": "resid_post",
+    "extra_eager_kwargs": {},
+    "extra_vllm_kwargs": {},
+    "gpu_memory_utilization": null,
+    "native_dtype": "bfloat16"
+  },
+  "variant": {
+    "key": "vllm-static",
+    "backend": "vllm-static",
+    "note": "breakable CUDA graphs with resid_post static wraps at every layer, and a write tap mid-stack",
+    "kwargs": {
+      "static_points": "auto",
+      "static_writes": "[('resid_post', 18)]",
+      "max_model_len": "2048",
+      "gpu_memory_utilization": "0.8",
+      "extra_vllm_kwargs": "{'enable_prefix_caching': False}"
+    }
+  },
+  "env": {
+    "gpu_name": "NVIDIA B200",
+    "gpu_total_gib": 178.3511962890625,
+    "driver_version": "580.105.08",
+    "cuda_version": "13.0",
+    "torch_version": "2.11.0+cu130",
+    "vllm_version": "0.26.0",
+    "transformers_version": "5.14.1",
+    "interp_engine_version": "1.2.0",
+    "python_version": "3.12.3",
+    "platform": "linux 6.8.0-90-generic",
+    "extra": {
+      "VLLM_DEEP_GEMM_WARMUP": "skip"
+    }
+  },
+  "workloads": {
+    "generate": {
+      "status": "ok",
+      "reason": "",
+      "metrics": {
+        "ttft_ms": 56.01830314844847,
+        "prefill_tok_s": 9139.86985009525,
+        "decode_tok_s": 295.8838724573658,
+        "total_s": 0.4852407509461045
+      },
+      "detail": {
+        "prompt_tokens": 512,
+        "generated_tokens": 128,
+        "repeats": 3
+      }
+    },
+    "generate_x8": {
+      "status": "ok",
+      "reason": "",
+      "metrics": {
+        "total_s": 0.5877019555773586,
+        "aggregate_tok_s": 1017.5225627971998,
+        "per_request_s": 0.07346274444716983
+      },
+      "detail": {
+        "concurrency": 8,
+        "prompt_tokens": 512,
+        "generated_tokens_total": 598,
+        "repeats": 2
+      }
+    },
+    "capture_mid": {
+      "status": "ok",
+      "reason": "",
+      "metrics": {
+        "latency_ms": 82.03469309955835,
+        "prompt_tok_s": 6241.261844895675,
+        "transported_mib": 2.5
+      },
+      "detail": {
+        "point": "resid_post",
+        "points": 1,
+        "prompt_tokens": 512,
+        "rows": 512,
+        "width": 2560,
+        "repeats": 3
+      }
+    },
+    "capture_all": {
+      "status": "ok",
+      "reason": "",
+      "metrics": {
+        "latency_ms": 599.7047498822212,
+        "prompt_tok_s": 853.7534513451061,
+        "transported_mib": 90.0
+      },
+      "detail": {
+        "point": "resid_post",
+        "points": 36,
+        "prompt_tokens": 512,
+        "rows": 512,
+        "width": 2560,
+        "repeats": 3
+      }
+    },
+    "capture_gen": {
+      "status": "ok",
+      "reason": "",
+      "metrics": {
+        "latency_ms": 158.59233308583498,
+        "transported_mib": 0.7763671875
+      },
+      "detail": {
+        "point": "resid_post",
+        "prompt_tokens": 128,
+        "max_new_tokens": 32,
+        "rows": 159,
+        "width": 2560,
+        "steered": false,
+        "completion_head": " me that I may be said to be in a low state of animal spirit",
+        "repeats": 3
+      }
+    },
+    "steer": {
+      "status": "ok",
+      "reason": "",
+      "metrics": {
+        "latency_ms": 157.3949591256678,
+        "transported_mib": 0.7763671875
+      },
+      "detail": {
+        "point": "resid_post",
+        "prompt_tokens": 128,
+        "max_new_tokens": 32,
+        "rows": 159,
+        "width": 2560,
+        "steered": true,
+        "completion_head": " me that I may be said to be in a low state of animal spirit",
+        "repeats": 3
+      }
+    },
+    "lens_topk": {
+      "status": "ok",
+      "reason": "",
+      "metrics": {
+        "latency_ms": 198.5520077869296,
+        "rows_per_s": 2578.6694665381483,
+        "result_mib": 0.05859375
+      },
+      "detail": {
+        "rows": 512,
+        "top_n": 10,
+        "path": "worker-side top-k (decode_residuals_topk)",
+        "repeats": 3,
+        "topk_id_overlap_vs_full": 0.9822,
+        "topk_worst_shortfall_frac_of_range": 0.0
+      }
+    }
+  },
+  "load": {
+    "construct_s": 1.1461504781618714,
+    "warmup_s": 58.07497355295345,
+    "ready_s": 59.22112403111532,
+    "n_layers": 36,
+    "d_model": 2560,
+    "device": "cuda (vllm worker)",
+    "requested_dtype": "bfloat16",
+    "resolved_dtype": "bfloat16",
+    "grad_through_forward": false
+  },
+  "finished_at": "2026-08-19T18:49:32+00:00"
+}

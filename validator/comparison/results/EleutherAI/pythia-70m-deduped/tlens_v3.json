@@ -1,0 +1,193 @@
+{
+  "captured_at": "2026-08-11",
+  "device": "cuda",
+  "dtype": "float32",
+  "engine": "tlens_v3",
+  "hf_id": "EleutherAI/pythia-70m-deduped",
+  "known_bug": null,
+  "points": {
+    "attn_out.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "attn_out",
+      "status": "N/A"
+    },
+    "attn_out.3": {
+      "layer": 3,
+      "missing": "engine",
+      "point": "attn_out",
+      "status": "N/A"
+    },
+    "attn_out.5": {
+      "layer": 5,
+      "missing": "engine",
+      "point": "attn_out",
+      "status": "N/A"
+    },
+    "attn_out_post.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "attn_out_post",
+      "status": "N/A"
+    },
+    "attn_out_post.3": {
+      "layer": 3,
+      "missing": "engine",
+      "point": "attn_out_post",
+      "status": "N/A"
+    },
+    "attn_out_post.5": {
+      "layer": 5,
+      "missing": "engine",
+      "point": "attn_out_post",
+      "status": "N/A"
+    },
+    "mlp_act.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.3": {
+      "layer": 3,
+      "missing": "engine",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.5": {
+      "layer": 5,
+      "missing": "engine",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_out.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "mlp_out",
+      "status": "N/A"
+    },
+    "mlp_out.3": {
+      "layer": 3,
+      "missing": "engine",
+      "point": "mlp_out",
+      "status": "N/A"
+    },
+    "mlp_out.5": {
+      "layer": 5,
+      "missing": "engine",
+      "point": "mlp_out",
+      "status": "N/A"
+    },
+    "mlp_out_post.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "mlp_out_post",
+      "status": "N/A"
+    },
+    "mlp_out_post.3": {
+      "layer": 3,
+      "missing": "engine",
+      "point": "mlp_out_post",
+      "status": "N/A"
+    },
+    "mlp_out_post.5": {
+      "layer": 5,
+      "missing": "engine",
+      "point": "mlp_out_post",
+      "status": "N/A"
+    },
+    "mlp_pre.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "mlp_pre.3": {
+      "layer": 3,
+      "missing": "engine",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "mlp_pre.5": {
+      "layer": 5,
+      "missing": "engine",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "resid_mid.0": {
+      "layer": 0,
+      "missing": "both",
+      "point": "resid_mid",
+      "status": "N/A"
+    },
+    "resid_mid.3": {
+      "layer": 3,
+      "missing": "both",
+      "point": "resid_mid",
+      "status": "N/A"
+    },
+    "resid_mid.5": {
+      "layer": 5,
+      "missing": "both",
+      "point": "resid_mid",
+      "status": "N/A"
+    },
+    "resid_post.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "resid_post",
+      "status": "N/A"
+    },
+    "resid_post.3": {
+      "layer": 3,
+      "missing": "engine",
+      "point": "resid_post",
+      "status": "N/A"
+    },
+    "resid_post.5": {
+      "layer": 5,
+      "missing": "engine",
+      "point": "resid_post",
+      "status": "N/A"
+    }
+  },
+  "reason": "AttributeError: 'GPTNeoXForCausalLM' object has no attribute 'embed_out'",
+  "reference": "eager",
+  "run": {
+    "date_utc": "2026-08-12T03:31:40+00:00",
+    "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
+    "eager_only": false,
+    "gpu": {
+      "memory_total": "183359 MiB",
+      "name": "NVIDIA B200"
+    },
+    "native_dtype": "float32",
+    "reference_status": {
+      "device": "cuda",
+      "dtype": "float32",
+      "reason": "",
+      "status": "ok"
+    },
+    "replicate": [
+      "export HF_TOKEN=$(grep -m1 '^HF_TOKEN=' .env | cut -d= -f2- | tr -d '\"')",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.tokenize_inputs --dumps dumps --models EleutherAI/pythia-70m-deduped",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine eager --dumps dumps --model EleutherAI/pythia-70m-deduped --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine tlens_v3 --dumps dumps --model EleutherAI/pythia-70m-deduped --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.aggregate --dumps dumps"
+    ]
+  },
+  "sae": {},
+  "status": "skip",
+  "verdict": "unsupported",
+  "versions": {
+    "torch": {
+      "version": "2.13.0"
+    },
+    "transformer_lens": {
+      "version": "3.7.0"
+    },
+    "transformers": {
+      "version": "5.15.0"
+    }
+  }
+}

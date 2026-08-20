@@ -1,0 +1,155 @@
+# Per-model behavioral expectations for the engine, as data.
+#
+# Every test in test_model_expectations.py is driven by a row below, so covering a new model
+# is a block here rather than a new test function. The assertions are reference-free: they
+# judge one model on its own terms, with no TransformerLens and no second environment. That
+# is what makes them runnable in the plain CPU CI job.
+#
+# These numbers were MEASURED, not guessed.
+#
+# ── Why the read-out prompt is a copy pattern ───────────────────────────────
+# The read-out assertion exists to catch an unembed applied at the wrong layer, in the wrong
+# dtype, or transposed. Every such bug still returns a well-formed response full of plausible
+# tokens, so the only visible symptom is that the predictions stop making sense. The assertion
+# is therefore only worth something if the model reliably gets the prompt right.
+#
+# The RUNBOOK used `1+1=` -> `2` for this, having already retired "The capital of France is"
+# / "Paris" (gpt2-small's top tokens there are ' not', ' now', ' still'). `1+1=` does hold on
+# gpt2 and on Qwen3.5-0.8B, but it does NOT survive the instruct end of this matrix:
+# google/gemma-3-270m-it has no `2` in the top-5 at ANY of its 18 layers for that prompt, and
+# chat-framing it makes things worse rather than better, because the model answers confidently
+# and wrongly -- "What is 1+1?" -> `1` at p=1.0, "What is 2+2?" -> `2` at p=0.9991. It echoes
+# the first operand. An arithmetic assertion on that model would either fail forever or, if
+# written around its answer, assert that the model stays wrong.
+#
+# `cat dog cat dog cat` -> ` dog` is an induction/copy continuation, which is the one thing
+# every autoregressive LM does well regardless of size or instruction tuning, and it is the
+# only candidate of six tried (arithmetic, counting, a-b-a-b, name induction, capital city,
+# weekdays) that lands in the final-layer top-5 on all three models. Keep new read-out
+# assertions in that shape: a continuation the model cannot get wrong, never a recalled fact.
+#
+# ── Fields ──────────────────────────────────────────────────────────────────
+# Keys under `models:` are looked up in tests/harness.py's MODELS first; a row whose key is
+# not in that matrix must carry `hfId` (and may carry `dtype`/`gated`/`chat`) itself. That is
+# how the `manual` tier holds models the CI matrix deliberately does not download.
+#
+#   tier              ci | manual. `manual` maps to @pytest.mark.xl, which runs nowhere
+#                     automatically -- see the marker docs in pyproject.toml. A `ci` row runs
+#                     twice, on CPU at the harness dtype and on CUDA in bf16; a `manual` row
+#                     runs on CUDA only, since nothing serves those weights on a CPU.
+#   readoutAnswer     Compared against top-k tokens with surrounding whitespace stripped, so
+#                     ` dog` and `dog` both match and a row need not know the model's
+#                     leading-space convention.
+#   minReadoutLayers  How many layers must carry the answer in their top-k. Guards a read-out
+#                     that only works at the final layer, where the residual is closest to
+#                     what lm_head was trained on and a transposed or misapplied unembed can
+#                     still look right.
+#   attnRow0Min/Max   Bounds on the first row of the attention matrix, which is a single
+#                     column and therefore exactly 1 for every model without attention sinks.
+#                     On a sink model it is per-head and can be anywhere in [0, 1], so that
+#                     row proves nothing and the sink is checked via attnSinkRowSumBelow.
+#   attnSinkRowSumBelow
+#                     Sink models only (`attnRowsSumToOne: false`). At least one row must sum
+#                     below this, i.e. the sink must actually be taking mass. Without it the
+#                     sink branch is just an upper bound, which a model with no sinks passes.
+
+version: 1
+
+# File-wide defaults. Any model block may override any of them.
+bindings:
+  readoutPrompt: "cat dog cat dog cat"
+  readoutAnswer: "dog"
+  readoutTopK: 5
+  minReadoutLayers: 2
+  generationTokens: 8
+  attnRow0Min: 1.0
+  attnRow0Max: 1.0
+  # Attention rows are a softmax, so they sum to 1 to within rounding. An fp32 row on CPU holds
+  # this to ~1e-6; a bf16 one -- gemma-3-270m-it on CPU, and every row in the GPU job, which
+  # re-runs all of them in bf16 -- puts the sum about three orders of magnitude further out on 8
+  # mantissa bits. One bound covers every combination.
+  rowSumEpsilon: 0.02
+  tier: ci
+
+models:
+  gpt2:
+    # The only fp32 model in the matrix and the cheapest to load, so it is the one to reach
+    # for when iterating on these tests.
+    #
+    # Measured on CPU at the harness dtype (fp32): ` dog` is rank 2 at p=0.1120 in the
+    # final-layer top-5, and present in the top-5 of layers 7-11 (5 layers). Greedy 8 tokens is
+    # ' cat cat cat cat cat cat cat cat' -- it does not continue the alternation, which is why
+    # there is no generationPattern here. The read-out sees the right answer at rank 2 while
+    # sampling does not; that is a true statement about a 124M model, and the read-out is what
+    # this file tests.
+    minReadoutLayers: 5
+    attnLayer: 6
+
+  gemma-3-270m-it:
+    # Gated (HF_TOKEN); auto-skips without one. 18 layers, GQA with an explicit head_dim, so
+    # 4 heads x 256 != d_model 640.
+    #
+    # Measured on CPU at the harness dtype (`auto` resolves to bf16 for this checkpoint):
+    # ` dog` is rank 2 at p=0.0849 in the final-layer top-5, present in layers 16-17 only --
+    # the tightest margin in the matrix, and the reason minReadoutLayers defaults to 2. Greedy
+    # 8 tokens is ' \ \ \ \ \ \ \ \', so no generationPattern: this model generates nothing
+    # meaningful from a bare copy prompt, and pinning that string would assert a degenerate
+    # output rather than a correct one.
+    attnLayer: 9
+
+  qwen3.5-0.8b:
+    # Hybrid Gated-DeltaNet + Gated-Attention: 18 of its 24 layers are LINEAR attention and
+    # produce no softmax probabilities at all. Only layers 3, 7, 11, 15, 19 and 23 do, and the
+    # forward pass returns a 6-entry tuple for 24 layers -- so `attnLayer` here must name one
+    # of those six. Asking for any other layer now raises a clear error instead of silently
+    # returning a neighbouring layer's attention (see ArchSpec.attn_probs_index).
+    #
+    # Measured on CPU at the harness dtype, which for this spec is fp32 rather than the
+    # checkpoint's native bf16 -- see harness.py's dtype note, where bf16 measures 7.7x slower
+    # on these CPUs. The read-out is indifferent to that: ` dog` is rank 1 at p=0.8867 in fp32
+    # against 0.8881 in bf16, present in layers 19-23 (5 layers) either way -- by far the
+    # cleanest read-out of the three. Greedy 8 tokens is ' dog cat dog cat dog cat dog cat', the
+    # only model here that actually continues the alternation, so the only one carrying a
+    # generationPattern.
+    minReadoutLayers: 5
+    attnLayer: 11
+    generationPattern: '^\s*dog cat dog cat'
+
+  # ── manual tier: multi-GB weights, `pytest -m xl` on a big box ─────────────
+  # Not in tests/harness.py's matrix (the CI jobs must not download these), so each row carries
+  # its own hfId. CUDA only: nothing serves these on a CPU.
+  #
+  # First run: an RTX 5090 (32 GB), 10 passed in ~9s with both models resident at once, peaking
+  # at 21.6 GB. gpt-oss stayed at its native 4 bits (~14 GB) rather than dequantizing to ~42 GB,
+  # which is what the [quant] extra buys and what the workflow installs it for. That run is also
+  # what corrected this tier's one wrong number -- see the sink note on gpt-oss-20b below.
+  gemma-2-2b:
+    tier: manual
+    hfId: google/gemma-2-2b
+    gated: true
+    # The softcapping model: gemma-2 applies a final-logit softcap that lm_head does NOT, so
+    # the lens has to apply it explicitly. A read-out that skips it still returns plausible
+    # tokens, which is exactly the failure this row is here to catch.
+    attnLayer: 12
+
+  gpt-oss-20b:
+    tier: manual
+    hfId: openai/gpt-oss-20b
+    # The one attention-sink model. A learned per-head sink sits in the softmax denominator, so
+    # captured attention over real tokens does NOT sum to 1 and must never be renormalized.
+    #
+    # MEASURED on an RTX 5090, and it corrected this row. The sink's share is per-head and
+    # varies enormously: at layer 11 over 'cat dog cat dog cat', row 0 runs from 0.000019 to
+    # exactly 1.000000 across the 64 heads (mean 0.319) -- one head leaves the sink nothing,
+    # which is why the old 0.999 cap, carried over from the RUNBOOK unverified, failed the
+    # first time this row ever ran. Row 0 is a single visible token, so 1.0 is its ceiling and
+    # anything in [0, 1] is legitimate here.
+    #
+    # The sink evidence therefore comes from the row sums instead, which is the stronger claim
+    # anyway: 297 of 320 rows sum below 0.999, the smallest at 0.000019. attnSinkRowSumBelow is
+    # what stops this branch from passing for a model with no sinks at all.
+    attnRow0Min: 0.0
+    attnRow0Max: 1.0
+    attnRowsSumToOne: false
+    attnSinkRowSumBelow: 0.99
+    attnLayer: 11

@@ -1,0 +1,11 @@
+# Blank issues stay on: a question, a feature request and a doc correction are all worth opening,
+# and a form for each would only be three ways to write a paragraph.
+blank_issues_enabled: true
+
+contact_links:
+  - name: Ask the docs
+    url: https://interp-engine.org
+    about: The chat panel answers out of this repository's docs, and cites the file it read.
+  - name: Which points each backend serves
+    url: https://github.com/decoderesearch/interp-engine/blob/main/docs/SUPPORTED_POINTS.md
+    about: Every point, its width, and whether eager and vLLM serve it.

@@ -1,0 +1,133 @@
+{
+  "schema": 2,
+  "started_at": "2026-08-19T14:49:37+00:00",
+  "command": "python -m benchmarks.run_bench --model deepseek-v4-flash-0731 --variant vllm-cudagraph",
+  "python": "python",
+  "model": {
+    "key": "deepseek-v4-flash-0731",
+    "hf_id": "deepseek-ai/DeepSeek-V4-Flash-0731",
+    "family": "DeepseekV4",
+    "params": "291B (14B active)",
+    "dtype": "bfloat16",
+    "min_gpu_gib": 170.0,
+    "capture_point": "mlp_out",
+    "extra_eager_kwargs": {
+      "device_map": "cuda"
+    },
+    "extra_vllm_kwargs": {
+      "kv_cache_dtype": "fp8"
+    },
+    "gpu_memory_utilization": 0.95,
+    "native_dtype": "bfloat16"
+  },
+  "variant": {
+    "key": "vllm-cudagraph",
+    "backend": "vllm-generate",
+    "note": "CUDA graphs + inductor compile ON, no static wraps; vLLM's own defaults for generate-only",
+    "kwargs": {
+      "max_model_len": "2048",
+      "gpu_memory_utilization": "0.95",
+      "extra_vllm_kwargs": "{'kv_cache_dtype': 'fp8', 'enable_prefix_caching': False}"
+    }
+  },
+  "env": {
+    "gpu_name": "NVIDIA B200",
+    "gpu_total_gib": 178.3511962890625,
+    "driver_version": "580.105.08",
+    "cuda_version": "13.0",
+    "torch_version": "2.11.0+cu130",
+    "vllm_version": "0.26.0",
+    "transformers_version": "5.14.1",
+    "interp_engine_version": "1.2.0",
+    "python_version": "3.12.3",
+    "platform": "linux 6.8.0-90-generic",
+    "extra": {
+      "VLLM_DEEP_GEMM_WARMUP": "skip"
+    }
+  },
+  "workloads": {
+    "generate": {
+      "status": "ok",
+      "reason": "",
+      "metrics": {
+        "ttft_ms": 390.6881511211395,
+        "prefill_tok_s": 1310.5081342516723,
+        "decode_tok_s": 151.38788310571746,
+        "total_s": 1.2295928071253002
+      },
+      "detail": {
+        "prompt_tokens": 512,
+        "generated_tokens": 128,
+        "repeats": 3
+      }
+    },
+    "generate_x8": {
+      "status": "ok",
+      "reason": "",
+      "metrics": {
+        "total_s": 2.3538868555333465,
+        "aggregate_tok_s": 435.0251574721423,
+        "per_request_s": 0.2942358569416683
+      },
+      "detail": {
+        "concurrency": 8,
+        "prompt_tokens": 512,
+        "generated_tokens_total": 1024,
+        "repeats": 2
+      }
+    },
+    "capture_mid": {
+      "status": "unsupported",
+      "reason": "CUDA graph replay does not call the Python forward a hook is attached to, so this engine serves generation but not capture or steering (enforce_eager=False)",
+      "metrics": {},
+      "detail": {}
+    },
+    "capture_all": {
+      "status": "unsupported",
+      "reason": "CUDA graph replay does not call the Python forward a hook is attached to, so this engine serves generation but not capture or steering (enforce_eager=False)",
+      "metrics": {},
+      "detail": {}
+    },
+    "capture_gen": {
+      "status": "unsupported",
+      "reason": "CUDA graph replay does not call the Python forward a hook is attached to, so this engine serves generation but not capture or steering (enforce_eager=False)",
+      "metrics": {},
+      "detail": {}
+    },
+    "steer": {
+      "status": "unsupported",
+      "reason": "CUDA graph replay does not call the Python forward a hook is attached to, so this engine serves generation but not capture or steering (enforce_eager=False)",
+      "metrics": {},
+      "detail": {}
+    },
+    "lens_topk": {
+      "status": "ok",
+      "reason": "",
+      "metrics": {
+        "latency_ms": 107.80607210472226,
+        "rows_per_s": 4749.268663667162,
+        "result_mib": 0.05859375
+      },
+      "detail": {
+        "rows": 512,
+        "top_n": 10,
+        "path": "worker-side top-k (decode_residuals_topk)",
+        "repeats": 3,
+        "topk_id_overlap_vs_full": 0.9848,
+        "topk_worst_shortfall_frac_of_range": 0.0
+      }
+    }
+  },
+  "load": {
+    "construct_s": 1.623564304318279,
+    "warmup_s": 1416.6046979688108,
+    "ready_s": 1418.228262273129,
+    "n_layers": 43,
+    "d_model": 4096,
+    "device": "cuda (vllm worker)",
+    "requested_dtype": "bfloat16",
+    "resolved_dtype": "bfloat16",
+    "grad_through_forward": false
+  },
+  "finished_at": "2026-08-19T15:13:34+00:00"
+}

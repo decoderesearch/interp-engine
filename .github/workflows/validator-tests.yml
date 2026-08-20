@@ -1,0 +1,92 @@
+name: Validator - Scoring Tests
+
+# validator/ scores the engine against other execution stacks. Its *capture* needs a CUDA box and
+# several venvs and is driven by comparison/run_all_models.sh, so it is not a test and does not run
+# here. What does run is everything downstream of a capture -- scoring, waivers, the rendered table,
+# the family-coverage and model-status invariants -- which is pure Python over the committed cells
+# under comparison/results/ and needs neither weights nor a GPU.
+#
+# None of this ran in CI while the validator was its own repository: its only workflow was the
+# manual-dispatch comparison sweep, so `pytest` there was something a person remembered to do. That
+# is the gap this file closes.
+#
+# The `config-parity` job lives here rather than in engine-tests.yml because it is the validator copy
+# of the shared ruff/pyright block that drifts: the engine's is the reference. It therefore triggers
+# on the root pyproject.toml too, which engine-tests.yml also watches for its own reasons.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'validator/**'
+      - '!validator/**/*.md'
+      - 'pyproject.toml'
+      - '.github/workflows/validator-tests.yml'
+      - '.github/scripts/check_lint_config_parity.py'
+  pull_request:
+    paths:
+      - 'validator/**'
+      - '!validator/**/*.md'
+      - 'pyproject.toml'
+      - '.github/workflows/validator-tests.yml'
+      - '.github/scripts/check_lint_config_parity.py'
+
+concurrency:
+  group: validator-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+    working-directory: validator
+
+jobs:
+  scoring:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Set up venv
+        # `--no-install-package` for the reference backends that exist only to be *run* by the sweep.
+        # Installing them would pull most of the HF stack onto a free runner for no coverage.
+        #
+        # nnterp is deliberately NOT in that list, and neither is nnsight, which it needs:
+        # test_the_names_nnterp_cannot_find_are_ones_interp_engine_already_knows imports
+        # `nnterp.rename_utils` to check the engine's `facts` tables still cover every name nnterp
+        # can fail a load on. Deselect it and that test errors rather than skips, which is the right
+        # way round -- a missing dependency must not quietly retire the check it powers.
+        #
+        # sae_check.py imports sae_lens, but no test imports sae_check, and pyright excludes it.
+        run: |
+          uv sync --locked --extra dev \
+            --no-install-package transformer-lens \
+            --no-install-package sae-lens \
+            --no-install-package torchvision
+      - name: Check linting
+        run: uv run --no-sync ruff check .
+      - name: Check formatting
+        run: uv run --no-sync ruff format --check .
+      - name: Type checking
+        # [tool.pyright] include=comparison, excluding comparison/engines -- those adapters import
+        # the optional backends deselected above, which no single venv has all of.
+        run: uv run --no-sync pyright
+      - name: Run the scoring suite
+        # Verbose so results stream in as they finish rather than arriving as one silent block.
+        run: uv run --no-sync pytest tests -v
+
+  config-parity:
+    # The shared ruff/pyright block is copied into both pyproject.toml files, because neither tool
+    # can inherit config from outside its own project directory. This job is what stops the copies
+    # from silently diverging.
+    name: shared config parity
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare the shared lint/type block across projects
+        run: python3 .github/scripts/check_lint_config_parity.py

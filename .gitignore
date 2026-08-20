@@ -1,0 +1,39 @@
+# Secrets. Gated-model tests and the comparison sweep both read HF_TOKEN, so a real token lives
+# here on any box that runs them.
+.env
+.env.*
+
+# Python caches
+__pycache__/
+*__pycache__
+*.pyc
+*.pyo
+
+# Virtual envs. Each project in this repo has its own: interp-engine at the root, the validator in
+# validator/, and the per-engine venvs the sweep builds (.venv-tlens, .venv-vllm, ...).
+.venv
+.venv/
+.venv-*/
+venv/
+venv.bak/
+
+# Build / packaging artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+.mypy_cache/
+
+# Local CI venv (see .github/workflows/engine-tests.yml)
+.venv-ci/
+
+plans/
+*.plan.md
+
+logs/*
+logs/

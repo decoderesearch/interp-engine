@@ -1,0 +1,310 @@
+name: Release
+
+# Semantic versioning, tagging, GitHub releases and the PyPI upload, in that order.
+#
+# Every push to main is a candidate release. `.github/scripts/release.py` reads the commit messages
+# since the newest v* tag and picks the bump -- `[major]` / `feat!:` / `BREAKING CHANGE:` for a
+# major, `[minor]` / `feat:` for a minor, patch for anything else -- then stamps that version into
+# pyproject.toml and both lockfiles. The commit carrying that stamp is what gets tagged, so `git
+# checkout v1.2.3` gives a tree that declares 1.2.3, and the wheel on PyPI is built from it.
+#
+# A candidate, not a certainty: release.py cuts nothing when nothing an importing caller gets
+# changed since the last tag. A push confined to visualizer-web/, the validator, plans/, tests/,
+# docs/, benchmarks/ or any Markdown leaves main untagged. Say what you want instead -- dispatch
+# this workflow with an explicit release_type, or declare the version in pyproject.toml by hand.
+#
+# Three things are deliberate here and are easy to undo by accident:
+#
+# 1. The `gate` job waits for this commit's OTHER workflows before anything is tagged. A red main
+#    therefore produces no tag and no release, rather than a tag nobody can trust and a bad wheel
+#    that cannot be deleted from PyPI. It waits on whatever ran, not on a list kept here, so a new
+#    workflow is covered the day it is added.
+# 2. The stamp commit is pushed with GITHUB_TOKEN, and GitHub deliberately does not start new
+#    workflow runs for those pushes. That is what keeps this from re-triggering itself. It also
+#    means the stamp commit is not itself tested, which is why it is only ever a version line.
+# 3. Publishing is separated from building, as pypa/gh-action-pypi-publish asks: the release job
+#    builds and uploads an artifact, and only the `publish` job -- which runs no repo code at all --
+#    holds `id-token: write`. That is the credential that can publish to PyPI, so nothing that
+#    executes a dependency's build script should be able to see it.
+#
+# Not every release is uploaded either. release.py compares against the newest version on PyPI and
+# skips the upload when it already has this version, which is how a published-but-untagged version
+# is reconciled. Asking PyPI rather than trusting the last run makes a failed upload self-healing:
+# the next push retries it.
+#
+# Authentication is PyPI trusted publishing (OIDC), so there is no token to rotate. It requires a
+# publisher on https://pypi.org/manage/project/interp-engine/settings/publishing/ naming this
+# repository, `release.yml`, and the `pypi` environment.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: "Bump to cut (auto reads the commit messages since the last tag)"
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - major
+          - minor
+          - patch
+      dry_run:
+        description: "Print the plan and stop: no stamp, no tag, no release, no upload"
+        type: boolean
+        default: false
+      skip_checks:
+        description: "Release without waiting for this commit's other workflows to pass"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# One release at a time, and queued rather than cancelled: a cancelled run can leave a tag pushed
+# and its upload never attempted. A run that is superseded while it waits notices for itself (see
+# the tip check in `gate`) and stands down in seconds, so the queue does not build up.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  gate:
+    name: Wait for this commit's checks
+    # Releases are cut from main and nowhere else. Without this, a workflow_dispatch on a branch
+    # would reach the step below that pushes `HEAD:main` and carry that branch's commits with it.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # Above the 45 minutes the engine's GPU job is allowed, so a slow-but-passing suite still
+    # releases. The job below hard-stops at 60 minutes and reports which workflow it was waiting on.
+    timeout-minutes: 70
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      proceed: ${{ steps.wait.outputs.proceed }}
+    steps:
+      - name: Wait for the other workflows on this commit
+        id: wait
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SKIP_CHECKS: ${{ inputs.skip_checks }}
+          TIMEOUT: 3600
+        run: |
+          if [ "$SKIP_CHECKS" = "true" ]; then
+            echo "::notice::skip_checks was requested; releasing without waiting for any workflow."
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # This workflow's own run is in the list too; excluding it by workflow id rather than by
+          # name means renaming the workflow cannot turn this into a wait on itself.
+          SELF=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .workflow_id)
+
+          while true; do
+            TIP=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+            if [ "$TIP" != "$GITHUB_SHA" ]; then
+              echo "::notice::main has moved to ${TIP:0:7}; that push has its own release run."
+              echo "proceed=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            # `event=push` keeps a manual comparison.yml dispatch that happens to share this sha --
+            # hours on a GPU box -- from holding the release.
+            # `.conclusion` is null until a run finishes, and the reader below splits on tabs --
+            # which bash treats as whitespace, collapsing an empty column and shifting the name out
+            # of the field it was read into. Give the column a value instead of relying on that.
+            RUNS=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$GITHUB_SHA&event=push&per_page=100" \
+              --jq ".workflow_runs[] | select(.workflow_id != $SELF) | \"\(.status)\t\(.conclusion // \"running\")\t\(.name)\"")
+
+            pending=()
+            failed=()
+            while IFS=$'\t' read -r status conclusion name; do
+              [ -n "$status" ] || continue
+              if [ "$status" != "completed" ]; then
+                pending+=("$name")
+              elif [ "$conclusion" != "success" ] && [ "$conclusion" != "skipped" ] && [ "$conclusion" != "neutral" ]; then
+                failed+=("$name ($conclusion)")
+              fi
+            done <<< "$RUNS"
+
+            if [ ${#failed[@]} -gt 0 ]; then
+              echo "::warning::Not releasing ${GITHUB_SHA:0:7}: ${failed[*]}. Fix it and push again."
+              echo "proceed=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            # An empty list usually means this push matched no other workflow's `paths:` filter --
+            # a change under plans/ or .github/, say -- but it also looks like this in the seconds
+            # before the runs are registered. Only believe it after the grace period.
+            if [ ${#pending[@]} -eq 0 ] && { [ -n "$RUNS" ] || [ $SECONDS -ge 90 ]; }; then
+              echo "Nothing left to wait for; every workflow on this commit passed or was skipped."
+              echo "proceed=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            if [ $SECONDS -ge "$TIMEOUT" ]; then
+              echo "::warning::Gave up after ${TIMEOUT}s still waiting on: ${pending[*]}"
+              echo "proceed=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            echo "waiting on ${#pending[@]} run(s): ${pending[*]:-(none registered yet)}"
+            sleep 30
+          done
+
+  release:
+    name: Tag and release
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.cut.outputs.version }}
+      publish: ${{ steps.cut.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The whole history and every tag: the bump is read from the commits since the newest
+          # tag, and a shallow clone would silently make that "every commit".
+          fetch-depth: 0
+
+      - name: Resolve the next version
+        id: plan
+        env:
+          RELEASE_TYPE: ${{ inputs.release_type || 'auto' }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=(--release-type "$RELEASE_TYPE")
+          if [ "$DRY_RUN" != "true" ]; then
+            args+=(--write)
+          fi
+          python3 .github/scripts/release.py "${args[@]}"
+
+      - name: Say why nothing is being released
+        if: steps.plan.outputs.release != 'true'
+        env:
+          SKIPPED: ${{ steps.plan.outputs.skipped }}
+        run: |
+          echo "::notice::No release for this push: $SKIPPED."
+
+      - name: Commit the stamp, tag it, and publish the GitHub release
+        id: cut
+        if: inputs.dry_run != true && steps.plan.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.plan.outputs.version }}
+          TAG: ${{ steps.plan.outputs.tag }}
+          RANGE: ${{ steps.plan.outputs.range }}
+          BUMP: ${{ steps.plan.outputs.bump }}
+          PUBLISH: ${{ steps.plan.outputs.publish }}
+          PUBLISH_WHY: ${{ steps.plan.outputs.publish_why }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Written before the stamp is committed, so the release notes describe the work rather
+          # than ending with a version bump nobody wrote.
+          NOTES="$RUNNER_TEMP/release_notes.md"
+          {
+            echo "## Commits in this release ($BUMP)"
+            echo
+            git log "$RANGE" --pretty=format:"* %h - %s (%an)"
+            echo
+            if [ "$PUBLISH" = "true" ]; then
+              printf '\n```\npip install interp-engine==%s\n```\n' "$VERSION"
+            else
+              printf '\nNo PyPI upload: %s.\n' "$PUBLISH_WHY"
+            fi
+          } > "$NOTES"
+
+          if git diff --quiet; then
+            echo "pyproject.toml and the lockfiles already declare $VERSION; tagging as-is."
+          else
+            git commit -q -m "chore(release): $TAG [skip ci]" -- pyproject.toml uv.lock validator/uv.lock
+
+            # Main can move between the gate's tip check and this push. Ask before pushing rather
+            # than reading it out of a rejection, so that the two reasons a push fails stay apart:
+            # a race stands down quietly (the newer push has a release run of its own, and nothing
+            # has been tagged yet), while anything else -- branch protection, most likely -- is a
+            # red run saying so instead of a release that silently never happens.
+            git fetch --quiet origin main
+            if [ "$(git rev-parse origin/main)" != "$GITHUB_SHA" ]; then
+              echo "::notice::main moved while this release was being cut; the newer push will release instead."
+              exit 0
+            fi
+            git push origin HEAD:main
+          fi
+
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+          gh release create "$TAG" --title "Release $TAG" --notes-file "$NOTES"
+
+          # Set last, and only on the path that actually tagged: the publish job keys off these, so
+          # an early stand-down above has to leave them unset.
+          {
+            echo "version=$VERSION"
+            echo "publish=$PUBLISH"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install uv
+        if: steps.cut.outputs.publish == 'true'
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Build the sdist and the wheel
+        if: steps.cut.outputs.publish == 'true'
+        env:
+          VERSION: ${{ steps.cut.outputs.version }}
+        run: |
+          uv build --sdist --wheel --out-dir dist
+          # `uv build` drops a .gitignore into the output directory, and twine rejects it as an
+          # unknown distribution format.
+          rm -f dist/.gitignore
+          ls -l dist
+          # Cheap proof that the tag, the stamped pyproject and the artifacts are the same version.
+          test -f "dist/interp_engine-$VERSION-py3-none-any.whl"
+          test -f "dist/interp_engine-$VERSION.tar.gz"
+
+      - name: Hand the distributions to the publish job
+        if: steps.cut.outputs.publish == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ steps.cut.outputs.version }}
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    needs: release
+    if: needs.release.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    # Named so PyPI's trusted publisher can be scoped to it, and so a maintainer can later require
+    # an approval for uploads without touching this file.
+    environment:
+      name: pypi
+      url: https://pypi.org/p/interp-engine
+    permissions:
+      # The whole credential: OIDC is what authenticates to PyPI, and this job runs nothing from
+      # the repository -- no checkout, no build -- so nothing can reach it.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ needs.release.outputs.version }}
+          path: dist/
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # release.py already refuses to upload a version PyPI has, so this only covers the retry
+          # of a run that failed after a partially successful upload.
+          skip-existing: true

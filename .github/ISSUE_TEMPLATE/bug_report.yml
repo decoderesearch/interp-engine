@@ -1,0 +1,66 @@
+name: Bug report
+description: Something the engine computes, refuses or crashes on.
+labels: ["bug"]
+
+# Deliberately short. The four fields below are the ones an answer cannot be written without: a
+# wrong number is meaningless without the point it came from, and "capture is empty" is a refusal
+# on one backend and a bug on the other. Everything else is optional and free text.
+
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected instead
+      placeholder: |
+        The full error, or the two numbers and which one you believe.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Code that reproduces it
+      render: python
+      placeholder: |
+        from interp_engine import Address, load_model, run_with_cache
+
+        model = load_model("Qwen/Qwen3-8B")
+        cache = run_with_cache(model, model.to_tokens("Hello, world"), [Address("resid_post", 10)])
+    validations:
+      required: true
+
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      description: The checkpoint, as you pass it to `load_model`.
+      placeholder: Qwen/Qwen3-8B
+    validations:
+      required: true
+
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Backend
+      options:
+        - vLLM
+        - eager
+        - both
+        - not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: 'Run: `python -c "import interp_engine; print(interp_engine.__version__)"`'
+      placeholder: 1.2.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Anything else about the box (optional)
+      description: GPU, CUDA, and the `transformers` / `vllm` versions, if the failure looks like it depends on them.

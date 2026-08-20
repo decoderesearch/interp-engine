@@ -1,0 +1,104 @@
+{
+  "schema": 2,
+  "started_at": "2026-08-19T15:27:43+00:00",
+  "command": "python -m benchmarks.run_bench --model deepseek-v4-flash-0731 --variant vllm-dspark-cudagraph",
+  "python": "python",
+  "model": {
+    "key": "deepseek-v4-flash-0731",
+    "hf_id": "deepseek-ai/DeepSeek-V4-Flash-0731",
+    "family": "DeepseekV4",
+    "params": "291B (14B active)",
+    "dtype": "bfloat16",
+    "min_gpu_gib": 170.0,
+    "capture_point": "mlp_out",
+    "extra_eager_kwargs": {
+      "device_map": "cuda"
+    },
+    "extra_vllm_kwargs": {
+      "kv_cache_dtype": "fp8"
+    },
+    "gpu_memory_utilization": 0.95,
+    "native_dtype": "bfloat16"
+  },
+  "variant": {
+    "key": "vllm-dspark-cudagraph",
+    "backend": "vllm-generate",
+    "note": "DSpark ON with vLLM's own CUDA graphs, i.e. how it would be served",
+    "kwargs": {
+      "extra_vllm_kwargs": "{'kv_cache_dtype': 'fp8', 'speculative_config': {'method': 'dspark', 'num_speculative_tokens': 5}, 'enable_prefix_caching': False}",
+      "max_model_len": "2048",
+      "gpu_memory_utilization": "0.95"
+    }
+  },
+  "env": {
+    "gpu_name": "NVIDIA B200",
+    "gpu_total_gib": 178.3511962890625,
+    "driver_version": "580.105.08",
+    "cuda_version": "13.0",
+    "torch_version": "2.11.0+cu130",
+    "vllm_version": "0.26.0",
+    "transformers_version": "5.14.1",
+    "interp_engine_version": "1.2.0",
+    "python_version": "3.12.3",
+    "platform": "linux 6.8.0-90-generic",
+    "extra": {
+      "VLLM_DEEP_GEMM_WARMUP": "skip"
+    }
+  },
+  "workloads": {
+    "generate": {
+      "status": "error",
+      "reason": "EngineDeadError: EngineCore encountered an issue. See stack trace (above) for the root cause.",
+      "metrics": {},
+      "detail": {}
+    },
+    "generate_x8": {
+      "status": "error",
+      "reason": "EngineDeadError: EngineCore encountered an issue. See stack trace (above) for the root cause.",
+      "metrics": {},
+      "detail": {}
+    },
+    "capture_mid": {
+      "status": "unsupported",
+      "reason": "CUDA graph replay does not call the Python forward a hook is attached to, so this engine serves generation but not capture or steering (enforce_eager=False)",
+      "metrics": {},
+      "detail": {}
+    },
+    "capture_all": {
+      "status": "unsupported",
+      "reason": "CUDA graph replay does not call the Python forward a hook is attached to, so this engine serves generation but not capture or steering (enforce_eager=False)",
+      "metrics": {},
+      "detail": {}
+    },
+    "capture_gen": {
+      "status": "unsupported",
+      "reason": "CUDA graph replay does not call the Python forward a hook is attached to, so this engine serves generation but not capture or steering (enforce_eager=False)",
+      "metrics": {},
+      "detail": {}
+    },
+    "steer": {
+      "status": "unsupported",
+      "reason": "CUDA graph replay does not call the Python forward a hook is attached to, so this engine serves generation but not capture or steering (enforce_eager=False)",
+      "metrics": {},
+      "detail": {}
+    },
+    "lens_topk": {
+      "status": "error",
+      "reason": "EngineDeadError: EngineCore encountered an issue. See stack trace (above) for the root cause.",
+      "metrics": {},
+      "detail": {}
+    }
+  },
+  "load": {
+    "construct_s": 1.5379246920347214,
+    "warmup_s": 1598.1347158220597,
+    "ready_s": 1599.6726405140944,
+    "n_layers": 43,
+    "d_model": 4096,
+    "device": "cuda (vllm worker)",
+    "requested_dtype": "bfloat16",
+    "resolved_dtype": "bfloat16",
+    "grad_through_forward": false
+  },
+  "finished_at": "2026-08-19T15:54:25+00:00"
+}

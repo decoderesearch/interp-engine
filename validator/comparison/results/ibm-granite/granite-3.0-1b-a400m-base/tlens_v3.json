@@ -1,0 +1,443 @@
+{
+  "captured_at": "2026-08-11",
+  "device": "cuda",
+  "dtype": "float32",
+  "engine": "tlens_v3",
+  "hf_id": "ibm-granite/granite-3.0-1b-a400m-base",
+  "known_bug": {
+    "link": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648",
+    "mechanism": "Granite multiplies each sublayer output by `residual_multiplier` (0.22 on these checkpoints) after the module returns and before adding it, and the adapter leaves the aliases on the module output, so the hooks are the unscaled contribution.",
+    "points": [
+      "attn_out_post",
+      "mlp_out_post"
+    ],
+    "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
+    "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648",
+    "workaround": "Multiply by `config.residual_multiplier` to recover the residual contribution; there is no hook at the scaled tensor, so an intervention cannot be placed correctly at all."
+  },
+  "points": {
+    "attn_out.0": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999983,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "attn_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 7
+    },
+    "attn_out.12": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999983,
+      "layer": 12,
+      "max_abs_diff": 0.0,
+      "point": "attn_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 14
+    },
+    "attn_out.18": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999983,
+      "layer": 18,
+      "max_abs_diff": 0.0,
+      "point": "attn_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 4
+    },
+    "attn_out.23": {
+      "cos": 0.9999999999999998,
+      "cos_worst_token": 1.0,
+      "layer": 23,
+      "max_abs_diff": 0.0,
+      "point": "attn_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 6
+    },
+    "attn_out_post.0": {
+      "cos": 1.0000000000000007,
+      "cos_worst_token": 0.9999999999999992,
+      "engine_bug": {
+        "mechanism": "Granite multiplies each sublayer output by `residual_multiplier` (0.22 on these checkpoints) after the module returns and before adding it, and the adapter leaves the aliases on the module output, so the hooks are the unscaled contribution.",
+        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
+      },
+      "layer": 0,
+      "max_abs_diff": 4.538903832435608,
+      "point": "attn_out_post",
+      "rel_diff": 3.5454545675583686,
+      "rel_worst_token": 3.545454596811931,
+      "status": "WARN",
+      "tier": "tlens",
+      "worst_token": 0
+    },
+    "attn_out_post.12": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999987,
+      "engine_bug": {
+        "mechanism": "Granite multiplies each sublayer output by `residual_multiplier` (0.22 on these checkpoints) after the module returns and before adding it, and the adapter leaves the aliases on the module output, so the hooks are the unscaled contribution.",
+        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
+      },
+      "layer": 12,
+      "max_abs_diff": 3.0264644622802734,
+      "point": "attn_out_post",
+      "rel_diff": 3.545454577120112,
+      "rel_worst_token": 3.5454546256588078,
+      "status": "WARN",
+      "tier": "tlens",
+      "worst_token": 5
+    },
+    "attn_out_post.18": {
+      "cos": 0.9999999999999998,
+      "cos_worst_token": 0.9999999999999991,
+      "engine_bug": {
+        "mechanism": "Granite multiplies each sublayer output by `residual_multiplier` (0.22 on these checkpoints) after the module returns and before adding it, and the adapter leaves the aliases on the module output, so the hooks are the unscaled contribution.",
+        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
+      },
+      "layer": 18,
+      "max_abs_diff": 3.1208223700523376,
+      "point": "attn_out_post",
+      "rel_diff": 3.5454545685092302,
+      "rel_worst_token": 3.5454546403894076,
+      "status": "WARN",
+      "tier": "tlens",
+      "worst_token": 6
+    },
+    "attn_out_post.23": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999989,
+      "engine_bug": {
+        "mechanism": "Granite multiplies each sublayer output by `residual_multiplier` (0.22 on these checkpoints) after the module returns and before adding it, and the adapter leaves the aliases on the module output, so the hooks are the unscaled contribution.",
+        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
+      },
+      "layer": 23,
+      "max_abs_diff": 53.352590560913086,
+      "point": "attn_out_post",
+      "rel_diff": 3.5454545656393455,
+      "rel_worst_token": 3.545454675428407,
+      "status": "WARN",
+      "tier": "tlens",
+      "worst_token": 1
+    },
+    "mlp_act.0": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 0,
+      "missing": "reference",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.12": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 12,
+      "missing": "reference",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.18": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 18,
+      "missing": "reference",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.23": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 23,
+      "missing": "reference",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_out.0": {
+      "cos": 0.9999999999999998,
+      "cos_worst_token": 0.999999999999998,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "mlp_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 4
+    },
+    "mlp_out.12": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999981,
+      "layer": 12,
+      "max_abs_diff": 0.0,
+      "point": "mlp_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 6
+    },
+    "mlp_out.18": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.999999999999998,
+      "layer": 18,
+      "max_abs_diff": 0.0,
+      "point": "mlp_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 1
+    },
+    "mlp_out.23": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999987,
+      "layer": 23,
+      "max_abs_diff": 0.0,
+      "point": "mlp_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 12
+    },
+    "mlp_out_post.0": {
+      "cos": 0.9999999999999998,
+      "cos_worst_token": 0.999999999999999,
+      "engine_bug": {
+        "mechanism": "Granite multiplies each sublayer output by `residual_multiplier` (0.22 on these checkpoints) after the module returns and before adding it, and the adapter leaves the aliases on the module output, so the hooks are the unscaled contribution.",
+        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
+      },
+      "layer": 0,
+      "max_abs_diff": 5.463876247406006,
+      "point": "mlp_out_post",
+      "rel_diff": 3.5454545669382322,
+      "rel_worst_token": 3.5454545824018324,
+      "status": "WARN",
+      "tier": "tlens",
+      "worst_token": 4
+    },
+    "mlp_out_post.12": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999989,
+      "engine_bug": {
+        "mechanism": "Granite multiplies each sublayer output by `residual_multiplier` (0.22 on these checkpoints) after the module returns and before adding it, and the adapter leaves the aliases on the module output, so the hooks are the unscaled contribution.",
+        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
+      },
+      "layer": 12,
+      "max_abs_diff": 19.30120611190796,
+      "point": "mlp_out_post",
+      "rel_diff": 3.545454488640763,
+      "rel_worst_token": 3.5454546165938723,
+      "status": "WARN",
+      "tier": "tlens",
+      "worst_token": 11
+    },
+    "mlp_out_post.18": {
+      "cos": 0.9999999999999998,
+      "cos_worst_token": 0.9999999999999984,
+      "engine_bug": {
+        "mechanism": "Granite multiplies each sublayer output by `residual_multiplier` (0.22 on these checkpoints) after the module returns and before adding it, and the adapter leaves the aliases on the module output, so the hooks are the unscaled contribution.",
+        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
+      },
+      "layer": 18,
+      "max_abs_diff": 10.910189151763916,
+      "point": "mlp_out_post",
+      "rel_diff": 3.5454545647156883,
+      "rel_worst_token": 3.54545458954873,
+      "status": "WARN",
+      "tier": "tlens",
+      "worst_token": 13
+    },
+    "mlp_out_post.23": {
+      "cos": 0.9999999999999997,
+      "cos_worst_token": 0.999999999999999,
+      "engine_bug": {
+        "mechanism": "Granite multiplies each sublayer output by `residual_multiplier` (0.22 on these checkpoints) after the module returns and before adding it, and the adapter leaves the aliases on the module output, so the hooks are the unscaled contribution.",
+        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
+      },
+      "layer": 23,
+      "max_abs_diff": 5844.7392578125,
+      "point": "mlp_out_post",
+      "rel_diff": 3.5454547312822795,
+      "rel_worst_token": 3.5454547315923137,
+      "status": "WARN",
+      "tier": "tlens",
+      "worst_token": 2
+    },
+    "mlp_pre.0": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 0,
+      "missing": "reference",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "mlp_pre.12": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 12,
+      "missing": "reference",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "mlp_pre.18": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 18,
+      "missing": "reference",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "mlp_pre.23": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 23,
+      "missing": "reference",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "resid_mid.0": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999972,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "resid_mid",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 7
+    },
+    "resid_mid.12": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999991,
+      "layer": 12,
+      "max_abs_diff": 0.0,
+      "point": "resid_mid",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 1
+    },
+    "resid_mid.18": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999988,
+      "layer": 18,
+      "max_abs_diff": 0.0,
+      "point": "resid_mid",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 14
+    },
+    "resid_mid.23": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999993,
+      "layer": 23,
+      "max_abs_diff": 0.0,
+      "point": "resid_mid",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 11
+    },
+    "resid_post.0": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999966,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "resid_post",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 10
+    },
+    "resid_post.12": {
+      "cos": 1.0,
+      "cos_worst_token": 0.999999999999999,
+      "layer": 12,
+      "max_abs_diff": 0.0,
+      "point": "resid_post",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 2
+    },
+    "resid_post.18": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999991,
+      "layer": 18,
+      "max_abs_diff": 0.0,
+      "point": "resid_post",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 1
+    },
+    "resid_post.23": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999988,
+      "layer": 23,
+      "max_abs_diff": 0.0,
+      "point": "resid_post",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 0
+    }
+  },
+  "reason": "",
+  "reference": "eager",
+  "run": {
+    "date_utc": "2026-08-12T03:31:40+00:00",
+    "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
+    "eager_only": false,
+    "gpu": {
+      "memory_total": "183359 MiB",
+      "name": "NVIDIA B200"
+    },
+    "native_dtype": "float32",
+    "reference_status": {
+      "device": "cuda",
+      "dtype": "float32",
+      "reason": "",
+      "status": "ok"
+    },
+    "replicate": [
+      "export HF_TOKEN=$(grep -m1 '^HF_TOKEN=' .env | cut -d= -f2- | tr -d '\"')",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.tokenize_inputs --dumps dumps --models ibm-granite/granite-3.0-1b-a400m-base",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine eager --dumps dumps --model ibm-granite/granite-3.0-1b-a400m-base --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine tlens_v3 --dumps dumps --model ibm-granite/granite-3.0-1b-a400m-base --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.aggregate --dumps dumps"
+    ]
+  },
+  "sae": {},
+  "status": "ok",
+  "verdict": "\ud83d\udc1e",
+  "versions": {
+    "torch": {
+      "version": "2.13.0"
+    },
+    "transformer_lens": {
+      "version": "3.7.0"
+    },
+    "transformers": {
+      "version": "5.15.0"
+    }
+  }
+}

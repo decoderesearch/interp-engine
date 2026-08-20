@@ -1,0 +1,219 @@
+{
+  "captured_at": "2026-08-12",
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "engine": "vllm",
+  "hf_id": "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16",
+  "known_bug": null,
+  "points": {
+    "attn_in.12": {
+      "cos": 0.9999416724788821,
+      "cos_worst_token": 0.9998915091175382,
+      "layer": 12,
+      "max_abs_diff": 0.25,
+      "point": "attn_in",
+      "rel_diff": 0.010829050261790575,
+      "rel_worst_token": 0.014800533959497849,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 5
+    },
+    "attn_out.12": {
+      "cos": 0.9998615363634211,
+      "cos_worst_token": 0.999600288473978,
+      "layer": 12,
+      "max_abs_diff": 0.09375,
+      "point": "attn_out",
+      "rel_diff": 0.01676317794517424,
+      "rel_worst_token": 0.028472511750416703,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 9
+    },
+    "attn_out_post.12": {
+      "cos": 0.9998615363634211,
+      "cos_worst_token": 0.999600288473978,
+      "layer": 12,
+      "max_abs_diff": 0.09375,
+      "point": "attn_out_post",
+      "rel_diff": 0.01676317794517424,
+      "rel_worst_token": 0.028472511750416703,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 9
+    },
+    "attn_scores.12": {
+      "cos": 0.9999230945188449,
+      "layer": 12,
+      "masked_out": 3120,
+      "max_abs_diff": 0.15468144416809082,
+      "point": "attn_scores",
+      "rel_diff": 0.01289035712110635,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "embeddings": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999999,
+      "layer": null,
+      "max_abs_diff": 0.0,
+      "point": "embeddings",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 4
+    },
+    "final_norm": {
+      "cos": 0.9999261991254174,
+      "cos_worst_token": 0.9996066550258176,
+      "layer": null,
+      "max_abs_diff": 1.25,
+      "point": "final_norm",
+      "rel_diff": 0.012176045117692397,
+      "rel_worst_token": 0.02804611730150328,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 0
+    },
+    "mlp_act.41": {
+      "cos": 0.9997353125058315,
+      "cos_worst_token": 0.9991818529047575,
+      "layer": 41,
+      "max_abs_diff": 14.0,
+      "point": "mlp_act",
+      "rel_diff": 0.023984830152900448,
+      "rel_worst_token": 0.04660859827360136,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 0
+    },
+    "mlp_out.41": {
+      "cos": 0.9996799451744643,
+      "cos_worst_token": 0.9997604773915496,
+      "layer": 41,
+      "max_abs_diff": 64.0,
+      "point": "mlp_out",
+      "rel_diff": 0.030528681330296036,
+      "rel_worst_token": 0.047380323657337,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 0
+    },
+    "mlp_out_post.41": {
+      "cos": 0.9996799451744643,
+      "cos_worst_token": 0.9997604773915496,
+      "layer": 41,
+      "max_abs_diff": 64.0,
+      "point": "mlp_out_post",
+      "rel_diff": 0.030528681330296036,
+      "rel_worst_token": 0.047380323657337,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 0
+    },
+    "resid_post.0": {
+      "cos": 0.9999911846306411,
+      "cos_worst_token": 0.9999864934507064,
+      "layer": 0,
+      "max_abs_diff": 0.00390625,
+      "point": "resid_post",
+      "rel_diff": 0.004218535989060827,
+      "rel_worst_token": 0.005251757736599371,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 7
+    },
+    "resid_post.12": {
+      "cos": 0.9999977744706189,
+      "cos_worst_token": 0.9998564245089262,
+      "layer": 12,
+      "max_abs_diff": 2.0,
+      "point": "resid_post",
+      "rel_diff": 0.00457180402967298,
+      "rel_worst_token": 0.01735466645643354,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 5
+    },
+    "resid_post.21": {
+      "cos": 0.9999888876038008,
+      "cos_worst_token": 0.9998896549885558,
+      "layer": 21,
+      "max_abs_diff": 2.0,
+      "point": "resid_post",
+      "rel_diff": 0.005966383101642444,
+      "rel_worst_token": 0.01584502330250478,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 5
+    },
+    "resid_post.31": {
+      "cos": 0.9999764700490752,
+      "cos_worst_token": 0.9999134236218318,
+      "layer": 31,
+      "max_abs_diff": 8.0,
+      "point": "resid_post",
+      "rel_diff": 0.007602033208298041,
+      "rel_worst_token": 0.013740937804224295,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 12
+    },
+    "resid_post.41": {
+      "cos": 0.9998387244574639,
+      "cos_worst_token": 0.999750299529336,
+      "layer": 41,
+      "max_abs_diff": 40.0,
+      "point": "resid_post",
+      "rel_diff": 0.018322438278454995,
+      "rel_worst_token": 0.030163181362100513,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 0
+    }
+  },
+  "reason": "",
+  "reference": "eager",
+  "run": {
+    "date_utc": "2026-08-12T03:31:40+00:00",
+    "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
+    "eager_only": false,
+    "gpu": {
+      "memory_total": "183359 MiB",
+      "name": "NVIDIA B200"
+    },
+    "native_dtype": "bfloat16",
+    "reference_status": {
+      "device": "cuda",
+      "dtype": "bfloat16",
+      "reason": "",
+      "status": "ok"
+    },
+    "replicate": [
+      "export HF_TOKEN=$(grep -m1 '^HF_TOKEN=' .env | cut -d= -f2- | tr -d '\"')",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.tokenize_inputs --dumps dumps --models nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine eager --dumps dumps --model nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16 --device cuda",
+      "docker run --rm --gpus all -v \"$PWD:/work\" -v ~/.cache/huggingface:/root/.cache/huggingface -e HF_TOKEN -e HF_HOME=/root/.cache/huggingface -e PYTHONPATH=/work -e VLLM_USE_FLASHINFER_SAMPLER=0 -w /work --entrypoint python3 vllm/vllm-openai:latest -m comparison.run_engine --engine vllm --dumps /work/dumps --model nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16 --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.aggregate --dumps dumps"
+    ]
+  },
+  "sae": {},
+  "status": "ok",
+  "verdict": "\u2705",
+  "versions": {
+    "interp_engine": {
+      "commit": "c08e9f537dcf77f24d047e85c4637a797f46e6d8",
+      "version": "1.0.1"
+    },
+    "torch": {
+      "version": "2.11.0"
+    },
+    "transformers": {
+      "version": "5.15.0"
+    },
+    "vllm": {
+      "version": "0.26.0"
+    }
+  }
+}

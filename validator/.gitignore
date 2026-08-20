@@ -1,0 +1,19 @@
+# Validator-specific ignores only. Secrets, caches and venvs are covered by the repo-root .gitignore.
+
+# Capture dumps: the intermediate activations a run scores. Only the scored cells under
+# comparison/results/ are committed -- the raw tensors are gigabytes and reproducible.
+dumps/
+dumps-merged/
+dumps-old/
+dumps.tar
+
+# A run against an engine checkout that is ahead of the last release
+# (LOCAL_ENGINE=... comparison/run_all_models.sh): its dumps, and the cells and table it renders.
+# Untracked on purpose -- those verdicts came from a tree whose version string is the released one,
+# so committed they would read as claims about a build anyone can fetch.
+dumps-local/
+local-run/
+
+# Filtered model lists for a box that cannot fit the whole sweep (JSON=... on run_all_models.sh). The
+# canonical sweep is comparison/sweep_models.json, which is tracked and does not match this pattern.
+comparison/registry_*.json

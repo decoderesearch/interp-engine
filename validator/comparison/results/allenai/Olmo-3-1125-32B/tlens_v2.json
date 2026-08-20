@@ -1,0 +1,531 @@
+{
+  "captured_at": "2026-08-12",
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "engine": "tlens_v2",
+  "hf_id": "allenai/Olmo-3-1125-32B",
+  "known_bug": {
+    "link": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648",
+    "mechanism": "BlockBridge only moves the compatibility aliases past a post-sublayer norm when the adapter names it `ln1_post`/`ln2_post`; the OLMo adapters name theirs `ln1`/`ln2`, so both aliases stay on the raw module output. The converted HookedTransformer path calls the same two hooks before applying OLMo's norms, which is why tlens_v2 and tlens_v3 agree to four decimals.",
+    "points": [
+      "attn_out_post",
+      "mlp_out_post"
+    ],
+    "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
+    "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648",
+    "workaround": "Gemma-2/3 use `ln1_post`/`ln2_post` and are hooked on the correct side, so the placement is per-adapter rather than a TransformerLens convention."
+  },
+  "points": {
+    "attn_out.0": {
+      "cos": 0.9999960687551158,
+      "cos_worst_token": 0.999986586970773,
+      "layer": 0,
+      "max_abs_diff": 0.0625,
+      "point": "attn_out",
+      "rel_diff": 0.002805870938073174,
+      "rel_worst_token": 0.005179402303570664,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 5
+    },
+    "attn_out.32": {
+      "cos": 0.9999780532310322,
+      "cos_worst_token": 0.9999387859246727,
+      "layer": 32,
+      "max_abs_diff": 0.375,
+      "point": "attn_out",
+      "rel_diff": 0.006642967988510295,
+      "rel_worst_token": 0.013500108688326783,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 8
+    },
+    "attn_out.48": {
+      "cos": 0.9999730082732069,
+      "cos_worst_token": 0.9999527952169236,
+      "layer": 48,
+      "max_abs_diff": 1.0,
+      "point": "attn_out",
+      "rel_diff": 0.007466520808599653,
+      "rel_worst_token": 0.01852174857757128,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 9
+    },
+    "attn_out.63": {
+      "cos": 0.9999646873382253,
+      "cos_worst_token": 0.9999023624780029,
+      "layer": 63,
+      "max_abs_diff": 1.25,
+      "point": "attn_out",
+      "rel_diff": 0.008406717845116105,
+      "rel_worst_token": 0.016500535357111046,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 10
+    },
+    "attn_out_post.0": {
+      "cos": 0.5761291701520409,
+      "cos_worst_token": 0.4895282121833456,
+      "engine_bug": {
+        "mechanism": "BlockBridge only moves the compatibility aliases past a post-sublayer norm when the adapter names it `ln1_post`/`ln2_post`; the OLMo adapters name theirs `ln1`/`ln2`, so both aliases stay on the raw module output. The converted HookedTransformer path calls the same two hooks before applying OLMo's norms, which is why tlens_v2 and tlens_v3 agree to four decimals.",
+        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
+      },
+      "layer": 0,
+      "max_abs_diff": 9.22900390625,
+      "point": "attn_out_post",
+      "rel_diff": 11.015770672557124,
+      "rel_worst_token": 21.017928235761794,
+      "status": "WARN",
+      "tier": "tlens",
+      "worst_token": 0
+    },
+    "attn_out_post.32": {
+      "cos": 0.42663358025981196,
+      "cos_worst_token": 0.3751419658879441,
+      "engine_bug": {
+        "mechanism": "BlockBridge only moves the compatibility aliases past a post-sublayer norm when the adapter names it `ln1_post`/`ln2_post`; the OLMo adapters name theirs `ln1`/`ln2`, so both aliases stay on the raw module output. The converted HookedTransformer path calls the same two hooks before applying OLMo's norms, which is why tlens_v2 and tlens_v3 agree to four decimals.",
+        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
+      },
+      "layer": 32,
+      "max_abs_diff": 61.99102783203125,
+      "point": "attn_out_post",
+      "rel_diff": 38.05541131640152,
+      "rel_worst_token": 85.33748548953561,
+      "status": "FAIL",
+      "tier": "tlens",
+      "worst_token": 6
+    },
+    "attn_out_post.48": {
+      "cos": 0.26381036027272003,
+      "cos_worst_token": 0.27407521997774764,
+      "engine_bug": {
+        "mechanism": "BlockBridge only moves the compatibility aliases past a post-sublayer norm when the adapter names it `ln1_post`/`ln2_post`; the OLMo adapters name theirs `ln1`/`ln2`, so both aliases stay on the raw module output. The converted HookedTransformer path calls the same two hooks before applying OLMo's norms, which is why tlens_v2 and tlens_v3 agree to four decimals.",
+        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
+      },
+      "layer": 48,
+      "max_abs_diff": 105.53173828125,
+      "point": "attn_out_post",
+      "rel_diff": 79.41322965984145,
+      "rel_worst_token": 203.7137310347408,
+      "status": "FAIL",
+      "tier": "tlens",
+      "worst_token": 6
+    },
+    "attn_out_post.63": {
+      "cos": 0.5314008457782193,
+      "cos_worst_token": 0.47523807932961176,
+      "engine_bug": {
+        "mechanism": "BlockBridge only moves the compatibility aliases past a post-sublayer norm when the adapter names it `ln1_post`/`ln2_post`; the OLMo adapters name theirs `ln1`/`ln2`, so both aliases stay on the raw module output. The converted HookedTransformer path calls the same two hooks before applying OLMo's norms, which is why tlens_v2 and tlens_v3 agree to four decimals.",
+        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
+      },
+      "layer": 63,
+      "max_abs_diff": 114.767578125,
+      "point": "attn_out_post",
+      "rel_diff": 23.949337180390756,
+      "rel_worst_token": 40.200393648249054,
+      "status": "WARN",
+      "tier": "tlens",
+      "worst_token": 6
+    },
+    "mlp_act.0": {
+      "cos": 0.9999884730200305,
+      "cos_worst_token": 0.9999748720442375,
+      "layer": 0,
+      "max_abs_diff": 0.015625,
+      "point": "mlp_act",
+      "rel_diff": 0.004815632517056341,
+      "rel_worst_token": 0.00781966926931012,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 4
+    },
+    "mlp_act.32": {
+      "cos": 0.9998976495741856,
+      "cos_worst_token": 0.9998315366317048,
+      "layer": 32,
+      "max_abs_diff": 0.75,
+      "point": "mlp_act",
+      "rel_diff": 0.014335730109739158,
+      "rel_worst_token": 0.01859904691136508,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 10
+    },
+    "mlp_act.48": {
+      "cos": 0.9998526822753218,
+      "cos_worst_token": 0.9996631894377788,
+      "layer": 48,
+      "max_abs_diff": 1.5,
+      "point": "mlp_act",
+      "rel_diff": 0.01716495301789841,
+      "rel_worst_token": 0.02609916291715788,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 10
+    },
+    "mlp_act.63": {
+      "cos": 0.9998742880210202,
+      "cos_worst_token": 0.9997728182534924,
+      "layer": 63,
+      "max_abs_diff": 6.0,
+      "point": "mlp_act",
+      "rel_diff": 0.0162369667372916,
+      "rel_worst_token": 0.022171159249086244,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 5
+    },
+    "mlp_out.0": {
+      "cos": 0.9999928116002819,
+      "cos_worst_token": 0.9999810656015465,
+      "layer": 0,
+      "max_abs_diff": 0.03125,
+      "point": "mlp_out",
+      "rel_diff": 0.0038030331297217524,
+      "rel_worst_token": 0.006470391138568815,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 5
+    },
+    "mlp_out.32": {
+      "cos": 0.9999292134080953,
+      "cos_worst_token": 0.9998354683578266,
+      "layer": 32,
+      "max_abs_diff": 1.0,
+      "point": "mlp_out",
+      "rel_diff": 0.011907652583739967,
+      "rel_worst_token": 0.01815423631880801,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 10
+    },
+    "mlp_out.48": {
+      "cos": 0.9998912822521608,
+      "cos_worst_token": 0.9997657544132783,
+      "layer": 48,
+      "max_abs_diff": 2.0,
+      "point": "mlp_out",
+      "rel_diff": 0.014782052076702374,
+      "rel_worst_token": 0.02243450144979058,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 10
+    },
+    "mlp_out.63": {
+      "cos": 0.9999398832085116,
+      "cos_worst_token": 0.9998875599010603,
+      "layer": 63,
+      "max_abs_diff": 8.0,
+      "point": "mlp_out",
+      "rel_diff": 0.011134663975295693,
+      "rel_worst_token": 0.014996376513141417,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 10
+    },
+    "mlp_out_post.0": {
+      "cos": 0.6713303198553551,
+      "cos_worst_token": 0.47082345817995014,
+      "engine_bug": {
+        "mechanism": "BlockBridge only moves the compatibility aliases past a post-sublayer norm when the adapter names it `ln1_post`/`ln2_post`; the OLMo adapters name theirs `ln1`/`ln2`, so both aliases stay on the raw module output. The converted HookedTransformer path calls the same two hooks before applying OLMo's norms, which is why tlens_v2 and tlens_v3 agree to four decimals.",
+        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
+      },
+      "layer": 0,
+      "max_abs_diff": 7.093846797943115,
+      "point": "mlp_out_post",
+      "rel_diff": 9.17770750188544,
+      "rel_worst_token": 13.037877381755255,
+      "status": "WARN",
+      "tier": "tlens",
+      "worst_token": 10
+    },
+    "mlp_out_post.32": {
+      "cos": 0.7884515062222002,
+      "cos_worst_token": 0.20453217119137593,
+      "engine_bug": {
+        "mechanism": "BlockBridge only moves the compatibility aliases past a post-sublayer norm when the adapter names it `ln1_post`/`ln2_post`; the OLMo adapters name theirs `ln1`/`ln2`, so both aliases stay on the raw module output. The converted HookedTransformer path calls the same two hooks before applying OLMo's norms, which is why tlens_v2 and tlens_v3 agree to four decimals.",
+        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
+      },
+      "layer": 32,
+      "max_abs_diff": 106.4111328125,
+      "point": "mlp_out_post",
+      "rel_diff": 18.724984605815717,
+      "rel_worst_token": 49.396828820730626,
+      "status": "WARN",
+      "tier": "tlens",
+      "worst_token": 6
+    },
+    "mlp_out_post.48": {
+      "cos": 0.7473089066936831,
+      "cos_worst_token": 0.36107328585398507,
+      "engine_bug": {
+        "mechanism": "BlockBridge only moves the compatibility aliases past a post-sublayer norm when the adapter names it `ln1_post`/`ln2_post`; the OLMo adapters name theirs `ln1`/`ln2`, so both aliases stay on the raw module output. The converted HookedTransformer path calls the same two hooks before applying OLMo's norms, which is why tlens_v2 and tlens_v3 agree to four decimals.",
+        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
+      },
+      "layer": 48,
+      "max_abs_diff": 167.0224609375,
+      "point": "mlp_out_post",
+      "rel_diff": 28.9652107864012,
+      "rel_worst_token": 40.80605140204277,
+      "status": "WARN",
+      "tier": "tlens",
+      "worst_token": 6
+    },
+    "mlp_out_post.63": {
+      "cos": 0.8272902812820764,
+      "cos_worst_token": 0.46169018709433596,
+      "engine_bug": {
+        "mechanism": "BlockBridge only moves the compatibility aliases past a post-sublayer norm when the adapter names it `ln1_post`/`ln2_post`; the OLMo adapters name theirs `ln1`/`ln2`, so both aliases stay on the raw module output. The converted HookedTransformer path calls the same two hooks before applying OLMo's norms, which is why tlens_v2 and tlens_v3 agree to four decimals.",
+        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
+        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
+      },
+      "layer": 63,
+      "max_abs_diff": 554.75,
+      "point": "mlp_out_post",
+      "rel_diff": 54.93989132949907,
+      "rel_worst_token": 70.34791217361234,
+      "status": "WARN",
+      "tier": "tlens",
+      "worst_token": 6
+    },
+    "mlp_pre.0": {
+      "cos": 0.9999917694274217,
+      "cos_worst_token": 0.9999803323432992,
+      "layer": 0,
+      "max_abs_diff": 0.015625,
+      "point": "mlp_pre",
+      "rel_diff": 0.004059221972643341,
+      "rel_worst_token": 0.0062884257318642275,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 4
+    },
+    "mlp_pre.32": {
+      "cos": 0.9999771430940457,
+      "cos_worst_token": 0.9999610016029953,
+      "layer": 32,
+      "max_abs_diff": 0.109375,
+      "point": "mlp_pre",
+      "rel_diff": 0.006790892460040483,
+      "rel_worst_token": 0.008959008048554101,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 10
+    },
+    "mlp_pre.48": {
+      "cos": 0.999964532327376,
+      "cos_worst_token": 0.9996582253585572,
+      "layer": 48,
+      "max_abs_diff": 0.125,
+      "point": "mlp_pre",
+      "rel_diff": 0.008499458443967607,
+      "rel_worst_token": 0.026435408479041154,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 6
+    },
+    "mlp_pre.63": {
+      "cos": 0.9999654444753987,
+      "cos_worst_token": 0.9998938493598856,
+      "layer": 63,
+      "max_abs_diff": 0.3125,
+      "point": "mlp_pre",
+      "rel_diff": 0.009142224057262584,
+      "rel_worst_token": 0.014698998716708593,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 6
+    },
+    "mlp_pre_linear.0": {
+      "cos": 0.9999951910122648,
+      "cos_worst_token": 0.9999909583717715,
+      "layer": 0,
+      "max_abs_diff": 0.0078125,
+      "point": "mlp_pre_linear",
+      "rel_diff": 0.0031019239901916994,
+      "rel_worst_token": 0.004267736820162916,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 2
+    },
+    "mlp_pre_linear.32": {
+      "cos": 0.9999517934048414,
+      "cos_worst_token": 0.9999228893289583,
+      "layer": 32,
+      "max_abs_diff": 0.0703125,
+      "point": "mlp_pre_linear",
+      "rel_diff": 0.009835700189162497,
+      "rel_worst_token": 0.012467362316977268,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 10
+    },
+    "mlp_pre_linear.48": {
+      "cos": 0.9999127602865443,
+      "cos_worst_token": 0.999661611996644,
+      "layer": 48,
+      "max_abs_diff": 0.25,
+      "point": "mlp_pre_linear",
+      "rel_diff": 0.013249525881556139,
+      "rel_worst_token": 0.026090321739876587,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 6
+    },
+    "mlp_pre_linear.63": {
+      "cos": 0.9999690453337476,
+      "cos_worst_token": 0.9999180353269669,
+      "layer": 63,
+      "max_abs_diff": 0.5,
+      "point": "mlp_pre_linear",
+      "rel_diff": 0.008098916256946007,
+      "rel_worst_token": 0.012863893007449272,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 6
+    },
+    "resid_mid.0": {
+      "cos": 0.9999970632973517,
+      "cos_worst_token": 0.999985224448596,
+      "layer": 0,
+      "max_abs_diff": 0.0078125,
+      "point": "resid_mid",
+      "rel_diff": 0.0024235430200232402,
+      "rel_worst_token": 0.005591599319226794,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 2
+    },
+    "resid_mid.32": {
+      "cos": 0.9999435027112593,
+      "cos_worst_token": 0.9999088771284954,
+      "layer": 32,
+      "max_abs_diff": 0.09375,
+      "point": "resid_mid",
+      "rel_diff": 0.010639878321177501,
+      "rel_worst_token": 0.013540137145865298,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 10
+    },
+    "resid_mid.48": {
+      "cos": 0.9999009183627467,
+      "cos_worst_token": 0.999824640454021,
+      "layer": 48,
+      "max_abs_diff": 0.1875,
+      "point": "resid_mid",
+      "rel_diff": 0.0141046919247573,
+      "rel_worst_token": 0.01879145406463304,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 10
+    },
+    "resid_mid.63": {
+      "cos": 0.9999147417589985,
+      "cos_worst_token": 0.9998206994452722,
+      "layer": 63,
+      "max_abs_diff": 1.0,
+      "point": "resid_mid",
+      "rel_diff": 0.013285066217932797,
+      "rel_worst_token": 0.01898701144390225,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 6
+    },
+    "resid_post.0": {
+      "cos": 0.9999951739126135,
+      "cos_worst_token": 0.9999834388251212,
+      "layer": 0,
+      "max_abs_diff": 0.0078125,
+      "point": "resid_post",
+      "rel_diff": 0.003106801938129825,
+      "rel_worst_token": 0.005813220372348568,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 2
+    },
+    "resid_post.32": {
+      "cos": 0.9999423698774519,
+      "cos_worst_token": 0.999905856156246,
+      "layer": 32,
+      "max_abs_diff": 0.09375,
+      "point": "resid_post",
+      "rel_diff": 0.010748690310640243,
+      "rel_worst_token": 0.013782985781054661,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 10
+    },
+    "resid_post.48": {
+      "cos": 0.9998986246610414,
+      "cos_worst_token": 0.9998204133367499,
+      "layer": 48,
+      "max_abs_diff": 0.1875,
+      "point": "resid_post",
+      "rel_diff": 0.014265965017653705,
+      "rel_worst_token": 0.019018532220548383,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 10
+    },
+    "resid_post.63": {
+      "cos": 0.9999229813869556,
+      "cos_worst_token": 0.9998117418922836,
+      "layer": 63,
+      "max_abs_diff": 1.0,
+      "point": "resid_post",
+      "rel_diff": 0.012602539071037899,
+      "rel_worst_token": 0.019530399900563662,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 6
+    }
+  },
+  "reason": "",
+  "reference": "eager",
+  "run": {
+    "date_utc": "2026-08-12T03:31:40+00:00",
+    "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
+    "eager_only": false,
+    "gpu": {
+      "memory_total": "183359 MiB",
+      "name": "NVIDIA B200"
+    },
+    "native_dtype": "bfloat16",
+    "reference_status": {
+      "device": "cuda",
+      "dtype": "bfloat16",
+      "reason": "",
+      "status": "ok"
+    },
+    "replicate": [
+      "export HF_TOKEN=$(grep -m1 '^HF_TOKEN=' .env | cut -d= -f2- | tr -d '\"')",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.tokenize_inputs --dumps dumps --models allenai/Olmo-3-1125-32B",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine eager --dumps dumps --model allenai/Olmo-3-1125-32B --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine tlens_v2 --dumps dumps --model allenai/Olmo-3-1125-32B --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.aggregate --dumps dumps"
+    ]
+  },
+  "sae": {},
+  "status": "ok",
+  "verdict": "\ud83d\udc1e",
+  "versions": {
+    "torch": {
+      "version": "2.13.0"
+    },
+    "transformer_lens": {
+      "version": "3.7.0"
+    },
+    "transformers": {
+      "version": "5.15.0"
+    }
+  }
+}

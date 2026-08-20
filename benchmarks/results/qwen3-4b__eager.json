@@ -1,0 +1,171 @@
+{
+  "schema": 2,
+  "started_at": "2026-08-19T13:29:08+00:00",
+  "command": "python -m benchmarks.run_bench --model qwen3-4b --variant eager",
+  "python": "python",
+  "model": {
+    "key": "qwen3-4b",
+    "hf_id": "Qwen/Qwen3-4B",
+    "family": "Qwen3",
+    "params": "4.0B",
+    "dtype": "bfloat16",
+    "min_gpu_gib": 0.0,
+    "capture_point": "resid_post",
+    "extra_eager_kwargs": {},
+    "extra_vllm_kwargs": {},
+    "gpu_memory_utilization": null,
+    "native_dtype": "bfloat16"
+  },
+  "variant": {
+    "key": "eager",
+    "backend": "eager",
+    "note": "raw HF forward; attn_implementation=eager, the engine's default",
+    "kwargs": {
+      "device": "cuda"
+    }
+  },
+  "env": {
+    "gpu_name": "NVIDIA B200",
+    "gpu_total_gib": 178.3511962890625,
+    "driver_version": "580.105.08",
+    "cuda_version": "13.0",
+    "torch_version": "2.11.0+cu130",
+    "vllm_version": "0.26.0",
+    "transformers_version": "5.14.1",
+    "interp_engine_version": "1.2.0",
+    "python_version": "3.12.3",
+    "platform": "linux 6.8.0-90-generic",
+    "extra": {
+      "VLLM_DEEP_GEMM_WARMUP": "skip"
+    }
+  },
+  "workloads": {
+    "generate": {
+      "status": "ok",
+      "reason": "",
+      "metrics": {
+        "ttft_ms": 48.30653313547373,
+        "prefill_tok_s": 10598.980443579268,
+        "decode_tok_s": 24.04915982916178,
+        "total_s": 5.329156296793371
+      },
+      "detail": {
+        "prompt_tokens": 512,
+        "generated_tokens": 128,
+        "repeats": 3
+      }
+    },
+    "generate_x8": {
+      "status": "ok",
+      "reason": "",
+      "metrics": {
+        "total_s": 42.92172516672872,
+        "aggregate_tok_s": 23.857382153729592,
+        "per_request_s": 5.36521564584109
+      },
+      "detail": {
+        "concurrency": 8,
+        "prompt_tokens": 512,
+        "generated_tokens_total": 1024,
+        "repeats": 2
+      }
+    },
+    "capture_mid": {
+      "status": "ok",
+      "reason": "",
+      "metrics": {
+        "latency_ms": 48.19912603124976,
+        "prompt_tok_s": 10622.599249373241,
+        "transported_mib": 2.5
+      },
+      "detail": {
+        "point": "resid_post",
+        "points": 1,
+        "prompt_tokens": 512,
+        "rows": 512,
+        "width": 2560,
+        "repeats": 3
+      }
+    },
+    "capture_all": {
+      "status": "ok",
+      "reason": "",
+      "metrics": {
+        "latency_ms": 162.92536770924926,
+        "prompt_tok_s": 3142.543160704702,
+        "transported_mib": 90.0
+      },
+      "detail": {
+        "point": "resid_post",
+        "points": 36,
+        "prompt_tokens": 512,
+        "rows": 512,
+        "width": 2560,
+        "repeats": 3
+      }
+    },
+    "capture_gen": {
+      "status": "ok",
+      "reason": "",
+      "metrics": {
+        "latency_ms": 1316.8333675712347,
+        "transported_mib": 0.7763671875
+      },
+      "detail": {
+        "point": "resid_post",
+        "prompt_tokens": 128,
+        "max_new_tokens": 32,
+        "rows": 159,
+        "width": 2560,
+        "steered": false,
+        "completion_head": " me that I may be said to be in a low state of health, I thi",
+        "repeats": 3
+      }
+    },
+    "steer": {
+      "status": "ok",
+      "reason": "",
+      "metrics": {
+        "latency_ms": 1362.4496371485293,
+        "transported_mib": 0.7763671875
+      },
+      "detail": {
+        "point": "resid_post",
+        "prompt_tokens": 128,
+        "max_new_tokens": 32,
+        "rows": 159,
+        "width": 2560,
+        "steered": true,
+        "completion_head": " me that I find myself on the point of snorting opium, I thi",
+        "repeats": 3
+      }
+    },
+    "lens_topk": {
+      "status": "ok",
+      "reason": "",
+      "metrics": {
+        "latency_ms": 2.377368975430727,
+        "rows_per_s": 215364.12954461007,
+        "result_mib": 0.048828125
+      },
+      "detail": {
+        "rows": 512,
+        "top_n": 10,
+        "path": "full logits, then top-k in process",
+        "repeats": 3
+      }
+    }
+  },
+  "load": {
+    "construct_s": 8.505032608285546,
+    "warmup_s": 3.516580909490585e-05,
+    "ready_s": 8.505067774094641,
+    "n_layers": 36,
+    "d_model": 2560,
+    "device": "cuda:0",
+    "requested_dtype": "bfloat16",
+    "resolved_dtype": "bfloat16",
+    "grad_through_forward": false
+  },
+  "finished_at": "2026-08-19T13:31:19+00:00"
+}

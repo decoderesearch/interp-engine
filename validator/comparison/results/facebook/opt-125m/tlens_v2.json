@@ -1,0 +1,322 @@
+{
+  "captured_at": "2026-08-11",
+  "device": "cuda",
+  "dtype": "float16",
+  "engine": "tlens_v2",
+  "hf_id": "facebook/opt-125m",
+  "known_bug": null,
+  "points": {
+    "attn_out.0": {
+      "cos": 0.9999998307427909,
+      "cos_worst_token": 0.9999996862567714,
+      "layer": 0,
+      "max_abs_diff": 0.00030517578125,
+      "point": "attn_out",
+      "rel_diff": 0.0005827169995928347,
+      "rel_worst_token": 0.0008051510925734856,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 4
+    },
+    "attn_out.11": {
+      "cos": 0.9999993599024215,
+      "cos_worst_token": 0.9999958984604287,
+      "layer": 11,
+      "max_abs_diff": 0.0029296875,
+      "point": "attn_out",
+      "rel_diff": 0.0012108816116230164,
+      "rel_worst_token": 0.0035116825635420007,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 13
+    },
+    "attn_out.6": {
+      "cos": 0.999994112987688,
+      "cos_worst_token": 0.9999915430550432,
+      "layer": 6,
+      "max_abs_diff": 0.00067138671875,
+      "point": "attn_out",
+      "rel_diff": 0.003478814358783438,
+      "rel_worst_token": 0.0059925380959441905,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 3
+    },
+    "attn_out_post.0": {
+      "cos": 0.9999998307427909,
+      "cos_worst_token": 0.9999996862567714,
+      "layer": 0,
+      "max_abs_diff": 0.00030517578125,
+      "point": "attn_out_post",
+      "rel_diff": 0.0005827169995928347,
+      "rel_worst_token": 0.0008051510925734856,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 4
+    },
+    "attn_out_post.11": {
+      "cos": 0.9999993599024215,
+      "cos_worst_token": 0.9999958984604287,
+      "layer": 11,
+      "max_abs_diff": 0.0029296875,
+      "point": "attn_out_post",
+      "rel_diff": 0.0012108816116230164,
+      "rel_worst_token": 0.0035116825635420007,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 13
+    },
+    "attn_out_post.6": {
+      "cos": 0.999994112987688,
+      "cos_worst_token": 0.9999915430550432,
+      "layer": 6,
+      "max_abs_diff": 0.00067138671875,
+      "point": "attn_out_post",
+      "rel_diff": 0.003478814358783438,
+      "rel_worst_token": 0.0059925380959441905,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 3
+    },
+    "mlp_act.0": {
+      "cos": 0.9999999956383168,
+      "cos_worst_token": 0.9999995929886251,
+      "layer": 0,
+      "max_abs_diff": 0.00048828125,
+      "point": "mlp_act",
+      "rel_diff": 9.34049930647728e-05,
+      "rel_worst_token": 0.0009083696372110942,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 11
+    },
+    "mlp_act.11": {
+      "cos": 0.9999997905172262,
+      "cos_worst_token": 0.9999983617486158,
+      "layer": 11,
+      "max_abs_diff": 0.00390625,
+      "point": "mlp_act",
+      "rel_diff": 0.0008293042410112115,
+      "rel_worst_token": 0.0018587244394483542,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 12
+    },
+    "mlp_act.6": {
+      "cos": 0.999998089787382,
+      "cos_worst_token": 0.9999947155335751,
+      "layer": 6,
+      "max_abs_diff": 0.0023193359375,
+      "point": "mlp_act",
+      "rel_diff": 0.001954601260368871,
+      "rel_worst_token": 0.0033419711668214946,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 13
+    },
+    "mlp_out.0": {
+      "cos": 0.9999999996232128,
+      "cos_worst_token": 0.9999991934823964,
+      "layer": 0,
+      "max_abs_diff": 0.0009765625,
+      "point": "mlp_out",
+      "rel_diff": 2.7451311341871828e-05,
+      "rel_worst_token": 0.0013145703709336088,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 2
+    },
+    "mlp_out.11": {
+      "cos": 0.9999999976895708,
+      "cos_worst_token": 0.9999952737714709,
+      "layer": 11,
+      "max_abs_diff": 0.25,
+      "point": "mlp_out",
+      "rel_diff": 0.000667266746360798,
+      "rel_worst_token": 0.0031200951263381034,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 12
+    },
+    "mlp_out.6": {
+      "cos": 0.9999974421418794,
+      "cos_worst_token": 0.9999886018206304,
+      "layer": 6,
+      "max_abs_diff": 0.00054931640625,
+      "point": "mlp_out",
+      "rel_diff": 0.00226184512586242,
+      "rel_worst_token": 0.004871309635035423,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 13
+    },
+    "mlp_out_post.0": {
+      "cos": 0.9999999996232128,
+      "cos_worst_token": 0.9999991934823964,
+      "layer": 0,
+      "max_abs_diff": 0.0009765625,
+      "point": "mlp_out_post",
+      "rel_diff": 2.7451311341871828e-05,
+      "rel_worst_token": 0.0013145703709336088,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 2
+    },
+    "mlp_out_post.11": {
+      "cos": 0.9999999976895708,
+      "cos_worst_token": 0.9999952737714709,
+      "layer": 11,
+      "max_abs_diff": 0.25,
+      "point": "mlp_out_post",
+      "rel_diff": 0.000667266746360798,
+      "rel_worst_token": 0.0031200951263381034,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 12
+    },
+    "mlp_out_post.6": {
+      "cos": 0.9999974421418794,
+      "cos_worst_token": 0.9999886018206304,
+      "layer": 6,
+      "max_abs_diff": 0.00054931640625,
+      "point": "mlp_out_post",
+      "rel_diff": 0.00226184512586242,
+      "rel_worst_token": 0.004871309635035423,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 13
+    },
+    "mlp_pre.0": {
+      "cos": 0.9999999588110935,
+      "cos_worst_token": 0.9999998871016216,
+      "layer": 0,
+      "max_abs_diff": 0.00390625,
+      "point": "mlp_pre",
+      "rel_diff": 0.0002880192750738115,
+      "rel_worst_token": 0.0004942383209524677,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 4
+    },
+    "mlp_pre.11": {
+      "cos": 0.9999997536359403,
+      "cos_worst_token": 0.9999995893444795,
+      "layer": 11,
+      "max_abs_diff": 0.00390625,
+      "point": "mlp_pre",
+      "rel_diff": 0.0007019459364044589,
+      "rel_worst_token": 0.0009126050888980211,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 13
+    },
+    "mlp_pre.6": {
+      "cos": 0.9999997195012202,
+      "cos_worst_token": 0.9999994423412251,
+      "layer": 6,
+      "max_abs_diff": 0.0023193359375,
+      "point": "mlp_pre",
+      "rel_diff": 0.0007632361302762426,
+      "rel_worst_token": 0.0010561826388150457,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 13
+    },
+    "resid_mid.0": {
+      "expected": "OPT inlines fc1/fc2 on the decoder layer, so no module's *input* is the residual between the sublayers, and the norm that would carry it cannot be identified by name: OPT calls it `final_layer_norm`, which is also what the trunk calls the model's final norm, and `config.do_layer_norm_before` decides whether it runs before the MLP (opt-125m) or after it (opt-350m). interp-engine refuses rather than binding the wrong module on one of the two shapes; TransformerLens knows which from its own conversion",
+      "layer": 0,
+      "missing": "reference",
+      "point": "resid_mid",
+      "status": "N/A"
+    },
+    "resid_mid.11": {
+      "expected": "OPT inlines fc1/fc2 on the decoder layer, so no module's *input* is the residual between the sublayers, and the norm that would carry it cannot be identified by name: OPT calls it `final_layer_norm`, which is also what the trunk calls the model's final norm, and `config.do_layer_norm_before` decides whether it runs before the MLP (opt-125m) or after it (opt-350m). interp-engine refuses rather than binding the wrong module on one of the two shapes; TransformerLens knows which from its own conversion",
+      "layer": 11,
+      "missing": "reference",
+      "point": "resid_mid",
+      "status": "N/A"
+    },
+    "resid_mid.6": {
+      "expected": "OPT inlines fc1/fc2 on the decoder layer, so no module's *input* is the residual between the sublayers, and the norm that would carry it cannot be identified by name: OPT calls it `final_layer_norm`, which is also what the trunk calls the model's final norm, and `config.do_layer_norm_before` decides whether it runs before the MLP (opt-125m) or after it (opt-350m). interp-engine refuses rather than binding the wrong module on one of the two shapes; TransformerLens knows which from its own conversion",
+      "layer": 6,
+      "missing": "reference",
+      "point": "resid_mid",
+      "status": "N/A"
+    },
+    "resid_post.0": {
+      "cos": 0.9999999993550236,
+      "cos_worst_token": 0.999999721430799,
+      "layer": 0,
+      "max_abs_diff": 0.0009765625,
+      "point": "resid_post",
+      "rel_diff": 3.591599476574283e-05,
+      "rel_worst_token": 0.0007846676378497892,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 1
+    },
+    "resid_post.11": {
+      "cos": 0.9999733696299307,
+      "cos_worst_token": 0.999643022996064,
+      "layer": 11,
+      "max_abs_diff": 0.25,
+      "point": "resid_post",
+      "rel_diff": 0.007301938209544937,
+      "rel_worst_token": 0.027254456065955217,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 0
+    },
+    "resid_post.6": {
+      "cos": 0.9999999984607696,
+      "cos_worst_token": 0.9999966092158675,
+      "layer": 6,
+      "max_abs_diff": 0.00103759765625,
+      "point": "resid_post",
+      "rel_diff": 5.5483913349892195e-05,
+      "rel_worst_token": 0.0026443397120713545,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 13
+    }
+  },
+  "reason": "",
+  "reference": "eager",
+  "run": {
+    "date_utc": "2026-08-12T03:31:40+00:00",
+    "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
+    "eager_only": false,
+    "gpu": {
+      "memory_total": "183359 MiB",
+      "name": "NVIDIA B200"
+    },
+    "native_dtype": "float16",
+    "reference_status": {
+      "device": "cuda",
+      "dtype": "float16",
+      "reason": "",
+      "status": "ok"
+    },
+    "replicate": [
+      "export HF_TOKEN=$(grep -m1 '^HF_TOKEN=' .env | cut -d= -f2- | tr -d '\"')",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.tokenize_inputs --dumps dumps --models facebook/opt-125m",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine eager --dumps dumps --model facebook/opt-125m --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine tlens_v2 --dumps dumps --model facebook/opt-125m --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.aggregate --dumps dumps"
+    ]
+  },
+  "sae": {},
+  "status": "ok",
+  "verdict": "\u2705",
+  "versions": {
+    "torch": {
+      "version": "2.13.0"
+    },
+    "transformer_lens": {
+      "version": "3.7.0"
+    },
+    "transformers": {
+      "version": "5.15.0"
+    }
+  }
+}

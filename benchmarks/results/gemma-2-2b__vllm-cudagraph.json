@@ -1,0 +1,129 @@
+{
+  "schema": 2,
+  "started_at": "2026-08-19T13:25:00+00:00",
+  "command": "python -m benchmarks.run_bench --model gemma-2-2b --variant vllm-cudagraph",
+  "python": "python",
+  "model": {
+    "key": "gemma-2-2b",
+    "hf_id": "google/gemma-2-2b",
+    "family": "Gemma2",
+    "params": "2.6B",
+    "dtype": "bfloat16",
+    "min_gpu_gib": 0.0,
+    "capture_point": "resid_post",
+    "extra_eager_kwargs": {},
+    "extra_vllm_kwargs": {},
+    "gpu_memory_utilization": null,
+    "native_dtype": "float32"
+  },
+  "variant": {
+    "key": "vllm-cudagraph",
+    "backend": "vllm-generate",
+    "note": "CUDA graphs + inductor compile ON, no static wraps; vLLM's own defaults for generate-only",
+    "kwargs": {
+      "max_model_len": "2048",
+      "gpu_memory_utilization": "0.8",
+      "extra_vllm_kwargs": "{'enable_prefix_caching': False}"
+    }
+  },
+  "env": {
+    "gpu_name": "NVIDIA B200",
+    "gpu_total_gib": 178.3511962890625,
+    "driver_version": "580.105.08",
+    "cuda_version": "13.0",
+    "torch_version": "2.11.0+cu130",
+    "vllm_version": "0.26.0",
+    "transformers_version": "5.14.1",
+    "interp_engine_version": "1.2.0",
+    "python_version": "3.12.3",
+    "platform": "linux 6.8.0-90-generic",
+    "extra": {
+      "VLLM_DEEP_GEMM_WARMUP": "skip"
+    }
+  },
+  "workloads": {
+    "generate": {
+      "status": "ok",
+      "reason": "",
+      "metrics": {
+        "ttft_ms": 28.68691785261035,
+        "prefill_tok_s": 17847.856734926678,
+        "decode_tok_s": 353.5059286152923,
+        "total_s": 0.3851165836676955
+      },
+      "detail": {
+        "prompt_tokens": 512,
+        "generated_tokens": 127,
+        "repeats": 3
+      }
+    },
+    "generate_x8": {
+      "status": "ok",
+      "reason": "",
+      "metrics": {
+        "total_s": 0.5722801850643009,
+        "aggregate_tok_s": 1733.4166478060738,
+        "per_request_s": 0.07153502313303761
+      },
+      "detail": {
+        "concurrency": 8,
+        "prompt_tokens": 512,
+        "generated_tokens_total": 992,
+        "repeats": 2
+      }
+    },
+    "capture_mid": {
+      "status": "unsupported",
+      "reason": "CUDA graph replay does not call the Python forward a hook is attached to, so this engine serves generation but not capture or steering (enforce_eager=False)",
+      "metrics": {},
+      "detail": {}
+    },
+    "capture_all": {
+      "status": "unsupported",
+      "reason": "CUDA graph replay does not call the Python forward a hook is attached to, so this engine serves generation but not capture or steering (enforce_eager=False)",
+      "metrics": {},
+      "detail": {}
+    },
+    "capture_gen": {
+      "status": "unsupported",
+      "reason": "CUDA graph replay does not call the Python forward a hook is attached to, so this engine serves generation but not capture or steering (enforce_eager=False)",
+      "metrics": {},
+      "detail": {}
+    },
+    "steer": {
+      "status": "unsupported",
+      "reason": "CUDA graph replay does not call the Python forward a hook is attached to, so this engine serves generation but not capture or steering (enforce_eager=False)",
+      "metrics": {},
+      "detail": {}
+    },
+    "lens_topk": {
+      "status": "ok",
+      "reason": "",
+      "metrics": {
+        "latency_ms": 204.8667911440134,
+        "rows_per_s": 2499.184944230829,
+        "result_mib": 0.05859375
+      },
+      "detail": {
+        "rows": 512,
+        "top_n": 10,
+        "path": "worker-side top-k (decode_residuals_topk)",
+        "repeats": 3,
+        "topk_id_overlap_vs_full": 0.9701,
+        "topk_worst_shortfall_frac_of_range": 0.0
+      }
+    }
+  },
+  "load": {
+    "construct_s": 1.8686028979718685,
+    "warmup_s": 108.47760265599936,
+    "ready_s": 110.34620555397123,
+    "n_layers": 26,
+    "d_model": 2304,
+    "device": "cuda (vllm worker)",
+    "requested_dtype": "bfloat16",
+    "resolved_dtype": "bfloat16",
+    "grad_through_forward": false
+  },
+  "finished_at": "2026-08-19T13:27:05+00:00"
+}

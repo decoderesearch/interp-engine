@@ -1,0 +1,12 @@
+{
+  "TransformerLensOrg/TransformerLens@3.6.0": "4a4dc26c750475b29e6f54b362c2aab988702c9c",
+  "TransformerLensOrg/TransformerLens@3.7.0": "c64d2a4f42eb42b5a6deafa1a430efea94346149",
+  "TransformerLensOrg/TransformerLens@3.7.2": "a640e11b56207c1a3ff277b7427d4c2ed745c948",
+  "ndif-team/nnsight@0.7.0": "884bd1c7b0dbd53be01ade6a18843078d90367b4",
+  "sgl-project/sglang@0.5.16": "fdebc938f7f4d16fe6b9f55dcd9a767cf0899ea1",
+  "sgl-project/sglang@0.5.9": "bbe9c7eeb520b0a67e92d133dfc137a3688dc7f2",
+  "vllm-project/vllm@0.11.2": "275de34170654274616082721348b7edd9741d32",
+  "vllm-project/vllm@0.25.1": "752a3a504485790a2e8491cacbb35c137339ad34",
+  "vllm-project/vllm@0.26.0": "568afb3a13806beb53bb2e6bd518269357b237c0",
+  "vllm-project/vllm@0.27.1": "6e448d0ea9bf3d88d898b65449ca6dc2aec170ac"
+}

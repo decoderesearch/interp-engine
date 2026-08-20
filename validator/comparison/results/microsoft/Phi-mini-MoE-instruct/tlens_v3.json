@@ -1,0 +1,393 @@
+{
+  "captured_at": "2026-08-12",
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "engine": "tlens_v3",
+  "hf_id": "microsoft/Phi-mini-MoE-instruct",
+  "known_bug": null,
+  "points": {
+    "attn_out.0": {
+      "cos": 0.9999999852449274,
+      "cos_worst_token": 0.9999999480705937,
+      "layer": 0,
+      "max_abs_diff": 6.103515625e-05,
+      "point": "attn_out",
+      "rel_diff": 0.00017178518814219758,
+      "rel_worst_token": 0.000322271542968285,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 3
+    },
+    "attn_out.16": {
+      "cos": 0.9959969249559092,
+      "cos_worst_token": 0.9694967898848775,
+      "layer": 16,
+      "max_abs_diff": 1.46484375,
+      "point": "attn_out",
+      "rel_diff": 0.08942368770930147,
+      "rel_worst_token": 0.24820513573381728,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 8
+    },
+    "attn_out.24": {
+      "cos": 0.9979710152710772,
+      "cos_worst_token": 0.9961812982784906,
+      "layer": 24,
+      "max_abs_diff": 0.8671875,
+      "point": "attn_out",
+      "rel_diff": 0.06378328156163067,
+      "rel_worst_token": 0.09640270594220594,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 6
+    },
+    "attn_out.31": {
+      "cos": 0.9998503883947256,
+      "cos_worst_token": 0.9995528501074569,
+      "layer": 31,
+      "max_abs_diff": 1.0,
+      "point": "attn_out",
+      "rel_diff": 0.017476600020595985,
+      "rel_worst_token": 0.04605605218662668,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 11
+    },
+    "attn_out_post.0": {
+      "cos": 0.9999999852449274,
+      "cos_worst_token": 0.9999999480705937,
+      "layer": 0,
+      "max_abs_diff": 6.103515625e-05,
+      "point": "attn_out_post",
+      "rel_diff": 0.00017178518814219758,
+      "rel_worst_token": 0.000322271542968285,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 3
+    },
+    "attn_out_post.16": {
+      "cos": 0.9959969249559092,
+      "cos_worst_token": 0.9694967898848775,
+      "layer": 16,
+      "max_abs_diff": 1.46484375,
+      "point": "attn_out_post",
+      "rel_diff": 0.08942368770930147,
+      "rel_worst_token": 0.24820513573381728,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 8
+    },
+    "attn_out_post.24": {
+      "cos": 0.9979710152710772,
+      "cos_worst_token": 0.9961812982784906,
+      "layer": 24,
+      "max_abs_diff": 0.8671875,
+      "point": "attn_out_post",
+      "rel_diff": 0.06378328156163067,
+      "rel_worst_token": 0.09640270594220594,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 6
+    },
+    "attn_out_post.31": {
+      "cos": 0.9998503883947256,
+      "cos_worst_token": 0.9995528501074569,
+      "layer": 31,
+      "max_abs_diff": 1.0,
+      "point": "attn_out_post",
+      "rel_diff": 0.017476600020595985,
+      "rel_worst_token": 0.04605605218662668,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 11
+    },
+    "mlp_act.0": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 0,
+      "missing": "reference",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.16": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 16,
+      "missing": "reference",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.24": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 24,
+      "missing": "reference",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.31": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 31,
+      "missing": "reference",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_out.0": {
+      "cos": 0.999999949499665,
+      "cos_worst_token": 0.9999968734992744,
+      "layer": 0,
+      "max_abs_diff": 0.0009765625,
+      "point": "mlp_out",
+      "rel_diff": 0.00031783422733635397,
+      "rel_worst_token": 0.0025119087019033095,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 11
+    },
+    "mlp_out.16": {
+      "cos": 0.9987672903600202,
+      "cos_worst_token": 0.9887639784797233,
+      "layer": 16,
+      "max_abs_diff": 0.1875,
+      "point": "mlp_out",
+      "rel_diff": 0.049828771906491244,
+      "rel_worst_token": 0.15191263534346144,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 7
+    },
+    "mlp_out.24": {
+      "cos": 0.990703332350826,
+      "cos_worst_token": 0.8611589641575913,
+      "layer": 24,
+      "max_abs_diff": 1.5,
+      "point": "mlp_out",
+      "rel_diff": 0.13605849438431822,
+      "rel_worst_token": 0.6425919607232994,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 9
+    },
+    "mlp_out.31": {
+      "cos": 0.9993549184407674,
+      "cos_worst_token": 0.9980982117999945,
+      "layer": 31,
+      "max_abs_diff": 4.25,
+      "point": "mlp_out",
+      "rel_diff": 0.036674867656775675,
+      "rel_worst_token": 0.1150252648288807,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 4
+    },
+    "mlp_out_post.0": {
+      "cos": 0.999999949499665,
+      "cos_worst_token": 0.9999968734992744,
+      "layer": 0,
+      "max_abs_diff": 0.0009765625,
+      "point": "mlp_out_post",
+      "rel_diff": 0.00031783422733635397,
+      "rel_worst_token": 0.0025119087019033095,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 11
+    },
+    "mlp_out_post.16": {
+      "cos": 0.9987672903600202,
+      "cos_worst_token": 0.9887639784797233,
+      "layer": 16,
+      "max_abs_diff": 0.1875,
+      "point": "mlp_out_post",
+      "rel_diff": 0.049828771906491244,
+      "rel_worst_token": 0.15191263534346144,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 7
+    },
+    "mlp_out_post.24": {
+      "cos": 0.990703332350826,
+      "cos_worst_token": 0.8611589641575913,
+      "layer": 24,
+      "max_abs_diff": 1.5,
+      "point": "mlp_out_post",
+      "rel_diff": 0.13605849438431822,
+      "rel_worst_token": 0.6425919607232994,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 9
+    },
+    "mlp_out_post.31": {
+      "cos": 0.9993549184407674,
+      "cos_worst_token": 0.9980982117999945,
+      "layer": 31,
+      "max_abs_diff": 4.25,
+      "point": "mlp_out_post",
+      "rel_diff": 0.036674867656775675,
+      "rel_worst_token": 0.1150252648288807,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 4
+    },
+    "mlp_pre.0": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 0,
+      "missing": "reference",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "mlp_pre.16": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 16,
+      "missing": "reference",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "mlp_pre.24": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 24,
+      "missing": "reference",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "mlp_pre.31": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 31,
+      "missing": "reference",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "resid_mid.0": {
+      "cos": 0.9999999858034304,
+      "cos_worst_token": 0.9999999489391524,
+      "layer": 0,
+      "max_abs_diff": 0.000244140625,
+      "point": "resid_mid",
+      "rel_diff": 0.0001685029046341836,
+      "rel_worst_token": 0.0003195653647214635,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 4
+    },
+    "resid_mid.16": {
+      "cos": 0.9999972237767901,
+      "cos_worst_token": 0.9955682343493149,
+      "layer": 16,
+      "max_abs_diff": 0.4375,
+      "point": "resid_mid",
+      "rel_diff": 0.002356362816621249,
+      "rel_worst_token": 0.09479250603642139,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 8
+    },
+    "resid_mid.24": {
+      "cos": 0.9999509023635461,
+      "cos_worst_token": 0.9948062671959106,
+      "layer": 24,
+      "max_abs_diff": 1.0,
+      "point": "resid_mid",
+      "rel_diff": 0.009909974684718216,
+      "rel_worst_token": 0.10348223759208673,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 8
+    },
+    "resid_mid.31": {
+      "cos": 0.9990070374973234,
+      "cos_worst_token": 0.9977680360806754,
+      "layer": 31,
+      "max_abs_diff": 1.25,
+      "point": "resid_mid",
+      "rel_diff": 0.044623305453662124,
+      "rel_worst_token": 0.07043040695971951,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 11
+    },
+    "resid_post.0": {
+      "cos": 0.9999999306229522,
+      "cos_worst_token": 0.9999992900115203,
+      "layer": 0,
+      "max_abs_diff": 0.0009765625,
+      "point": "resid_post",
+      "rel_diff": 0.0003724983029425051,
+      "rel_worst_token": 0.0011918147922965468,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 11
+    },
+    "resid_post.16": {
+      "cos": 0.999996678537619,
+      "cos_worst_token": 0.996107459215372,
+      "layer": 16,
+      "max_abs_diff": 0.25,
+      "point": "resid_post",
+      "rel_diff": 0.0025773915981938764,
+      "rel_worst_token": 0.08857778437802516,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 8
+    },
+    "resid_post.24": {
+      "cos": 0.999936250962516,
+      "cos_worst_token": 0.9949046227983545,
+      "layer": 24,
+      "max_abs_diff": 1.75,
+      "point": "resid_post",
+      "rel_diff": 0.011292190960250212,
+      "rel_worst_token": 0.10244239265382035,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 8
+    },
+    "resid_post.31": {
+      "cos": 0.999075916215106,
+      "cos_worst_token": 0.9960455935344333,
+      "layer": 31,
+      "max_abs_diff": 4.25,
+      "point": "resid_post",
+      "rel_diff": 0.043022954306908445,
+      "rel_worst_token": 0.09017613601381705,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 11
+    }
+  },
+  "reason": "",
+  "reference": "eager",
+  "run": {
+    "date_utc": "2026-08-12T03:31:40+00:00",
+    "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
+    "eager_only": false,
+    "gpu": {
+      "memory_total": "183359 MiB",
+      "name": "NVIDIA B200"
+    },
+    "native_dtype": "bfloat16",
+    "reference_status": {
+      "device": "cuda",
+      "dtype": "bfloat16",
+      "reason": "",
+      "status": "ok"
+    },
+    "replicate": [
+      "export HF_TOKEN=$(grep -m1 '^HF_TOKEN=' .env | cut -d= -f2- | tr -d '\"')",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.tokenize_inputs --dumps dumps --models microsoft/Phi-mini-MoE-instruct",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine eager --dumps dumps --model microsoft/Phi-mini-MoE-instruct --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine tlens_v3 --dumps dumps --model microsoft/Phi-mini-MoE-instruct --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.aggregate --dumps dumps"
+    ]
+  },
+  "sae": {},
+  "status": "ok",
+  "verdict": "\u2705",
+  "versions": {
+    "torch": {
+      "version": "2.13.0"
+    },
+    "transformer_lens": {
+      "version": "3.7.0"
+    },
+    "transformers": {
+      "version": "5.15.0"
+    }
+  }
+}

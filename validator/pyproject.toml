@@ -1,0 +1,172 @@
+[project]
+name = "interp-engine-validator"
+version = "1.0.0"
+description = "Cross-engine validation harness for interp-engine: captures the same activations through six execution engines and scores them against raw HuggingFace."
+readme = "README.md"
+# No `license-files`: the Apache-2.0 text is one file at the repo root, covering both projects. This
+# package is never published, so nothing needs it vendored into a wheel.
+license = "Apache-2.0"
+requires-python = ">=3.11,<3.14"
+# The reference backends the validator runs side by side. These co-resolve on transformers v5:
+# TransformerLens 3 (requires >=5.4), nnsight 0.7+, nnterp, sae-lens. vLLM and SGLang are
+# intentionally NOT here -- they conflict with each other and are run from prebuilt docker images or
+# their own venvs (see docs/COMPARISON.md).
+#
+# `interp-engine[quant]` pulls the `kernels` Hub loader, which the sweep needs for two unrelated
+# reasons: the MXFP4 checkpoints `[quant]` is named for, and the *state-space* kernels the
+# hybrid-mamba checkpoints in the sweep want (nemotron-h, lfm2, qwen3-next, olmo-hybrid).
+# transformers v5 resolves `mamba-ssm` and `causal-conv1d` through this loader as prebuilt Hub
+# kernels (`kernels-community/*`), so they must NOT be added as dependencies here: on PyPI all three
+# of mamba-ssm, causal-conv1d and flash-attn ship sdists only, so declaring them turns this project
+# into a CUDA-only source build that needs `--no-build-isolation` (their `setup.py` imports torch)
+# and an nvcc whose major matches torch's -- a mismatch is a hard `RuntimeError`, which is the common
+# case on a rented GPU host. Without the loader nothing breaks: transformers warns once and takes the
+# slow state-space path, which is a speed difference and not a numerical one.
+dependencies = [
+    # The engine at the repo root, not a release. Resolved by [tool.uv.sources] below; unversioned
+    # here because a path source supplies the version and a pin would only be a second thing to move.
+    "interp-engine[quant]",
+    "numpy>=1.24",
+    "transformer-lens>=3.0",
+    "nnsight>=0.7",
+    "nnterp>=1.3",
+    "sae-lens>=6",
+    # TransformerLens 3's Qwen3.5 multimodal bridge adapter imports torchvision (its image/video
+    # processor), even though we only capture the text decoder -- without it the tlens_v3 load of
+    # qwen3.5/3.6 raises ImportError. uv resolves a torchvision matching the installed torch.
+    "torchvision",
+    # FlashInfer JIT-builds some kernels on first use (DeepSeek-V4's sparse attention, the GDN
+    # kernels the hybrid trunks need) and shells out to `ninja` to do it. A venv without it loses the
+    # model twenty minutes in, at the end of the weight load, with a bare
+    # `FileNotFoundError: 'ninja'` from inside the worker. It also has to be on PATH, not merely
+    # importable: the harness invokes each venv's interpreter directly, so the venv's bin/ is not
+    # prepended the way `activate` would -- see run_all_models.sh, which puts it there.
+    "ninja",
+]
+
+[project.optional-dependencies]
+dev = [
+    # Capped at <9 to match interp-engine, so both suites run under one pytest version.
+    "pytest>=8.3.1,<9",
+    # Same ranges as interp-engine's `dev` extra, so one `ruff format` verdict and one pyright rule
+    # set covers the repo. Both are capped at a single minor: `ruff format` output and pyright's
+    # checks change between releases, and CI gates on both, so an open ceiling turns an upstream
+    # release into a red build on an unrelated PR.
+    "ruff>=0.16.2,<0.17",
+    "pyright>=1.1.411,<1.2",
+    "pyyaml>=6",
+]
+
+[tool.uv.sources]
+# The engine one directory up, editable, so an engine edit is live in this venv with no re-sync. The
+# harness exists to score that engine, and now ships in the same repo as it, so scoring anything else
+# by default would be the wrong reading of "the engine".
+#
+# `..` rather than an absolute path is what makes this committable: the earlier attempt at a path
+# source pointed at a sibling clone, which landed in `uv.lock` as one machine's home directory and
+# resolved to an abandoned copy nobody deployed. A repo-relative path is the same directory on every
+# checkout, so the lock entry below is portable.
+#
+# NOT a uv workspace, deliberately. A workspace shares one lockfile and one venv across its members,
+# which would put transformer-lens, nnsight, nnterp, sae-lens and torchvision into the engine's
+# resolution — the engine's dependency set is a published contract and stays minimal. Two projects,
+# two locks, two venvs, joined only by this line.
+interp-engine = { path = "..", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["comparison"]
+
+# --------------------------------------------------------------- lint / types --
+# The ruff and pyright config below is shared verbatim with the root pyproject.toml, because neither
+# tool can inherit config from outside its own project directory. Deviations are per-project paths
+# only (`include`, `exclude`, `venv`), and each is commented as such. Change a rule in both or in
+# neither; the `config-parity` job in .github/workflows/validator-tests.yml fails if the copies
+# diverge.
+
+[tool.ruff]
+line-length = 120
+# target-version is inferred from project.requires-python above.
+# `*.md`: ruff 0.16 formats Python code blocks in Markdown by default. Every workflow that runs
+# this gate filters Markdown out of its `paths:`, so a docs-only change cannot run the check and
+# the failure lands on the next unrelated Python edit instead. Doc examples are also aligned by
+# hand for reading, which the formatter collapses. Keep the two decisions together: re-enabling
+# this means dropping those `!**/*.md` filters as well.
+extend-exclude = ["*.ipynb", "*.md"]
+
+[tool.ruff.lint]
+# pyflakes + pycodestyle errors (F/E) as the floor, plus the rule families that catch defects
+# rather than taste: isort (I), pyupgrade (UP), bugbear (B), comprehensions (C4), simplify (SIM),
+# return (RET), logging (LOG), and tidy-imports (TID) for the banned typing aliases below.
+# Deliberately NOT selected: ANN/D (annotation and docstring mandates), ARG (unused arguments,
+# which fire on every framework-required signature), and T20 (bans `print`, which the validator
+# scripts use as their output).
+select = ["E", "F", "I", "UP", "B", "C4", "SIM", "RET", "LOG", "TID"]
+ignore = [
+  # Line length is the formatter's job. E501 would only fire on the strings, URLs and comments
+  # the formatter cannot split, i.e. exactly the cases where wrapping is not an improvement.
+  "E501",
+  # zip-without-explicit-strict. The correct fix is usually `strict=True`, but that changes
+  # behaviour at each of the ~30 call sites in this repo, and a blanket `strict=False` only
+  # restates the default while adding noise. Off until someone audits them for real.
+  "B905",
+]
+
+[tool.ruff.lint.flake8-bugbear]
+# B008 (function call in a default argument) is the FastAPI dependency-injection idiom in the
+# Neuronpedia services this block is also kept in step with, not the mutable-default bug the rule
+# is aimed at. Kept here only so the shared block stays identical across projects; nothing in this
+# repo imports FastAPI.
+extend-immutable-calls = [
+  "fastapi.Body",
+  "fastapi.Depends",
+  "fastapi.File",
+  "fastapi.Form",
+  "fastapi.Header",
+  "fastapi.Path",
+  "fastapi.Query",
+  "fastapi.Security",
+]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"typing.Union".msg = "Use `|` instead"
+"typing.Optional".msg = "Use `| None` instead"
+"typing.Dict".msg = "Use `dict` instead"
+"typing.List".msg = "Use `list` instead"
+
+[tool.pyright]
+# "standard" rather than "strict": strict additionally demands annotations on every parameter and
+# type arguments on every generic, which flags hundreds of sites without catching real defects.
+typeCheckingMode = "standard"
+# torch and transformers ship no stubs for large parts of their surface, so this report is noise
+# about our dependencies rather than about this code.
+reportMissingTypeStubs = "none"
+# Per-project deviation: harness source only. The engine adapters import optional extras
+# (vllm/sglang/sae-lens/transformer-lens) that are not all installed in any one venv, so they are
+# not gated here. Local uv layouts use `.venv`; pass `--pythonpath .venv-cmp/bin/python` when
+# checking against the validator venv.
+include = ["comparison"]
+exclude = [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.*",
+    "comparison/engines",
+    # Imports sae_lens, which is one of the reference backends CI deselects (see validator-tests.yml)
+    # and which no venv running this check installs. Same reason as comparison/engines above.
+    "comparison/sae_check.py",
+    "tests",
+]
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+# The scoring/reporting tests are pure-python and run anywhere. The capture itself is not a test --
+# it needs a CUDA box and several venvs, and is driven by comparison/run_all_models.sh.
+markers = [
+    "gpu: requires a CUDA GPU (skipped automatically when torch.cuda is unavailable)",
+    "xl: needs multi-GB weights -- local/dispatch only, never per-PR",
+    "gated: requires HF_TOKEN for gated model access (auto-skipped when the token is absent)",
+]
