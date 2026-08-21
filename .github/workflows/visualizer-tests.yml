@@ -35,6 +35,9 @@ on:
       - 'README.md'
       - 'interp_engine/**'
       - '.github/workflows/visualizer-tests.yml'
+  # See engine-tests.yml: both triggers above are path-filtered, so main can carry no run of this
+  # workflow and there is otherwise no way to ask for one.
+  workflow_dispatch:
 
 concurrency:
   group: visualizer-checks-${{ github.ref }}

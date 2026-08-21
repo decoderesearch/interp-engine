@@ -57,6 +57,10 @@ on:
       - 'uv.lock'
       - '!**/*.md'
       - '.github/workflows/engine-tests.yml'
+  # Both triggers above are path-filtered, so main can sit with no run of this workflow at all --
+  # after a history rewrite, or once the old runs are deleted. The README badge reads a run on main
+  # and shows a broken image when there is none, so keep a way to produce one on demand.
+  workflow_dispatch:
 
 concurrency:
   group: engine-tests-${{ github.ref }}
