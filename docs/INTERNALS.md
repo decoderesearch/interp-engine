@@ -66,6 +66,12 @@ files and why they are where they are.
   - `LD_LIBRARY_PATH`) before the first CUDA call, instead of failing ten frames deep in
     `torch.cuda._lazy_init`. Lives here because every app on the engine inherits the same CUDA
     floor — the `[vllm]` wheels link `libcudart.so.13` directly.
+- `notebook_stdout.py` — `ensure_stdout_descriptor`: gives a notebook kernel's `sys.stdout` the file
+  descriptor vLLM's engine start needs. vLLM silences C-level output by dup'ing over one and forks
+  its EngineCore child, so under ipykernel — whose stream writes to a socket and has none — the
+  child dies before it loads anything, and the caller is told to see a root cause that is in another
+  process. Called from `_ensure_engine`; a no-op in a script, a server, or a kernel that captured
+  the real descriptors itself.
 
 ## Correctness
 

@@ -8,6 +8,10 @@
  * into. The split is Colab's — see `lib/colab.ts` for why the cells cannot ride along in
  * the URL — and the template is written so the paste is the next thing a reader sees.
  *
+ * What goes on the clipboard is the snippet's `notebook` form, which on the vLLM tabs is
+ * awaited rather than the sync call the card shows: a kernel runs its cells inside an
+ * event loop, and the sync free functions refuse there. `data/snippets.ts` has the why.
+ *
  * An anchor rather than a button, so the browser opens the tab. `window.open` after
  * awaiting the clipboard is the shape a popup blocker cancels, since by then the click is
  * over. For the same reason the write is started inside the gesture and not waited for,

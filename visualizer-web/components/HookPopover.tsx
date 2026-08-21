@@ -308,7 +308,13 @@ function ReadingIt({ snippets }: { snippets: Snippet[] }) {
         {active.code !== null && (
           <div className="flex shrink-0 items-center gap-x-0.5">
             <CopyButton text={active.code} />
-            <NotebookButton text={active.code} variant={active.variant} />
+            {/* `notebook` rather than `code`: on the vLLM tabs those differ, and
+                the one that runs in a notebook is the one that should travel to
+                one. It is null only when `code` is, so this narrows a type
+                rather than describing a case. */}
+            {active.notebook !== null && (
+              <NotebookButton text={active.notebook} variant={active.variant} />
+            )}
           </div>
         )}
       </div>

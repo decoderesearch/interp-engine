@@ -25,7 +25,8 @@ would answer a question asked in one vocabulary with a snippet written in anothe
 path to the point, its tabs say so up front and give the engine's own words, which distinguish
 "unimplemented" from "unreachable" — the difference between filing a bug and switching backend.
 Beside **Copy** under those tabs is **Notebook**, which opens the selected tab's snippet in a Colab
-notebook with the engine installed — see [Running a snippet](#running-a-snippet).
+notebook with the engine installed — awaited on the vLLM tabs, since a notebook cell runs inside an
+event loop. See [Running a snippet](#running-a-snippet).
 
 The card opens to the right of the point and level with it — the side the diagram already flows
 towards, and the same side every time, so it is never above one point and below the next. It flips
@@ -386,6 +387,14 @@ to hand it a file; the request for one is [colabtools#1305], still open. The alt
 avoid the paste is creating a Gist per press, which means a credential in this deployment, an
 unauthenticated route that writes to a GitHub account, and a public artefact left behind for every
 reader who was merely curious. So the notebook is committed and the snippet is not.
+
+**On the two vLLM tabs the clipboard does not hold what the card shows.** A notebook kernel runs its
+cells inside an event loop, and there the sync free functions raise `NestedEventLoop` rather than nest
+a second one — so `run_with_cache` on a vLLM model, which reaches the engine through that bridge, is
+handed over as `await model.capture(...)` instead, with the substitution written into the snippet as a
+comment. `eager` is copied as it stands, because its free functions keep in-process bodies for an
+`EagerModel` and never reach the bridge. `data/snippets.ts` builds both forms; the card shows `code`
+and the button carries `notebook`.
 
 Three templates, in `notebooks/` at the repository root:
 

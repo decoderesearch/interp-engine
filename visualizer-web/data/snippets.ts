@@ -29,6 +29,9 @@
  * The shape comments say only what holds for every point. The last axis is the
  * card's width label, and is not restated here where it would have to be guessed
  * per point.
+ *
+ * Every snippet is built twice, because a notebook cannot run all of them: see
+ * `Snippet.notebook`, which is what the Notebook button puts on the clipboard.
  */
 
 import { pointSpec, vllmReason } from "@/data/points";
@@ -74,9 +77,48 @@ export interface Snippet {
   variant: Variant;
   /** Python, or null where this variant has no path to the point. */
   code: string | null;
+  /**
+   * The same reading, as a notebook kernel can run it. Null exactly when `code`
+   * is, since the form of the call is not what decides whether there is one.
+   */
+  notebook: string | null;
   /** Why there is no code, or what the code does not say for itself. */
   note?: string;
 }
+
+/** What one builder produces: the code, or why there is none. */
+type Reading = Pick<Snippet, "code" | "note">;
+
+/**
+ * How the call is written: through the sync free functions, or awaiting the
+ * methods on the model. Usually implied by the tab — `vllm async` is the awaited
+ * one — but the notebook form overrides it, so it travels as its own argument.
+ */
+type Form = "sync" | "await";
+
+function formOf(variant: Variant): Form {
+  return variant === "vllm-async" ? "await" : "sync";
+}
+
+/**
+ * The form each tab is handed over in when it is going to a notebook.
+ *
+ * A notebook kernel runs its cells inside an event loop — Colab's does, and so
+ * does anything on ipykernel 6 — and there the sync free functions raise
+ * `NestedEventLoop` rather than nest a second one. That is every call which
+ * reaches the engine through the sync bridge, which is both vLLM tabs:
+ * `run_with_cache` on a vLLM model dispatches through `sync_model`.
+ *
+ * `eager` is left alone rather than awaited for symmetry. Its free functions
+ * keep in-process bodies for an `EagerModel` and never reach that bridge, so the
+ * tab's own snippet is already the one to paste.
+ */
+const NOTEBOOK_FORM: Record<Variant, Form> = {
+  vllm: "await",
+  eager: "sync",
+  "vllm-static": "await",
+  "vllm-async": "await",
+};
 
 /**
  * All a snippet reads of a point: which tensor, and where. A `GraphNode`
@@ -99,7 +141,39 @@ export function readingSnippet(
   node: Located,
   hfId: string,
 ): Snippet {
-  return { variant, ...snippet(variant, node, hfId) };
+  const reading = snippet(variant, node, hfId);
+  return {
+    variant,
+    ...reading,
+    notebook: notebookForm(variant, node, hfId, reading),
+  };
+}
+
+/**
+ * `reading` again in the form `NOTEBOOK_FORM` asks for, and said so in the code.
+ *
+ * The substitution is written into the snippet because it is the one thing about
+ * it a reader did not choose: they pressed the button on the `vllm` tab and are
+ * about to paste something that does not match it line for line. The alternative
+ * — copying the tab verbatim — is a `NestedEventLoop` traceback on the first run,
+ * which says the same thing much later and after an install.
+ */
+function notebookForm(
+  variant: Variant,
+  node: Located,
+  hfId: string,
+  reading: Reading,
+): string | null {
+  const form = NOTEBOOK_FORM[variant];
+  if (reading.code === null || form === formOf(variant)) return reading.code;
+  // A refusal is read off the point, not off the form, so this is the same
+  // non-null code as above and the fallback is unreachable.
+  const awaited = snippet(variant, node, hfId, form).code ?? reading.code;
+  return [
+    `# The ${VARIANT_LABEL[variant]} tab's snippet, awaited: a notebook runs its cells inside an`,
+    "# event loop, where interp-engine's sync functions refuse rather than nest a second one.",
+    awaited,
+  ].join("\n");
 }
 
 /**
@@ -120,16 +194,17 @@ function snippet(
   variant: Variant,
   node: Located,
   hfId: string,
-): Omit<Snippet, "variant"> {
+  form: Form = formOf(variant),
+): Reading {
   const refusal = variant === "eager" ? null : vllmRefusal(node);
   if (refusal) return refusal;
-  if (variant === "vllm-static") return staticSnippet(node, hfId);
+  if (variant === "vllm-static") return staticSnippet(node, hfId, form);
 
   const backend = variant === "eager" ? "eager" : "vllm";
   const load = `model = load_model("${hfId}", backend="${backend}")`;
 
-  if (PATTERN_POINTS.has(node.point)) return pattern(variant, node, load);
-  return activation(variant, node, load);
+  if (PATTERN_POINTS.has(node.point)) return pattern(variant, node, load, form);
+  return activation(node, load, form);
 }
 
 /**
@@ -140,9 +215,11 @@ function snippet(
  * thing this tab is here to show. Every other backend can be handed a point it
  * has never seen; this one refuses it, and the refusal is a reload.
  */
-function staticSnippet(node: Located, hfId: string): Omit<Snippet, "variant"> {
+function staticSnippet(node: Located, hfId: string, form: Form): Reading {
   const blocked = staticRefusal(node);
   if (blocked) return { code: null, note: blocked };
+
+  const awaited = form === "await";
 
   // The attention trio is declared as the `attn` tap it is rebuilt from, not under
   // its own name — the same substitution `static_unsupported_reason` tells a caller
@@ -151,12 +228,22 @@ function staticSnippet(node: Located, hfId: string): Omit<Snippet, "variant"> {
     const key = node.point === "attn_scores" ? "scores" : "probs";
     return {
       code: [
-        "from interp_engine import Address, capture_attention, load_model",
+        awaited
+          ? "from interp_engine import Address, load_model"
+          : "from interp_engine import Address, capture_attention, load_model",
         "",
         `tap = Address("attn", ${node.layer})  # q/k, which the matrix is rebuilt from`,
         `model = load_model("${hfId}", backend="vllm-static", static_points=[tap])`,
-        `ids = model.to_tokens("${PROMPT}")`,
-        `out = capture_attention(model, ids, [${node.layer}])`,
+        ...(awaited
+          ? [
+              "await model.warmup()",
+              `ids = model.to_tokens("${PROMPT}")[0].tolist()`,
+              `out = await model.capture_attention(ids, [${node.layer}])`,
+            ]
+          : [
+              `ids = model.to_tokens("${PROMPT}")`,
+              `out = capture_attention(model, ids, [${node.layer}])`,
+            ]),
         `out[${node.layer}]["${key}"]  # [n_heads, dest, src]`,
       ].join("\n"),
       note: `${node.point} is not a tap of its own on this backend: declare the attn tap and capture_attention recomputes the matrix from the captured q/k.`,
@@ -165,13 +252,24 @@ function staticSnippet(node: Located, hfId: string): Omit<Snippet, "variant"> {
 
   return {
     code: [
-      "from interp_engine import Address, load_model, run_with_cache",
+      awaited
+        ? "from interp_engine import Address, load_model"
+        : "from interp_engine import Address, load_model, run_with_cache",
       "",
       `point = ${addressCall(node)}`,
       `model = load_model("${hfId}", backend="vllm-static", static_points=[point])`,
-      `ids = model.to_tokens("${PROMPT}")`,
-      "cache = run_with_cache(model, ids, [point])",
-      "cache[point]  # [batch, pos, ...]",
+      ...(awaited
+        ? [
+            "await model.warmup()",
+            `ids = model.to_tokens("${PROMPT}")[0].tolist()`,
+            "acts = await model.capture(ids, [point])",
+            "acts[point]  # [pos, ...]",
+          ]
+        : [
+            `ids = model.to_tokens("${PROMPT}")`,
+            "cache = run_with_cache(model, ids, [point])",
+            "cache[point]  # [batch, pos, ...]",
+          ]),
     ].join("\n"),
     note: 'The tap set is baked into the CUDA graphs at load, so this engine serves this point and refuses any other. Pass static_points="auto" for resid_post at every layer instead.',
   };
@@ -194,7 +292,7 @@ function staticRefusal(node: Located): string | null {
  * Why vLLM cannot read this point, or null if it can. Read off the point's spec
  * rather than tried and caught, so the card can say so without a model.
  */
-function vllmRefusal(node: Located): Omit<Snippet, "variant"> | null {
+function vllmRefusal(node: Located): Reading | null {
   const spec = pointSpec(node.point);
   const served = spec?.vllm === "hooks" || spec?.vllm === "recompute";
   if (!served) return { code: null, note: vllmReason(node.point) };
@@ -223,14 +321,15 @@ function pattern(
   variant: Variant,
   node: Located,
   load: string,
-): Omit<Snippet, "variant"> {
+  form: Form,
+): Reading {
   const key = node.point === "attn_scores" ? "scores" : "probs";
   const note =
     variant === "eager"
       ? 'Rebuilt from the real softmax, so the model has to be loaded with attn_implementation="eager" — which the eager backend does.'
       : vllmReason(node.point);
 
-  if (variant === "vllm-async") {
+  if (form === "await") {
     return {
       code: [
         "from interp_engine import load_model",
@@ -259,12 +358,8 @@ function pattern(
 }
 
 /** Every other point: one address through the capture. */
-function activation(
-  variant: Variant,
-  node: Located,
-  load: string,
-): Omit<Snippet, "variant"> {
-  if (variant === "vllm-async") {
+function activation(node: Located, load: string, form: Form): Reading {
+  if (form === "await") {
     return {
       code: [
         "from interp_engine import Address, load_model",

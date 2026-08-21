@@ -30,6 +30,7 @@ from interp_engine import facts
 from interp_engine._loop import refuse_foreign_loop
 from interp_engine.address import Address, format_address, to_address
 from interp_engine.autograd_support import GradSupport, vllm_grad_support
+from interp_engine.notebook_stdout import ensure_stdout_descriptor
 from interp_engine.points import d_model_wide, hyper_connection_names, refusal_reasons
 from interp_engine.points import steer_refusal_reason as points_steer_refusal
 from interp_engine.residual_basis import ResidualBasis, vllm_residual_basis
@@ -1213,6 +1214,9 @@ class VLLMModel:
                         tuple(getattr(self, "_static_reads", ())),
                         tuple(getattr(self, "_static_writes", ())),
                     )
+                    # The line below forks a child that suppresses stdout by descriptor, which a
+                    # notebook kernel's stdout does not have. See `notebook_stdout`.
+                    ensure_stdout_descriptor()
                     self.engine = AsyncLLM.from_engine_args(AsyncEngineArgs(**self._engine_kwargs))
                     self._engine_loop = asyncio.get_running_loop()
         return self.engine
