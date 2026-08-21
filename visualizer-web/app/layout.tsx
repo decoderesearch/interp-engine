@@ -32,7 +32,7 @@ const title = "Interp Engine";
 const description =
   "interp-engine is a fast, standardized, and easy-to-use interpretability engine.";
 const ogImage = {
-  url: "https://neuronpedia.s3.amazonaws.com/site-assets/interp-engine-meta.jpg",
+  url: "https://neuronpedia.s3.amazonaws.com/site-assets/interp-engine-meta.png",
   width: 1730,
   height: 882,
   alt: title,
