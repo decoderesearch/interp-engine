@@ -20,6 +20,11 @@
  * without it being told. That matters for one thing beyond the tour: Ask Riz
  * opens on arrival for a returning reader and stays shut behind the tour for a
  * new one, so closing the tour is what hands the page over to the frog.
+ *
+ * `useJustVisited` is the second half of that, and it is what a phone reads
+ * instead. It answers a narrower question — did the tour close during *this*
+ * page load — which is the difference between the panel introducing itself once
+ * and the panel being in the way on every visit afterwards.
  */
 
 import { useSyncExternalStore } from "react";
@@ -32,6 +37,13 @@ const KEY = "interp-engine:visited";
  * per render is not free either.
  */
 let visited: boolean | null = null;
+
+/**
+ * Whether the flip above happened here, on this page load, rather than on some
+ * earlier one. A returning reader arrives visited, so nothing sets this and it
+ * stays false for the life of the page.
+ */
+let visitedHere = false;
 
 const listeners = new Set<() => void>();
 
@@ -59,11 +71,19 @@ function firstVisit(): boolean {
   return !visited;
 }
 
-/** Nothing is a first visit during the prerender. */
+function justVisited(): boolean {
+  return visitedHere;
+}
+
+/** Nothing is a first visit during the prerender, and nothing closes a tour. */
 const neverFirst = () => false;
 
 export function useFirstVisit(): boolean {
   return useSyncExternalStore(subscribe, firstVisit, neverFirst);
+}
+
+export function useJustVisited(): boolean {
+  return useSyncExternalStore(subscribe, justVisited, neverFirst);
 }
 
 export function markVisited(): void {
@@ -75,5 +95,6 @@ export function markVisited(): void {
   }
   if (visited === true) return;
   visited = true;
+  visitedHere = true;
   for (const listener of [...listeners]) listener();
 }

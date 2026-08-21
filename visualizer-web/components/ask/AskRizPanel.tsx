@@ -52,11 +52,14 @@ export function AskRizPanel({
   open,
   onClose,
   state,
+  focusOnOpen,
 }: {
   id: string;
   open: boolean;
   onClose: () => void;
   state: VisualizerState;
+  /** Whether this opening was a press. The launcher is what knows. */
+  focusOnOpen: boolean;
 }) {
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -114,20 +117,23 @@ export function AskRizPanel({
   }, [open, onClose]);
 
   /**
-   * Focus on being opened, but not on arriving open.
+   * Focus on being opened by the reader, and only then.
    *
-   * The panel starts open, and focusing a text field the reader did not ask
-   * for is the wrong thing twice: on a phone it raises the keyboard over the
-   * diagram they came for, and everywhere it takes the caret away from a page
-   * whose own shortcuts they may want. Tracking the transition rather than the
-   * value keeps the focus on the click, which is where it was earned.
+   * Focusing a text field nobody asked for is the wrong thing twice: on a
+   * phone it raises the keyboard over the diagram they came for, and
+   * everywhere it takes the caret away from a page whose own shortcuts they
+   * may want. So two conditions, and neither is the panel merely being open.
+   * The transition keeps a press from re-focusing a panel that is already
+   * showing, and `focusOnOpen` keeps the openings that were nobody's press --
+   * arriving open, and the phone's opening as the tour closes -- from counting
+   * as one.
    */
   const wasOpen = useRef(open);
   useEffect(() => {
     const justOpened = open && !wasOpen.current;
     wasOpen.current = open;
-    if (justOpened) inputRef.current?.focus();
-  }, [open]);
+    if (justOpened && focusOnOpen) inputRef.current?.focus();
+  }, [open, focusOnOpen]);
 
   // Follows the answer as it streams. `messages` is a new array on every chunk,
   // so this runs per chunk, which is what makes it follow rather than jump.
@@ -161,9 +167,9 @@ export function AskRizPanel({
           // Anchored to whichever corner its launcher is in: bottom right on a
           // phone, growing up out of the floating button, and below the header
           // from `sm` up where the button is in the header row. `bottom-20`
-          // clears the 48px button and its 16px inset. The phone height is two
-          // thirds of the desktop 480px cap.
-          className="fixed right-3 bottom-20 z-40 flex h-[min(320px,calc(100dvh-7rem))] w-[min(400px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl shadow-slate-900/10 sm:top-12 sm:bottom-auto sm:h-[min(480px,calc(100dvh-4.5rem))]"
+          // clears the 48px button and its 16px inset. The phone height is
+          // shorter again, for a window that is shorter to begin with.
+          className="fixed right-3 bottom-20 z-40 flex h-[min(320px,calc(100dvh-7rem))] w-[min(400px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl shadow-slate-900/10 sm:top-12 sm:bottom-auto sm:h-[min(380px,calc(100dvh-4.5rem))]"
         >
           <div className="flex shrink-0 items-center gap-x-2 border-b border-slate-200 px-3 py-2">
             <span className="relative block h-6 w-6 shrink-0 overflow-hidden rounded-full bg-lime-50">
