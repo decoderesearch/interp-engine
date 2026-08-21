@@ -28,10 +28,32 @@ const geistMono = Geist_Mono({
   ],
 });
 
+const title = "Interp Engine";
+const description =
+  "interp-engine is a fast, standardized, and easy-to-use interpretability engine.";
+const ogImage = {
+  url: "https://neuronpedia.s3.amazonaws.com/site-assets/interp-engine-meta.jpg",
+  width: 1730,
+  height: 882,
+  alt: title,
+};
+
 export const metadata: Metadata = {
-  title: "Interp Engine",
-  description:
-    "interp-engine is a fast, standardized, and easy-to-use interpretability engine.",
+  title,
+  description,
+  openGraph: {
+    title,
+    description,
+    type: "website",
+    siteName: title,
+    images: [ogImage],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title,
+    description,
+    images: [ogImage],
+  },
 };
 
 export const viewport: Viewport = {
