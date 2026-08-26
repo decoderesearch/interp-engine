@@ -1,6 +1,10 @@
 /**
  * Architecture presets. Keyed by HF architecture class, matching the ids in the
- * validator's `comparison/sweep_architectures.json`.
+ * validator's `comparison/sweep_architectures.json` — except where one class
+ * covers two wirings, which so far is Gemma 4 alone: its 26B declares the same
+ * `Gemma4ForConditionalGeneration` as the dense SKUs and switches the experts on
+ * with a config flag. That preset takes a synthetic `id` and names the real
+ * class in `hfClass`, so the URL key stays stable and the class stays recorded.
  *
  * Selecting one only sets traits. Layer, head and neuron counts stay wherever
  * the user put them, except where a trait imposes a floor — the diagram is a
@@ -183,14 +187,57 @@ const FAMILIES: Architecture[] = [
     label: "Gemma 4",
     released: "2026-04",
     significance:
-      "Gemma 4 stopped treating a layer as a copy of its neighbours: attention width varies by layer type, and past a cutoff a layer reuses an earlier layer's keys and values rather than projecting its own. Cutting that much KV cache and that many parameters is what fits an effective-2B model into about a gigabyte on a phone, at the cost of twenty of its thirty-five layers having no value tensor at all.",
-    traits: ["gqa", "gated_mlp", "qk_norm", "sandwich_norms", "sliding_window"],
+      "Gemma 4 stopped treating a layer as a copy of its neighbours: attention width varies by layer type, and on the edge models a layer past a cutoff reuses an earlier layer's keys and values rather than projecting its own. Cutting that much KV cache and that many parameters is what fits an effective-2B model into about a gigabyte on a phone, at the cost of twenty of its thirty-five layers having no value tensor at all.",
+    traits: [
+      "gqa",
+      "gated_mlp",
+      "qk_norm",
+      "sandwich_norms",
+      "sliding_window",
+      "logit_softcapping",
+    ],
     exampleModels: [
       "google/gemma-4-E2B",
       "google/gemma-4-E4B",
       "google/gemma-4-31B",
     ],
-    note: "Wired like Gemma 3, but head width varies by layer and later layers reuse an earlier layer's keys and values instead of projecting their own — on E2B, 20 of 35 layers have no v_proj at all. Neither is drawn here yet.",
+    note: "Softcapping is back after Gemma 3 dropped it. Head width varies by layer, and two things this diagram does not draw: E2B and E4B reuse an earlier layer's keys and values past a cutoff (20 of E2B's 35 layers have no v_proj), while the 31B instead sets attention_k_eq_v, so its full-attention layers use the key projection as the value and have no v_proj either.",
+  },
+  {
+    id: "Gemma4Moe",
+    hfClass: "Gemma4ForConditionalGeneration",
+    label: "Gemma 4 MoE",
+    released: "2026-04",
+    significance:
+      "Gemma 4's 26B does not swap its MLP for an expert bank the way every other sparse family does — it keeps the dense MLP and runs 128 routed experts alongside it, summing the two branches. Eight experts fire per token for 3.8B active out of 26B, and because the dense branch stays, a sparse layer here still has a real neuron basis to read.",
+    traits: [
+      "gqa",
+      "gated_mlp",
+      "qk_norm",
+      "sandwich_norms",
+      "sliding_window",
+      "logit_softcapping",
+      "moe",
+    ],
+    exampleModels: ["google/gemma-4-26B-A4B-it"],
+    note: "The one family here whose class does not identify its wiring: it declares Gemma4ForConditionalGeneration like the dense SKUs and turns the experts on with enable_moe_block. Two things the diagram gets wrong as a result. It greys out mlp_pre, mlp_pre_linear and mlp_act, because on every other MoE family the expert bank replaces the MLP — here the dense MLP survives beside it, so those points are real. And mlp_out is drawn as the whole feed-forward when it is only the dense half: the routed branch is a sibling of layer.mlp, not inside it, and the two are summed after.",
+  },
+  {
+    id: "Gemma4UnifiedForConditionalGeneration",
+    label: "Gemma 4 Unified",
+    released: "2026-04",
+    significance:
+      "Gemma 4's 12B drops the vision and audio encoders entirely and projects raw image and audio input straight into the token stream with linear maps. Removing two towers takes a whole class of modality-specific plumbing out of the model, and leaves one dense trunk that reads every input the same way.",
+    traits: [
+      "gqa",
+      "gated_mlp",
+      "qk_norm",
+      "sandwich_norms",
+      "sliding_window",
+      "logit_softcapping",
+    ],
+    exampleModels: ["google/gemma-4-12B", "google/gemma-4-12B-it"],
+    note: "Encoder-free: same trunk as the dense Gemma 4, reached through Gemma4UnifiedForConditionalGeneration instead. The difference is all in front of the decoder, so the diagram is the dense one.",
   },
   {
     id: "Olmo3ForCausalLM",
@@ -396,10 +443,11 @@ export function displayModel(hfId: string): string {
  * snap the picker back to a named family when the toggles happen to match one.
  *
  * Families can share a trait set — Llama and Qwen2.5 differ in nothing this
- * vocabulary can express, and neither do Gemma 3 and Gemma 4 — so `preferred`,
- * the one the user actually picked, wins over list order for as long as its
- * traits still hold. Without it, choosing the second of a pair would silently
- * rename itself to the first.
+ * vocabulary can express, and neither do Gemma 4 and Gemma 4 Unified, whose
+ * whole difference sits in front of the decoder — so `preferred`, the one the
+ * user actually picked, wins over list order for as long as its traits still
+ * hold. Without it, choosing the second of a pair would silently rename itself
+ * to the first.
  */
 export function matchArchitecture(
   traits: Set<string>,

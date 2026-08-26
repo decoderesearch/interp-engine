@@ -324,6 +324,11 @@ class ArchSpec:
     # elsewhere; use :meth:`head_dim_for_layer` / :meth:`kv_heads_for_layer`.
     per_layer_head_dim: tuple[int, ...] = ()
     per_layer_kv_heads: tuple[int, ...] = ()
+    # Gemma-4's ``num_global_key_value_heads`` and ``attention_k_eq_v``: the older spelling of the
+    # per-layer kv-head count, and the flag that decides whether it applies. See
+    # :func:`facts.kv_heads_for_layer`.
+    global_kv_heads: int | None = None
+    k_eq_v: bool = False
     # The width of one *value* head, where the family makes it differ from the q/k head (MiMo-V2,
     # DeepSeek). 0 means "same as the q/k head"; use :meth:`value_head_dim_for_layer`.
     v_head_dim: int = 0
@@ -914,12 +919,20 @@ class ArchSpec:
     def kv_heads_for_layer(self, layer: int) -> int:
         """How many key/value heads ``layer`` attends with.
 
-        :attr:`n_kv_heads` for every family but Gemma-4-31B, whose full-attention layers carry 4 where
-        its sliding ones carry 16. Prefer this anywhere ``k``, ``value`` or a k-side norm is reshaped
-        per head: the model-wide number divides cleanly into the other layers' widths, so getting it
-        wrong scrambles heads rather than raising. See :func:`facts.kv_heads_for_layer`.
+        :attr:`n_kv_heads` for every family but Gemma-4, whose full-attention layers carry 4 where its
+        sliding ones carry 16 on the 31B, and 2 against 8 on the 26B. Prefer this anywhere ``k``,
+        ``value`` or a k-side norm is reshaped per head: the model-wide number divides cleanly into
+        the other layers' widths, so getting it wrong scrambles heads rather than raising. See
+        :func:`facts.kv_heads_for_layer`.
         """
-        return facts.kv_heads_for_layer(self.n_kv_heads, layer, self.per_layer_kv_heads)
+        return facts.kv_heads_for_layer(
+            self.n_kv_heads,
+            layer,
+            self.per_layer_kv_heads,
+            self.global_kv_heads,
+            self.quirks.hybrid_layer_types,
+            self.k_eq_v,
+        )
 
     def value_head_dim_for_layer(self, layer: int) -> int:
         """``layer``'s *value* head width -- what ``value`` and ``z`` are per head.
@@ -1160,6 +1173,8 @@ def resolve_arch(model: nn.Module, config: Any) -> ArchSpec:
         global_head_dim=model_facts.global_head_dim,
         per_layer_head_dim=model_facts.per_layer_head_dim,
         per_layer_kv_heads=model_facts.per_layer_kv_heads,
+        global_kv_heads=model_facts.global_kv_heads,
+        k_eq_v=model_facts.k_eq_v,
         v_head_dim=model_facts.v_head_dim,
         first_kv_shared_layer=model_facts.first_kv_shared_layer,
         layer_slots=layer_slots,

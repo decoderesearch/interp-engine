@@ -47,7 +47,12 @@ function optionsFor(query: string, exclude: string | null): Architecture[] {
   return ARCHITECTURES.filter((arch) => {
     if (arch.id === exclude) return false;
     if (!term) return true;
-    const haystack = [arch.label, arch.id, ...arch.exampleModels]
+    const haystack = [
+      arch.label,
+      arch.id,
+      arch.hfClass ?? "",
+      ...arch.exampleModels,
+    ]
       .join(" ")
       .toLowerCase();
     return haystack.includes(term);

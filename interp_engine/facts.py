@@ -1072,7 +1072,15 @@ def logit_multiplier(cfg: Any) -> tuple[float | None, str]:
 
 # Four spellings of the routed-expert count, all in current use.
 _N_EXPERTS_FIELDS: tuple[str, ...] = ("num_local_experts", "num_experts", "n_routed_experts", "moe_num_experts")
-_EXPERTS_PER_TOKEN_FIELDS: tuple[str, ...] = ("num_experts_per_tok", "experts_per_token", "moe_topk")
+# ``top_k_experts`` is Gemma-4's. Missing it did not merely lose a number: :func:`assert_routing_shapes`
+# guards its width check with ``and top_k``, so a zero here switched off the check that catches a
+# router tuple read in the wrong order -- on the newest MoE family, and silently.
+_EXPERTS_PER_TOKEN_FIELDS: tuple[str, ...] = (
+    "num_experts_per_tok",
+    "experts_per_token",
+    "moe_topk",
+    "top_k_experts",
+)
 _N_SHARED_EXPERTS_FIELDS: tuple[str, ...] = ("n_shared_experts", "num_shared_experts")
 
 
@@ -1228,6 +1236,27 @@ def block_types_name_the_feed_forward(cfg: Any) -> bool:
     return any(str(kind).lower() in SPARSE_MLP_LAYER_KINDS | DENSE_MLP_LAYER_KINDS for kind in kinds)
 
 
+def dense_mlp_beside_experts(cfg: Any) -> bool:
+    """Whether a sparse layer *also* runs a dense MLP, whose output is added to the experts'.
+
+    Every other MoE family replaces the feed-forward with an expert bank, so a sparse layer has no
+    dense MLP and no neuron basis. Gemma-4 does not: ``Gemma4TextDecoderLayer`` builds ``self.mlp`` on
+    every layer, and where ``enable_moe_block`` is set it adds a routed branch *beside* it, combining
+    them as ``hidden_states_1 + hidden_states_2`` -- two separately normed branches that both read the
+    pre-feedforward residual.
+
+    Two consequences, and they pull in opposite directions, which is why this is its own fact. The
+    parameter count of a sparse layer includes the dense MLP, so subtracting it (as the arithmetic
+    does everywhere else) undercounts. And the dense neuron basis is real on a sparse layer here, so
+    refusing ``mlp_act`` on one would be wrong.
+
+    Not the same thing as a shared expert: that lives inside the MoE block and is sized by
+    ``moe_intermediate_size``, while this branch is the ordinary ``intermediate_size`` MLP that the
+    checkpoint's dense siblings also carry.
+    """
+    return bool(config_attr(cfg, "enable_moe_block", False))
+
+
 def is_moe_layer(cfg: Any, layer: int) -> bool:
     """Whether ``layer``'s ``mlp`` is a sparse MoE block rather than a dense MLP.
 
@@ -1322,18 +1351,36 @@ def head_dim_for_layer(
     return head_dim if "sliding" in str(layer_types[layer]).lower() else global_head_dim
 
 
-def kv_heads_for_layer(n_kv_heads: int, layer: int, per_layer: tuple[int, ...] = ()) -> int:
+def kv_heads_for_layer(
+    n_kv_heads: int,
+    layer: int,
+    per_layer: tuple[int, ...] = (),
+    global_kv_heads: int | None = None,
+    layer_types: tuple[str, ...] | None = None,
+    k_eq_v: bool = False,
+) -> int:
     """How many key/value heads ``layer`` attends with.
 
-    One number for the whole model on every family but Gemma-4-31B, whose full-attention layers carry
-    4 where its sliding ones carry 16 -- and whose config says so only through ``per_layer_config``,
-    so there is no older spelling to fall back to and ``per_layer`` empty means the model-wide value
-    is the answer. Getting it wrong is not a shape error (see :func:`effective_kv_heads`): the
-    reshape succeeds into a head count the layer does not have.
+    One number for the whole model on every family but Gemma-4, whose full-attention layers carry 4
+    where its sliding ones carry 16 on the 31B (2 against 8 on the 26B, 1 against 8 on the 12B).
+    Getting it wrong is not a shape error (see :func:`effective_kv_heads`): the reshape succeeds into
+    a head count the layer does not have.
+
+    Two spellings, as with :func:`head_dim_for_layer`. ``per_layer`` is the table a heterogeneous
+    config states outright (transformers >= 5.15) and wins where it exists. ``global_kv_heads`` is the
+    older ``num_global_key_value_heads``, and it applies only where the modeling code applies it:
+    ``Gemma4TextAttention`` takes it when ``attention_k_eq_v and not is_sliding``, and the model-wide
+    count otherwise. The ``k_eq_v`` gate is not decoration -- E2B and E4B set that flag false and
+    carry ``num_global_key_value_heads: null``, so reading the field unconditionally would be wrong
+    the moment a checkpoint states one without switching the flag on.
     """
     if per_layer and layer < len(per_layer):
         return per_layer[layer]
-    return n_kv_heads
+    if not (k_eq_v and global_kv_heads):
+        return n_kv_heads
+    if not layer_types or layer >= len(layer_types):
+        return n_kv_heads
+    return n_kv_heads if "sliding" in str(layer_types[layer]).lower() else global_kv_heads
 
 
 # A scalar the attention module multiplies its value vectors by *after* the projection, so the tensor
@@ -1747,6 +1794,15 @@ class ModelFacts:
     # prefer these; see :func:`per_layer_ints`.
     per_layer_head_dim: tuple[int, ...] = ()
     per_layer_kv_heads: tuple[int, ...] = ()
+    # Gemma-4's kv-head count for its ``full_attention`` layers, which it states as
+    # ``num_global_key_value_heads`` and applies only when ``attention_k_eq_v`` is on. The older
+    # spelling of what ``per_layer_kv_heads`` carries on transformers >= 5.15; ask
+    # :meth:`kv_heads_for_layer`.
+    global_kv_heads: int | None = None
+    # Gemma-4's ``attention_k_eq_v``: on its ``full_attention`` layers the value tensor *is* the key
+    # projection's output (differently normed and un-RoPE'd), and those layers are built with
+    # ``v_proj = None``. True on 26B/31B/12B, false on E2B/E4B.
+    k_eq_v: bool = False
     # The width of one value head, which differs from ``head_dim`` on MiMo-V2 and the DeepSeek MLA
     # families. See :func:`value_head_dim`; ``value`` and ``z`` are this wide per head, not ``head_dim``.
     v_head_dim: int = 0
@@ -1759,6 +1815,9 @@ class ModelFacts:
     n_experts: int = 0
     experts_per_token: int = 0
     n_shared_experts: int = 0
+    # Gemma-4: a sparse layer keeps its dense MLP and adds the routed branch beside it, so the two
+    # coexist rather than the experts replacing the MLP. See :func:`dense_mlp_beside_experts`.
+    dense_mlp_beside_experts: bool = False
     # Layers whose ``mlp`` is a sparse block. Precomputed here because the branch needs config
     # fields that the vLLM client does not carry across the process boundary.
     moe_layers: tuple[int, ...] = ()
@@ -1842,8 +1901,10 @@ class ModelFacts:
         return head_dim_for_layer(self.head_dim, self.global_head_dim, self.layer_types, layer, self.per_layer_head_dim)
 
     def kv_heads_for_layer(self, layer: int) -> int:
-        """``layer``'s kv-head count. Prefer this to :attr:`n_kv_heads`, which is wrong on Gemma-4-31B."""
-        return kv_heads_for_layer(self.n_kv_heads, layer, self.per_layer_kv_heads)
+        """``layer``'s kv-head count. Prefer this to :attr:`n_kv_heads`, which is wrong on Gemma-4."""
+        return kv_heads_for_layer(
+            self.n_kv_heads, layer, self.per_layer_kv_heads, self.global_kv_heads, self.layer_types, self.k_eq_v
+        )
 
     def value_head_dim_for_layer(self, layer: int) -> int:
         """``layer``'s *value* head width, for reshaping ``value`` and ``z``. See :func:`value_head_dim`.
@@ -2198,11 +2259,14 @@ def resolve_facts(config: Any, *, n_layers_fallback: int | None = None) -> Model
         global_head_dim=_first_int(cfg, ("global_head_dim",)) or None,
         per_layer_head_dim=per_layer_ints(cfg, "head_dim", n_layers),
         per_layer_kv_heads=per_layer_ints(cfg, "num_key_value_heads", n_layers),
+        global_kv_heads=_first_int(cfg, ("num_global_key_value_heads",)) or None,
+        k_eq_v=bool(config_attr(cfg, "attention_k_eq_v", False)),
         v_head_dim=value_head_dim(cfg, head_dim),
         first_kv_shared_layer=first_kv_shared_layer(cfg, n_layers),
         n_experts=n_experts(cfg),
         experts_per_token=_first_int(cfg, _EXPERTS_PER_TOKEN_FIELDS) or 0,
         n_shared_experts=_first_int(cfg, _N_SHARED_EXPERTS_FIELDS) or 0,
+        dense_mlp_beside_experts=dense_mlp_beside_experts(cfg),
         moe_layers=tuple(layer for layer in range(n_layers) if is_moe_layer(cfg, layer)),
         logit_multiplier=multiplier,
         logit_multiplier_source=multiplier_source,

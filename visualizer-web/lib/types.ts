@@ -98,8 +98,19 @@ export interface Trait {
 }
 
 export interface Architecture {
-  /** HF architecture class, as in the validator's `sweep_architectures.json`. */
+  /**
+   * Stable key for this preset: the URL's `arch` param, and the map key. Equal
+   * to the HF architecture class wherever one class means one wiring, which is
+   * every family here but Gemma 4.
+   */
   id: string;
+  /**
+   * The HF architecture class, when it is not the id. Set only where one class
+   * covers two wirings and the config decides which: Gemma 4's 26B declares the
+   * same `Gemma4ForConditionalGeneration` as its dense siblings and turns the
+   * experts on with `enable_moe_block`, so the class cannot key the preset.
+   */
+  hfClass?: string;
   label: string;
   /**
    * `YYYY-MM`, when the architecture class first shipped rather than when the

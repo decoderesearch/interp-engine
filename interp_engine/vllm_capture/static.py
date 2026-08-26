@@ -446,9 +446,12 @@ def _config_weight_bytes(config: Any) -> int:
     routed_mlp = f.n_experts * 3 * f.d_model * moe_inter
     shared_mlp = f.n_shared_experts * 3 * f.d_model * moe_inter
     n_sparse = len(f.moe_layers) if f.n_experts else 0
+    # Gemma-4's sparse layers keep their dense MLP beside the experts, so it is paid on every layer.
+    # It stays at the model dtype either way -- it is not part of the quantized routed bank.
+    n_dense = f.n_layers if f.dense_mlp_beside_experts else f.n_layers - n_sparse
     embeddings = f.vocab_size * f.d_model * (1 if f.tied_embeddings else 2)
     stored = _storage_dtype_bytes(config)
-    at_model_dtype = f.n_layers * attn + (f.n_layers - n_sparse) * dense_mlp + n_sparse * shared_mlp + embeddings
+    at_model_dtype = f.n_layers * attn + n_dense * dense_mlp + n_sparse * shared_mlp + embeddings
     return int(at_model_dtype * stored + n_sparse * routed_mlp * _expert_dtype_bytes(config, stored))
 
 

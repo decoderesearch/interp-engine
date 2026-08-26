@@ -48,8 +48,11 @@ def estimated_param_count(config: Any) -> int:
     sparse_mlp = (f.n_experts + f.n_shared_experts) * 3 * f.d_model * moe_inter if f.n_experts else dense_mlp
 
     n_sparse = len(f.moe_layers)
+    # Gemma-4's sparse layers keep their dense MLP and add the experts beside it, so the dense branch
+    # is paid on every layer there rather than only on the ones with no experts.
+    n_dense = f.n_layers if f.dense_mlp_beside_experts else f.n_layers - n_sparse
     embeddings = f.vocab_size * f.d_model * (1 if f.tied_embeddings else 2)
-    return f.n_layers * attn + n_sparse * sparse_mlp + (f.n_layers - n_sparse) * dense_mlp + embeddings
+    return f.n_layers * attn + n_sparse * sparse_mlp + n_dense * dense_mlp + embeddings
 
 
 def weight_bytes(config: Any, dtype: str) -> int:
