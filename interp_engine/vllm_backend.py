@@ -315,6 +315,11 @@ def read_attn_dims(hf_model_id: str, trust_remote_code: bool = True) -> dict[str
         # Empty on a config that describes one shape for the whole model.
         "per_layer_head_dim": model_facts.per_layer_head_dim,
         "per_layer_kv_heads": model_facts.per_layer_kv_heads,
+        # The older spelling of that kv-head count (`num_global_key_value_heads`), and the flag
+        # Gemma-4 gates it on. Carried so a transformers below 5.15 -- which states no per-layer
+        # table -- still gets the wide layers' count right rather than the sliding one's.
+        "global_kv_heads": model_facts.global_kv_heads,
+        "k_eq_v": model_facts.k_eq_v,
         # From here on a layer reuses an earlier layer's keys/values and has no v_proj to hook, so
         # `value`/DFA is unavailable there (Gemma-4). None when every layer projects its own.
         "first_kv_shared_layer": model_facts.first_kv_shared_layer,
@@ -407,7 +412,12 @@ def kv_heads_for_layer(dims: dict[str, Any], layer: int) -> int:
     disagreement between the two is worth saying out loud.
     """
     return facts.kv_heads_for_layer(
-        int(dims.get("n_kv_heads") or 0), layer, tuple(dims.get("per_layer_kv_heads") or ())
+        int(dims.get("n_kv_heads") or 0),
+        layer,
+        tuple(dims.get("per_layer_kv_heads") or ()),
+        dims.get("global_kv_heads"),
+        tuple(dims.get("layer_types") or ()),
+        bool(dims.get("k_eq_v")),
     )
 
 
@@ -551,7 +561,10 @@ def recompute_attn_from_payloads(payloads, layers, dims, tensor_parallel_size: i
         # one is not a claim about this layer -- it disagrees with Gemma-4's wide layers by design, and
         # on an MLA or tensor-parallel capture it describes something other than the width in hand --
         # so passing it as `expected` would turn a working recompute into a raise.
-        stated_kv = kv_heads_for_layer(dims, int(layer)) if dims.get("per_layer_kv_heads") else None
+        states_per_layer_kv = bool(dims.get("per_layer_kv_heads")) or bool(
+            dims.get("k_eq_v") and dims.get("global_kv_heads")
+        )
+        stated_kv = kv_heads_for_layer(dims, int(layer)) if states_per_layer_kv else None
         n_kv_heads = _heads_in(k, head_dim, "k", int(layer), expected=stated_kv)
         scores = recompute_attn_scores(
             q,

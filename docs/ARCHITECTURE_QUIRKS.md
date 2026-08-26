@@ -277,9 +277,26 @@ is therefore asked per side (`facts.has_qk_norm(attn, "q")`), because the pair-w
 "no" for such a layer and refusing the query norm on the key norm's absence declines a tensor the model
 plainly computes.
 
-Related config fields on this family that nothing reads yet: `attention_k_eq_v` (with
-`num_global_key_value_heads`) makes `v_proj` **None** on non-sliding layers and sets `value = key`;
-E2B and E4B both ship with it off.
+- **`kv_heads_for_layer(layer)`** — the kv-head count moves with the head width, and in the opposite
+  direction: 4 against 16 on the 31B, 2 against 8 on the 26B, 1 against 8 on the 12B. transformers
+  5.15 states this per layer (`per_layer_config`); below that the family spells it
+  `num_global_key_value_heads`, which `Gemma4TextAttention` applies to a layer only when
+  `attention_k_eq_v` is set **and** the layer is not sliding — so `ArchSpec` carries the flag beside
+  the count rather than reading the count on its own.
+
+`attention_k_eq_v` is on for the 26B, 31B and 12B, and off for E2B and E4B. It is a second, separate
+way for a layer to have no `v_proj`, and it does not overlap with KV sharing: those three SKUs set
+`num_kv_shared_layers: 0`, so **every** one of their `full_attention` layers is built with
+`v_proj = None` and takes the key projection's output as the value instead — `v_norm(k_proj(h))`
+against a key of `rope(k_norm(k_proj(h)))`, so the two are the same projection read through
+different norms, not the same tensor.
+
+**What the engine does with that today is wrong in the quiet direction.** `_first_attr` treats a
+present-but-`None` attribute as absent, so `ArchSpec.v_proj` returns `None` on those layers — which
+is the signal it uses for "fused QKV, the caller must split" — on a family whose `fused_qkv` is
+false. The layer needs a third answer: `value` is capturable, from `k_proj` and the `v_norm` after
+it, and refusing or mis-addressing it is not the same as it not being there. Nothing exercises this
+yet because the 31B has been swept without the value points.
 
 Two more ways the value side can differ from the query side, both of which produce a correctly shaped
 and completely wrong per-head split if you reshape by `head_dim`:
@@ -408,9 +425,20 @@ n_experts]` tensor that is plausible rather than obviously wrong.
   Mistral-4, dots1, GLM-4.5) or **every k-th layer sparse with a dense opt-out list** (`(layer + 1)
 % decoder_sparse_step == 0 and layer not in mlp_only_layers`; Qwen2/3-MoE, Qwen3-Next,
   Qwen3-VL/Omni). Expert counts have four live spellings (`num_local_experts`, `num_experts`,
-  `n_routed_experts`, `moe_num_experts`), all read. A third idiom, an explicit `mlp_layer_types`
-  pattern, wins over both — see the spelling warning in [block
+  `n_routed_experts`, `moe_num_experts`), all read, and the top-k has four of its own
+  (`num_experts_per_tok`, `experts_per_token`, `moe_topk`, `top_k_experts`). A third idiom, an
+  explicit `mlp_layer_types` pattern, wins over both — see the spelling warning in [block
   types](#block-types-classify-them-do-not-pattern-match-them).
+- **Gemma-4 breaks the first sentence of this section.** Its sparse layers do not swap the MLP for an
+  expert bank: `Gemma4TextDecoderLayer` builds `self.mlp` on every layer and, where
+  `enable_moe_block` is set, hangs `self.router` and `self.experts` **beside** it on the block,
+  summing the two branches (`post_ffn_norm_1(mlp(x)) + post_ffn_norm_2(experts(x))`, both reading the
+  pre-feedforward residual). Three consequences, and `facts.dense_mlp_beside_experts` is the fact they
+  hang off. A sparse layer keeps a real neuron basis, so `mlp_pre`/`mlp_act` must stay served there —
+  which they are, because the LongCat guard makes the `mlp_pre` refusal require a router **on the MLP
+  module**, and Gemma-4's is a sibling. The parameter count of a sparse layer includes the dense MLP,
+  so the usual `(n_layers - n_sparse) * dense_mlp` undercounts (the 26B by ~0.5B). And `mlp_out` is
+  **not** the whole feed-forward here, which is the one that has no fix yet — see below.
 
 Which experts fired _is_ capturable, one level down: `router_logits` / `expert_weights` /
 `expert_indices` are three elements of the router module's own output tuple, resolved by
@@ -452,7 +480,22 @@ router_logits)`. `facts.ROUTER_OUTPUTS` holds the exceptions; `facts.assert_rout
 
 The MLP's neuron basis (`mlp_pre`, `mlp_pre_linear`, `mlp_act`) is refused on a sparse layer, since
 the projections live on the experts — often as one fused 3-D parameter per bank, with no per-expert
-module at all.
+module at all. Gemma-4 is the exception noted above, and the refusal already lets it through for the
+right reason rather than by luck: it is gated on the router being found *on the MLP module*, the same
+guard that keeps LongCat's shortcut MoE from suppressing its two real feed-forwards.
+
+**Open on Gemma-4's 26B**, both from the same fact — the routed branch is a sibling of `layer.mlp`
+rather than a part of it:
+
+- `mlp_out` taps `layer.mlp` and so returns the dense branch alone, missing the experts' contribution
+  entirely. Correctly shaped, wrong tensor, no tell. Either the point has to mean the summed
+  feed-forward here (which has no module boundary — the sum happens in the block's `forward`) or it
+  has to be refused with an explanation, and that choice has not been made.
+- `arch.moe_router` looks for the router under `layer.mlp` and Gemma-4 hangs it on the block, so
+  `router_logits` / `expert_weights` / `expert_indices` do not resolve at all. When they do, note that
+  `Gemma4TextRouter` returns `(router_probabilities, top_k_weights, top_k_index)` — element 0 is
+  already softmaxed over all 128 experts, so it matches the default tuple *order* while not being
+  logits, and `assert_routing_shapes` cannot tell the difference because the width is right.
 
 In our shipping set only gpt-oss-20b is MoE (32 experts, top-4, no shared expert, every layer
 sparse). Its 3D batched expert weights matter only to code reading MLP weight matrices, and the

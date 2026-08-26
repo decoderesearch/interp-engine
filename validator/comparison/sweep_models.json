@@ -11,6 +11,8 @@
   "google/gemma-2-27b",
   "google/gemma-3-1b-it",
   "google/gemma-3-27b-it",
+  "google/gemma-4-12B-it",
+  "google/gemma-4-26B-A4B-it",
   "google/gemma-4-31B",
   "HuggingFaceTB/SmolLM3-3B",
   "ibm-granite/granite-3.0-1b-a400m-base",

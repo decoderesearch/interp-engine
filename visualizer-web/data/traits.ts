@@ -126,8 +126,12 @@ export const TRAITS: Trait[] = [
     label: "Logit softcap",
     group: "norms",
     description:
-      "A tanh squashing applied to the final logits, and on some families to the attention scores too. A lens has to apply it explicitly or its numbers will not match the model's.",
-    exampleModels: ["google/gemma-2-9b-it", "google/gemma-2-27b"],
+      "A tanh squashing applied to the final logits, and on some families to the attention scores too. A lens has to apply it explicitly or its numbers will not match the model's. Gemma 2 had it, Gemma 3 dropped it, and every Gemma 4 brought it back.",
+    exampleModels: [
+      "google/gemma-2-9b-it",
+      "google/gemma-2-27b",
+      "google/gemma-4-31B",
+    ],
   },
   {
     id: "residual_multipliers",
@@ -159,11 +163,12 @@ export const TRAITS: Trait[] = [
     label: "MoE",
     group: "mlp",
     description:
-      "A router picks a few experts per token out of many. Adds three routing points and removes the neuron-basis points, because the expert bank is fused into one tensor.",
+      "A router picks a few experts per token out of many. Adds three routing points and removes the neuron-basis points, because the expert bank is fused into one tensor. Gemma 4's 26B is the exception this trait does not yet express: it keeps a dense MLP beside the experts and sums the two, so its neuron basis survives.",
     exampleModels: [
       "Qwen/Qwen3-30B-A3B",
       "mistralai/Mixtral-8x7B-Instruct-v0.1",
       "openai/gpt-oss-20b",
+      "google/gemma-4-26B-A4B-it",
     ],
     minLayers: 2,
   },

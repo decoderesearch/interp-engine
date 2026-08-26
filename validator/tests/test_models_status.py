@@ -138,8 +138,15 @@ def test_the_verified_tier_is_exactly_the_committed_comparison_results() -> None
         by_arch.setdefault(arch, []).append(hf_id)
     dupes = {arch: ids for arch, ids in by_arch.items() if len(ids) > 1}
     # Llama 3.1 8B stays in the sweep next to 3.3 70B so static can score a small LlamaForCausalLM.
+    #
+    # Gemma 4 is the other exception, and for a different reason: one checkpoint per architecture
+    # assumes the class identifies the wiring, and here it does not. The 26B declares the same class
+    # as the 31B and turns on 128 routed experts with `enable_moe_block`, so scoring only the 31B
+    # would leave the routing points -- and a feed-forward that is two branches rather than one --
+    # unexercised on the whole family while the table reported the class as covered.
     allowed = {
         "LlamaForCausalLM": {"meta-llama/Llama-3.1-8B", "meta-llama/Llama-3.3-70B-Instruct"},
+        "Gemma4ForConditionalGeneration": {"google/gemma-4-26B-A4B-it", "google/gemma-4-31B"},
     }
     unexpected = {arch: ids for arch, ids in dupes.items() if set(ids) != allowed.get(arch)}
     assert not unexpected, f"sweep lists more than one checkpoint per architecture: {unexpected}"
