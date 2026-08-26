@@ -221,6 +221,33 @@ def test_vram_check_lowers_max_n_instead_of_ooming():
     assert fitted >= 1024
 
 
+def test_vram_check_will_not_shrink_below_an_engine_boot_floor():
+    """A multimodal prefix-LM will not start below one whole image, so shrinking under it is no fit.
+
+    Better to refuse here, naming the buffers, than to hand back a size vLLM rejects later with a
+    scheduler error about multimodal items that reads as anything but a static-buffer problem.
+    """
+
+    def fit(device_gib: int, **extra: int) -> int:
+        return fit_max_num_batched_tokens(
+            n_sites=80,
+            width=5120,
+            max_n=16384,
+            device_memory=device_gib * 1024**3,
+            gpu_memory_utilization=0.95,
+            weight_bytes=10 * 1024**3,
+            max_model_len=4096,
+            kv_width=kv_cache_width(d_model=5120),
+            n_layers=32,
+            **extra,
+        )
+
+    assert fit(20) == 4096  # left alone, this card shrinks under the floor
+    with pytest.raises(ValueError, match="do not fit even at max_num_batched_tokens=8192"):
+        fit(20, min_n=8192)
+    assert fit(24, min_n=8192) == 8192  # a floor it can meet changes nothing
+
+
 def test_vram_check_keeps_a_caller_max_n_below_the_1024_floor():
     """Chunked-prefill tests pass max_num_batched_tokens=32; skipping that candidate used to raise."""
     fitted = fit_max_num_batched_tokens(

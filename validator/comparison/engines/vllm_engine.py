@@ -74,14 +74,20 @@ def _mandatory_engine_kwargs(hf_id: str) -> dict[str, object]:
     in a GPU test -- three harnesses this repo controls, and nowhere in the library a deployment
     imports, which is how a rule everyone here knew stayed missing from the thing shipped.
 
-    Only DeepSeek-V4 has one so far: it serves attention through `fp8_ds_mla`, a compressed-KV layout
-    that exists in FP8 only, so vLLM's default `auto` trips an assertion inside the model class after
-    the config work and before any weight is read.
+    Two so far. DeepSeek-V4 serves attention through `fp8_ds_mla`, a compressed-KV layout that exists
+    in FP8 only, so vLLM's default `auto` trips an assertion inside the model class after the config
+    work and before any weight is read.
 
     An FP8 KV cache is a numerics choice as well as a boot requirement, and this table is in the
     business of comparing numbers -- but it does not distort this cell: each capture is a single
     prefill of a 13-token prompt with `max_tokens=1`, so nothing is ever read back out of the KV
     cache. The activations being scored come from the forward itself.
+
+    The multimodal floor (`facts.min_batched_tokens`) is the one this harness provokes on itself. A
+    prefix-LM's whole image has to fit in one batch, and the `max_model_len` below is sized to the
+    13-token prompt, which is what drags vLLM's own batch default under the image and stops Gemma 4
+    booting. It distorts nothing either: the prompt carries no image, so a batch budget wide enough
+    for one changes what is allocated and not what is computed.
     """
     from interp_engine import facts
 
@@ -91,8 +97,14 @@ def _mandatory_engine_kwargs(hf_id: str) -> dict[str, object]:
         cfg = AutoConfig.from_pretrained(hf_id, trust_remote_code=True)
     except Exception:  # noqa: BLE001 - an unreadable config is the engine's problem to report
         return {}
+    kwargs: dict[str, object] = {}
     dtype = facts.mandatory_kv_cache_dtype(getattr(cfg, "architectures", None))
-    return {"kv_cache_dtype": dtype} if dtype else {}
+    if dtype:
+        kwargs["kv_cache_dtype"] = dtype
+    min_batched = facts.min_batched_tokens(cfg)
+    if min_batched:
+        kwargs["max_num_batched_tokens"] = min_batched
+    return kwargs
 
 
 def _d_model_points() -> frozenset[str]:

@@ -544,6 +544,7 @@ def fit_max_num_batched_tokens(
     kv_width: int,
     n_layers: int,
     tensor_parallel_size: int = 1,
+    min_n: int = 0,
 ) -> int:
     """Largest capture size at or below ``max_n`` whose static buffers fit, or raise.
 
@@ -561,14 +562,20 @@ def fit_max_num_batched_tokens(
     The 1024 floor is for ``"auto"`` / default ``max_n``: vLLM will not usefully serve with a
     tiny batch. A caller who already passed a smaller ``max_n`` (chunked-prefill tests) keeps it
     when it fits.
+
+    ``min_n`` raises that floor to a size the *engine* will not start below, which is a different
+    kind of limit and has to outrank the fit: shrinking under it trades an out-of-memory error for a
+    refusal to boot, and the refusal comes from vLLM's scheduler talking about multimodal items,
+    which reads as anything but a static-buffer problem. Above the floor it changes nothing --
+    ``fitted == asked`` stays the common case. See :func:`interp_engine.facts.min_batched_tokens`.
     """
     graph_fudge = 3 * 1024**3
     tp = max(int(tensor_parallel_size), 1)
     min_kv = max(int(n_layers), 1) * max(int(max_model_len), 1) * max(int(kv_width), 1) * 2
     budget = int(gpu_memory_utilization * device_memory) - int(weight_bytes) // tp - graph_fudge - min_kv
     asked = int(max_n)
-    floor = min(1024, asked)
-    candidates = [asked] + [s for s in _CAPTURE_SIZES if s < asked]
+    floor = max(min(1024, asked), int(min_n))
+    candidates = [max(asked, floor)] + [s for s in _CAPTURE_SIZES if s < asked]
     for n in candidates:
         if n < floor:
             continue
