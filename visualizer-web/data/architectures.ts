@@ -218,9 +218,10 @@ const FAMILIES: Architecture[] = [
       "sliding_window",
       "logit_softcapping",
       "moe",
+      "dense_mlp_beside_experts",
     ],
     exampleModels: ["google/gemma-4-26B-A4B-it"],
-    note: "The one family here whose class does not identify its wiring: it declares Gemma4ForConditionalGeneration like the dense SKUs and turns the experts on with enable_moe_block. Two things the diagram gets wrong as a result. It greys out mlp_pre, mlp_pre_linear and mlp_act, because on every other MoE family the expert bank replaces the MLP — here the dense MLP survives beside it, so those points are real. And mlp_out is drawn as the whole feed-forward when it is only the dense half: the routed branch is a sibling of layer.mlp, not inside it, and the two are summed after.",
+    note: "The one family here whose class does not identify its wiring: it declares Gemma4ForConditionalGeneration like the dense SKUs and turns the experts on with enable_moe_block. Every layer is sparse, layer 0 included, and each keeps its neuron basis — which is what the Dense MLP beside experts trait draws. One thing the diagram still gets wrong: mlp_out is shown as the whole feed-forward when it is only the dense half, because the routed branch is a sibling of layer.mlp rather than inside it, and the two are summed after.",
   },
   {
     id: "Gemma4UnifiedForConditionalGeneration",

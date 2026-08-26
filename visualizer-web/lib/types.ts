@@ -44,6 +44,7 @@ export type TraitId =
   | "parallel_attn_mlp"
   | "gated_mlp"
   | "moe"
+  | "dense_mlp_beside_experts"
   | "shared_experts"
   | "multi_residual_streams"
   | "logit_softcapping"

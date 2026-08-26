@@ -163,14 +163,22 @@ export const TRAITS: Trait[] = [
     label: "MoE",
     group: "mlp",
     description:
-      "A router picks a few experts per token out of many. Adds three routing points and removes the neuron-basis points, because the expert bank is fused into one tensor. Gemma 4's 26B is the exception this trait does not yet express: it keeps a dense MLP beside the experts and sums the two, so its neuron basis survives.",
+      "A router picks a few experts per token out of many. Adds three routing points and removes the neuron-basis points, because the expert bank is fused into one tensor. Turn on Dense MLP beside experts for the family that keeps its neuron basis anyway.",
     exampleModels: [
       "Qwen/Qwen3-30B-A3B",
       "mistralai/Mixtral-8x7B-Instruct-v0.1",
       "openai/gpt-oss-20b",
-      "google/gemma-4-26B-A4B-it",
     ],
     minLayers: 2,
+  },
+  {
+    id: "dense_mlp_beside_experts",
+    label: "Dense MLP beside experts",
+    group: "mlp",
+    description:
+      "The routed experts are added to the dense MLP rather than replacing it: both branches read the pre-feedforward residual and their outputs are summed. So the neuron basis survives on a sparse layer, and every layer is sparse — there is no dense block to contrast against, because the contrast is inside each layer.",
+    exampleModels: ["google/gemma-4-26B-A4B-it"],
+    implies: ["moe"],
   },
   {
     id: "shared_experts",

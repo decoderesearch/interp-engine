@@ -601,7 +601,13 @@ function exists(point: PointName, side: BuildSide, isMoe: boolean): boolean {
   }
   if (mergeTarget(spec, traits)) return false;
   for (const traitId of Object.keys(spec.refusedBy ?? {}) as TraitId[]) {
-    if (active(traitId)) return false;
+    if (!active(traitId)) continue;
+    // Every `moe` refusal here says the same thing -- that the neuron basis is not a single tensor
+    // because the expert bank is fused -- and under `dense_mlp_beside_experts` that reason is simply
+    // untrue: the dense MLP is still there, beside the experts, with its neurons intact. So the
+    // refusal is waived rather than the points being listed twice with opposite gating.
+    if (traitId === "moe" && traits.has("dense_mlp_beside_experts")) continue;
+    return false;
   }
   return true;
 }
@@ -656,15 +662,20 @@ function rowFanouts(
   }
 
   const sparse = traits.has("moe");
-  const hasDenseLayer = !sparse || dims.layers >= 3;
+  // Whether the neuron basis is drawn anywhere in the stack, which is what reserves the width for it.
+  // Not the same question as whether a *dense block* exists: under `dense_mlp_beside_experts` there
+  // is no dense block at all and the basis is on every layer, because the MLP survives beside the
+  // experts. Getting this wrong collapses the row to one glyph and the neurons land on the spine.
+  const hasNeuronBasis =
+    !sparse || traits.has("dense_mlp_beside_experts") || dims.layers >= 3;
 
-  out.set(1, Math.max(hasDenseLayer ? dims.neurons : 1, streams));
+  out.set(1, Math.max(hasNeuronBasis ? dims.neurons : 1, streams));
   out.set(
     2,
-    Math.max(hasDenseLayer ? dims.neurons : 1, sparse ? dims.experts : 1, mix),
+    Math.max(hasNeuronBasis ? dims.neurons : 1, sparse ? dims.experts : 1, mix),
   );
   const row3 = Math.max(
-    hasDenseLayer && traits.has("gated_mlp") ? dims.neurons : 0,
+    hasNeuronBasis && traits.has("gated_mlp") ? dims.neurons : 0,
     sparse ? dims.activeExperts : 0,
   );
   if (row3 > 0) out.set(3, row3);
@@ -710,9 +721,23 @@ function layerKinds(dims: Dimensions, traits: Set<TraitId>): LayerKind[] {
   });
 }
 
-/** MoE stacks commonly keep the first block dense, and the contrast is worth showing. */
+/**
+ * Which blocks are sparse. Per layer, because a sparse stack can still hold dense blocks.
+ *
+ * The diagram has no checkpoint to read — the layer count is a slider — so the pattern is a
+ * convention rather than a fact. Keeping the first block dense is the convention because several
+ * families really do (DeepSeek-V3 keeps three) and the contrast between a dense block and a sparse
+ * one is worth a column.
+ *
+ * `dense_mlp_beside_experts` is the case where that convention has nothing to say: there the experts
+ * are added to the MLP rather than replacing it, so every layer is sparse *and* every layer keeps its
+ * neuron basis. Drawing a dense first block would invent a contrast the family does not have, and
+ * hide the routing points on the one layer a reader looks at first.
+ */
 function moeLayers(dims: Dimensions, traits: Set<TraitId>): boolean[] {
   if (!traits.has("moe")) return Array(dims.layers).fill(false);
+  if (traits.has("dense_mlp_beside_experts"))
+    return Array(dims.layers).fill(true);
   return Array.from(
     { length: dims.layers },
     (_, i) => dims.layers < 3 || i > 0,
