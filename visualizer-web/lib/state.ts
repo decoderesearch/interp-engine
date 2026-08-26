@@ -52,6 +52,19 @@ import type {
 /** How long a point stays pulsed after the trait change that reworked it. */
 const FLASH_MS = 1600;
 
+/**
+ * How long the address bar waits behind the diagram.
+ *
+ * Browsers cap `replaceState` — Firefox at 100 calls per 10 seconds, and it
+ * *throws* past the cap rather than ignoring the call, which takes the page
+ * down. Dragging the release timeline across a dozen families passes a dozen
+ * architectures in a second, and each is a different link. Settling first keeps
+ * the rate at no more than one write per this interval, and costs nothing that
+ * is visible: a link is worth writing once the reader has stopped somewhere,
+ * not at every family the thumb travelled over on the way.
+ */
+const MIRROR_MS = 250;
+
 /** The points to pulse, and a token that restarts the animation on re-toggle. */
 export interface Flash {
   points: Set<PointName>;
@@ -259,7 +272,8 @@ export function useVisualizer(link: Link) {
   // anyway. The comparison against what is already there is what keeps arriving
   // quiet — a link that is already canonical is not rewritten, and one that is
   // not, `?arch=` naming the default or a parameter this app never wrote, is
-  // tidied once.
+  // tidied once. Behind a settle window rather than on the render that changed
+  // it, for the reason `MIRROR_MS` carries.
   //
   // Not until hydration, and this is the whole reason `useHydrated` is called
   // here: until then this mount is the plain-visit one the prerender produced,
@@ -274,11 +288,19 @@ export function useVisualizer(link: Link) {
   });
   useEffect(() => {
     if (!hydrated || window.location.search === mirror) return;
-    window.history.replaceState(
-      null,
-      "",
-      `${window.location.pathname}${mirror}`,
-    );
+    const timer = setTimeout(() => {
+      try {
+        window.history.replaceState(
+          null,
+          "",
+          `${window.location.pathname}${mirror}`,
+        );
+      } catch {
+        // A browser refusing the write leaves the address bar stale, which is
+        // the smaller of the two failures available here.
+      }
+    }, MIRROR_MS);
+    return () => clearTimeout(timer);
   }, [hydrated, mirror]);
 
   /**

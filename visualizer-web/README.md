@@ -367,7 +367,10 @@ naming the family the toggles started from, which would be a link to a diagram t
 looking at.
 
 Written with `replaceState`, not a navigation: this is the same page renamed, and a history entry per
-point clicked would make Back an undo button for a card the next click closes anyway. Reading it back
+point clicked would make Back an undo button for a card the next click closes anyway. Written once the
+diagram settles, too, rather than on the render that changed it — browsers cap `replaceState` and
+Firefox throws past the cap, so dragging the release timeline across a dozen families would otherwise
+spend a dozen writes on architectures the reader only passed over. Reading it back
 is the part with a trap in it, and `lib/link.ts` carries the argument — the query is not readable
 during the prerender, nor during the hydration render that has to match the prerendered HTML, so it
 arrives one render late, and `Page` keys the app on it rather than applying it from an effect. That
