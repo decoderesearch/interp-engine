@@ -1,0 +1,796 @@
+{
+  "captured_at": "2026-08-26",
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "engine": "vllm-static",
+  "hf_id": "google/gemma-4-26B-A4B-it",
+  "known_bug": {
+    "link": "https://github.com/vllm-project/vllm/issues/51744",
+    "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+    "points": [],
+    "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+    "url": "https://github.com/vllm-project/vllm/issues/51744",
+    "workaround": "transformers 5.14.1, or a vLLM carrying vllm-project/vllm#48432, which reads the max over per_layer_config."
+  },
+  "points": {
+    "attn_in.0": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "attn_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 1
+    },
+    "attn_in.15": {
+      "cos": 0.9894198977610077,
+      "cos_worst_token": 0.9796086009906947,
+      "engine_bug": {
+        "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+        "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+        "url": "https://github.com/vllm-project/vllm/issues/51744"
+      },
+      "layer": 15,
+      "max_abs_diff": 20.0,
+      "point": "attn_in",
+      "rel_diff": 0.14547724984233534,
+      "rel_worst_token": 0.2017500583868013,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 5
+    },
+    "attn_in.22": {
+      "cos": 0.9940747347105636,
+      "cos_worst_token": 0.7924868292596224,
+      "layer": 22,
+      "max_abs_diff": 122.0,
+      "point": "attn_in",
+      "rel_diff": 0.2583209289365049,
+      "rel_worst_token": 0.638194323994255,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 2
+    },
+    "attn_in.29": {
+      "cos": 0.9919191891578931,
+      "cos_worst_token": 0.9802976465135387,
+      "layer": 29,
+      "max_abs_diff": 4.0,
+      "point": "attn_in",
+      "rel_diff": 0.12688182122637504,
+      "rel_worst_token": 0.20041310230187165,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "attn_out.0": {
+      "cos": 0.999980529612959,
+      "cos_worst_token": 0.999945831350674,
+      "layer": 0,
+      "max_abs_diff": 0.25,
+      "point": "attn_out",
+      "rel_diff": 0.006241159593329223,
+      "rel_worst_token": 0.010435497770036379,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 12
+    },
+    "attn_out.15": {
+      "cos": 0.9898041472699839,
+      "cos_worst_token": 0.9732796135557645,
+      "engine_bug": {
+        "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+        "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+        "url": "https://github.com/vllm-project/vllm/issues/51744"
+      },
+      "layer": 15,
+      "max_abs_diff": 4.875,
+      "point": "attn_out",
+      "rel_diff": 0.1443222200159128,
+      "rel_worst_token": 0.2848048739298558,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "attn_out.22": {
+      "cos": 0.9802745212584268,
+      "cos_worst_token": 0.9325877487141596,
+      "engine_bug": {
+        "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+        "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+        "url": "https://github.com/vllm-project/vllm/issues/51744"
+      },
+      "layer": 22,
+      "max_abs_diff": 3.25,
+      "point": "attn_out",
+      "rel_diff": 0.20264415604589206,
+      "rel_worst_token": 0.39809609305251514,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 2
+    },
+    "attn_out.29": {
+      "cos": 0.9754522834018539,
+      "cos_worst_token": 0.9366314707305987,
+      "engine_bug": {
+        "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+        "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+        "url": "https://github.com/vllm-project/vllm/issues/51744"
+      },
+      "layer": 29,
+      "max_abs_diff": 3.84375,
+      "point": "attn_out",
+      "rel_diff": 0.2216548744106107,
+      "rel_worst_token": 0.35124347242544335,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "attn_out_post.0": {
+      "cos": 0.9999734230809357,
+      "cos_worst_token": 0.9999347036083043,
+      "layer": 0,
+      "max_abs_diff": 1.0,
+      "point": "attn_out_post",
+      "rel_diff": 0.007294162071215649,
+      "rel_worst_token": 0.011490128484967568,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 8
+    },
+    "attn_out_post.15": {
+      "cos": 0.9795499025221827,
+      "cos_worst_token": 0.952175066639218,
+      "engine_bug": {
+        "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+        "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+        "url": "https://github.com/vllm-project/vllm/issues/51744"
+      },
+      "layer": 15,
+      "max_abs_diff": 1.546875,
+      "point": "attn_out_post",
+      "rel_diff": 0.204189269218506,
+      "rel_worst_token": 0.3304836759267491,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 8
+    },
+    "attn_out_post.22": {
+      "cos": 0.9619035748244686,
+      "cos_worst_token": 0.8960934140966903,
+      "engine_bug": {
+        "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+        "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+        "url": "https://github.com/vllm-project/vllm/issues/51744"
+      },
+      "layer": 22,
+      "max_abs_diff": 1.06640625,
+      "point": "attn_out_post",
+      "rel_diff": 0.27627072278672243,
+      "rel_worst_token": 0.4524868680324089,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 2
+    },
+    "attn_out_post.29": {
+      "cos": 0.9785310814586609,
+      "cos_worst_token": 0.9396112610675377,
+      "engine_bug": {
+        "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+        "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+        "url": "https://github.com/vllm-project/vllm/issues/51744"
+      },
+      "layer": 29,
+      "max_abs_diff": 4.53125,
+      "point": "attn_out_post",
+      "rel_diff": 0.20706022786442643,
+      "rel_worst_token": 0.3528189737265451,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "attn_scores.0": {
+      "cos": 0.9999983345052006,
+      "layer": 0,
+      "masked_out": 1248,
+      "max_abs_diff": 0.08937644958496094,
+      "point": "attn_scores",
+      "rel_diff": 0.0018387627818430858,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "attn_scores.15": {
+      "cos": 0.9923143745490587,
+      "layer": 15,
+      "masked_out": 1248,
+      "max_abs_diff": 2.887890875339508,
+      "point": "attn_scores",
+      "rel_diff": 0.12669590077516626,
+      "status": "PASS",
+      "tier": "fused"
+    },
+    "attn_scores.22": {
+      "cos": 0.9830650628720018,
+      "engine_bug": {
+        "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+        "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+        "url": "https://github.com/vllm-project/vllm/issues/51744"
+      },
+      "layer": 22,
+      "masked_out": 1248,
+      "max_abs_diff": 4.8101043701171875,
+      "point": "attn_scores",
+      "rel_diff": 0.18385798808286566,
+      "status": "WARN",
+      "tier": "fused"
+    },
+    "attn_scores.29": {
+      "cos": 0.957185462352811,
+      "engine_bug": {
+        "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+        "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+        "url": "https://github.com/vllm-project/vllm/issues/51744"
+      },
+      "layer": 29,
+      "masked_out": 1248,
+      "max_abs_diff": 5.070185899734497,
+      "point": "attn_scores",
+      "rel_diff": 0.29159225642500786,
+      "status": "WARN",
+      "tier": "fused"
+    },
+    "k_norm_in.0": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "k_norm_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 6
+    },
+    "k_norm_in.15": {
+      "cos": 0.9913652329041835,
+      "cos_worst_token": 0.9820010999738628,
+      "layer": 15,
+      "max_abs_diff": 17.5,
+      "point": "k_norm_in",
+      "rel_diff": 0.13525270726513117,
+      "rel_worst_token": 0.19256268596231266,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 5
+    },
+    "k_norm_in.22": {
+      "cos": 0.9838692691421438,
+      "cos_worst_token": 0.9216962554780286,
+      "engine_bug": {
+        "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+        "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+        "url": "https://github.com/vllm-project/vllm/issues/51744"
+      },
+      "layer": 22,
+      "max_abs_diff": 25.0,
+      "point": "k_norm_in",
+      "rel_diff": 0.2324402755324677,
+      "rel_worst_token": 0.4093585062972967,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 2
+    },
+    "k_norm_in.29": {
+      "cos": 0.9855584784570164,
+      "cos_worst_token": 0.9380907363548197,
+      "engine_bug": {
+        "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+        "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+        "url": "https://github.com/vllm-project/vllm/issues/51744"
+      },
+      "layer": 29,
+      "max_abs_diff": 1.2972412109375,
+      "point": "k_norm_in",
+      "rel_diff": 0.16947003460799878,
+      "rel_worst_token": 0.3516341921619456,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "k_norm_out.0": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999999,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "k_norm_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 2
+    },
+    "k_norm_out.15": {
+      "cos": 0.9908943938385839,
+      "cos_worst_token": 0.9799381557899179,
+      "layer": 15,
+      "max_abs_diff": 0.16259765625,
+      "point": "k_norm_out",
+      "rel_diff": 0.13494990378158955,
+      "rel_worst_token": 0.2003080868492025,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 5
+    },
+    "k_norm_out.22": {
+      "cos": 0.9841595766699639,
+      "cos_worst_token": 0.9069561423729574,
+      "engine_bug": {
+        "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+        "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+        "url": "https://github.com/vllm-project/vllm/issues/51744"
+      },
+      "layer": 22,
+      "max_abs_diff": 0.4541015625,
+      "point": "k_norm_out",
+      "rel_diff": 0.17799209746929148,
+      "rel_worst_token": 0.43135814946293766,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 2
+    },
+    "k_norm_out.29": {
+      "cos": 0.984554708065548,
+      "cos_worst_token": 0.9348998055030018,
+      "engine_bug": {
+        "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+        "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+        "url": "https://github.com/vllm-project/vllm/issues/51744"
+      },
+      "layer": 29,
+      "max_abs_diff": 0.0987548828125,
+      "point": "k_norm_out",
+      "rel_diff": 0.17575193537125397,
+      "rel_worst_token": 0.36085406163250433,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "mlp_act.0": {
+      "cos": 0.9999690687173769,
+      "cos_worst_token": 0.999926475372359,
+      "layer": 0,
+      "max_abs_diff": 1.5,
+      "point": "mlp_act",
+      "rel_diff": 0.007932707567481066,
+      "rel_worst_token": 0.012166260997411157,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 11
+    },
+    "mlp_act.15": {
+      "cos": 0.9964972631452769,
+      "cos_worst_token": 0.9926875834494232,
+      "layer": 15,
+      "max_abs_diff": 0.4375,
+      "point": "mlp_act",
+      "rel_diff": 0.08396183066870412,
+      "rel_worst_token": 0.13004272369800968,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 7
+    },
+    "mlp_act.22": {
+      "cos": 0.9790338528035666,
+      "cos_worst_token": 0.921728090894597,
+      "engine_bug": {
+        "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+        "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+        "url": "https://github.com/vllm-project/vllm/issues/51744"
+      },
+      "layer": 22,
+      "max_abs_diff": 5.65625,
+      "point": "mlp_act",
+      "rel_diff": 0.20404228503368882,
+      "rel_worst_token": 0.43831529548697656,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "mlp_act.29": {
+      "cos": 0.9876138705884788,
+      "cos_worst_token": 0.9428485721175357,
+      "engine_bug": {
+        "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+        "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+        "url": "https://github.com/vllm-project/vllm/issues/51744"
+      },
+      "layer": 29,
+      "max_abs_diff": 3.84375,
+      "point": "mlp_act",
+      "rel_diff": 0.1579265927494512,
+      "rel_worst_token": 0.33356653237447853,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "mlp_out.0": {
+      "cos": 0.9999865333015955,
+      "cos_worst_token": 0.9999511507470669,
+      "layer": 0,
+      "max_abs_diff": 0.625,
+      "point": "mlp_out",
+      "rel_diff": 0.0052586185486665615,
+      "rel_worst_token": 0.010176624315472354,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 11
+    },
+    "mlp_out.15": {
+      "cos": 0.9993047548195889,
+      "cos_worst_token": 0.992333795128798,
+      "layer": 15,
+      "max_abs_diff": 0.5,
+      "point": "mlp_out",
+      "rel_diff": 0.04200651815961177,
+      "rel_worst_token": 0.13829385294794244,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 5
+    },
+    "mlp_out.22": {
+      "cos": 0.9895404102004471,
+      "cos_worst_token": 0.9077955211140525,
+      "engine_bug": {
+        "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+        "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+        "url": "https://github.com/vllm-project/vllm/issues/51744"
+      },
+      "layer": 22,
+      "max_abs_diff": 1.3125,
+      "point": "mlp_out",
+      "rel_diff": 0.14472483467257666,
+      "rel_worst_token": 0.4436975035657542,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "mlp_out.29": {
+      "cos": 0.9926754186997125,
+      "cos_worst_token": 0.9675442982429242,
+      "layer": 29,
+      "max_abs_diff": 5.1875,
+      "point": "mlp_out",
+      "rel_diff": 0.1210651838197309,
+      "rel_worst_token": 0.27549724907943024,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 11
+    },
+    "mlp_out_post.0": {
+      "cos": 0.9999737142092454,
+      "cos_worst_token": 0.9999665565560039,
+      "layer": 0,
+      "max_abs_diff": 6.0,
+      "point": "mlp_out_post",
+      "rel_diff": 0.007266433051183429,
+      "rel_worst_token": 0.008470833772835654,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 9
+    },
+    "mlp_out_post.15": {
+      "cos": 0.9862038070286563,
+      "cos_worst_token": 0.9058287916742883,
+      "engine_bug": {
+        "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+        "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+        "url": "https://github.com/vllm-project/vllm/issues/51744"
+      },
+      "layer": 15,
+      "max_abs_diff": 24.5,
+      "point": "mlp_out_post",
+      "rel_diff": 0.1655594246456275,
+      "rel_worst_token": 0.4268469394975478,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 2
+    },
+    "mlp_out_post.22": {
+      "cos": 0.9390358607899665,
+      "cos_worst_token": 0.7882073264602258,
+      "engine_bug": {
+        "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+        "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+        "url": "https://github.com/vllm-project/vllm/issues/51744"
+      },
+      "layer": 22,
+      "max_abs_diff": 21.6875,
+      "point": "mlp_out_post",
+      "rel_diff": 0.3688383695882762,
+      "rel_worst_token": 0.9070123994978837,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "mlp_out_post.29": {
+      "cos": 0.9953591027649656,
+      "cos_worst_token": 0.983557012454061,
+      "layer": 29,
+      "max_abs_diff": 33.0,
+      "point": "mlp_out_post",
+      "rel_diff": 0.0972359871086733,
+      "rel_worst_token": 0.2596448403890586,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 11
+    },
+    "q_norm_in.0": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "q_norm_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 1
+    },
+    "q_norm_in.15": {
+      "cos": 0.9926326088090989,
+      "cos_worst_token": 0.9873297820923967,
+      "layer": 15,
+      "max_abs_diff": 18.0,
+      "point": "q_norm_in",
+      "rel_diff": 0.12368823139129329,
+      "rel_worst_token": 0.1586964530194342,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 5
+    },
+    "q_norm_in.22": {
+      "cos": 0.9780080735016532,
+      "cos_worst_token": 0.9128172308343657,
+      "engine_bug": {
+        "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+        "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+        "url": "https://github.com/vllm-project/vllm/issues/51744"
+      },
+      "layer": 22,
+      "max_abs_diff": 9.5625,
+      "point": "q_norm_in",
+      "rel_diff": 0.20858503540892673,
+      "rel_worst_token": 0.4681467335361178,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "q_norm_in.29": {
+      "cos": 0.9912895534785524,
+      "cos_worst_token": 0.9550442532367762,
+      "layer": 29,
+      "max_abs_diff": 2.1875,
+      "point": "q_norm_in",
+      "rel_diff": 0.13172056616875347,
+      "rel_worst_token": 0.30206375941572566,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "q_norm_out.0": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "q_norm_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 0
+    },
+    "q_norm_out.15": {
+      "cos": 0.9928017825658255,
+      "cos_worst_token": 0.9861689992824882,
+      "layer": 15,
+      "max_abs_diff": 1.359375,
+      "point": "q_norm_out",
+      "rel_diff": 0.11998471745446074,
+      "rel_worst_token": 0.16631326139950467,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 5
+    },
+    "q_norm_out.22": {
+      "cos": 0.9819491687441342,
+      "cos_worst_token": 0.900202664070683,
+      "engine_bug": {
+        "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+        "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+        "url": "https://github.com/vllm-project/vllm/issues/51744"
+      },
+      "layer": 22,
+      "max_abs_diff": 4.3671875,
+      "point": "q_norm_out",
+      "rel_diff": 0.1899971729113867,
+      "rel_worst_token": 0.4467169243722697,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "q_norm_out.29": {
+      "cos": 0.9886935518739762,
+      "cos_worst_token": 0.9480432221310163,
+      "engine_bug": {
+        "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+        "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+        "url": "https://github.com/vllm-project/vllm/issues/51744"
+      },
+      "layer": 29,
+      "max_abs_diff": 2.8828125,
+      "point": "q_norm_out",
+      "rel_diff": 0.15037329525140633,
+      "rel_worst_token": 0.3223544312534434,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "resid_mid.0": {
+      "cos": 0.9999740384403236,
+      "cos_worst_token": 0.999935585477543,
+      "layer": 0,
+      "max_abs_diff": 1.0,
+      "point": "resid_mid",
+      "rel_diff": 0.007208961455296429,
+      "rel_worst_token": 0.011408634751936625,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 8
+    },
+    "resid_mid.15": {
+      "cos": 0.9935125236735141,
+      "cos_worst_token": 0.9855183124564602,
+      "layer": 15,
+      "max_abs_diff": 4.625,
+      "point": "resid_mid",
+      "rel_diff": 0.1143208376464221,
+      "rel_worst_token": 0.17188100394864816,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 2
+    },
+    "resid_mid.22": {
+      "cos": 0.9681718139199179,
+      "cos_worst_token": 0.8709187535293814,
+      "engine_bug": {
+        "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+        "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+        "url": "https://github.com/vllm-project/vllm/issues/51744"
+      },
+      "layer": 22,
+      "max_abs_diff": 34.0,
+      "point": "resid_mid",
+      "rel_diff": 0.26474058068925826,
+      "rel_worst_token": 0.6928596541346438,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "resid_mid.29": {
+      "cos": 0.9753439449838726,
+      "cos_worst_token": 0.9134381172733789,
+      "engine_bug": {
+        "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+        "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+        "url": "https://github.com/vllm-project/vllm/issues/51744"
+      },
+      "layer": 29,
+      "max_abs_diff": 5.0,
+      "point": "resid_mid",
+      "rel_diff": 0.22353368695858042,
+      "rel_worst_token": 0.42433940239527523,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "resid_post.0": {
+      "cos": 0.9999747247927616,
+      "cos_worst_token": 0.9999634759768338,
+      "layer": 0,
+      "max_abs_diff": 0.5,
+      "point": "resid_post",
+      "rel_diff": 0.007112315151038696,
+      "rel_worst_token": 0.008746308725725568,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 8
+    },
+    "resid_post.15": {
+      "cos": 0.9934269287692854,
+      "cos_worst_token": 0.9469892323864253,
+      "layer": 15,
+      "max_abs_diff": 11.0,
+      "point": "resid_post",
+      "rel_diff": 0.11447903185497238,
+      "rel_worst_token": 0.32161869879294114,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 2
+    },
+    "resid_post.22": {
+      "cos": 0.9664658297446828,
+      "cos_worst_token": 0.7835064628957041,
+      "engine_bug": {
+        "mechanism": "transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with `getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig construction dies before any weight is loaded.",
+        "title": "vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
+        "url": "https://github.com/vllm-project/vllm/issues/51744"
+      },
+      "layer": 22,
+      "max_abs_diff": 20.25,
+      "point": "resid_post",
+      "rel_diff": 0.26691453027488665,
+      "rel_worst_token": 0.8319164499480755,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "resid_post.29": {
+      "cos": 0.9944917276051791,
+      "cos_worst_token": 0.9804055272324821,
+      "layer": 29,
+      "max_abs_diff": 6.5,
+      "point": "resid_post",
+      "rel_diff": 0.10609984410564043,
+      "rel_worst_token": 0.2765532950590926,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 11
+    }
+  },
+  "reason": "",
+  "reference": "eager",
+  "run": {
+    "date_utc": "2026-08-26T05:25:13+00:00",
+    "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
+    "eager_only": false,
+    "gpu": {
+      "memory_total": "183359 MiB",
+      "name": "NVIDIA B200"
+    },
+    "native_dtype": "bfloat16",
+    "reference_status": {
+      "device": "cuda",
+      "dtype": "bfloat16",
+      "reason": "",
+      "status": "ok"
+    },
+    "replicate": [
+      "export HF_TOKEN=$(grep -m1 '^HF_TOKEN=' .env | cut -d= -f2- | tr -d '\"')",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.tokenize_inputs --dumps dumps --models google/gemma-4-26B-A4B-it",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine eager --dumps dumps --model google/gemma-4-26B-A4B-it --device cuda",
+      "docker run --rm --gpus all -v \"$PWD:/work\" -v ~/.cache/huggingface:/root/.cache/huggingface -e HF_TOKEN -e HF_HOME=/root/.cache/huggingface -e PYTHONPATH=/work -e VLLM_USE_FLASHINFER_SAMPLER=0 -w /work --entrypoint python3 vllm/vllm-openai:latest -m comparison.run_engine --engine vllm-static --dumps /work/dumps --model google/gemma-4-26B-A4B-it --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.aggregate --dumps dumps"
+    ]
+  },
+  "sae": {},
+  "status": "ok",
+  "verdict": "\ud83d\udc1e",
+  "versions": {
+    "interp_engine": {
+      "commit": "8cf01c71a414a4998ede0eb4a3783b62e54d1c15",
+      "version": "1.3.5"
+    },
+    "torch": {
+      "version": "2.13.0"
+    },
+    "transformers": {
+      "version": "5.14.1"
+    },
+    "vllm": {
+      "version": "0.27.1"
+    }
+  }
+}
