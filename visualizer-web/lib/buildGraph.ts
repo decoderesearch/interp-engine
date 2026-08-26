@@ -251,6 +251,7 @@ export function buildGraph({
   const ctx: Ctx = {
     dims,
     traits,
+    union: plan.traits,
     sides: plan.sides,
     spineY,
     spineYs,
@@ -339,6 +340,12 @@ function joinLayers(from: GraphNode[], to: GraphNode[]): GraphEdge[] {
 interface Ctx {
   dims: Dimensions;
   traits: Set<TraitId>;
+  /**
+   * The union of both sides' traits, which is what every *geometry* decision reads. A row or column
+   * chosen from one side's traits alone would put the same point in two different places in a
+   * comparison, which is the one thing the alignment exists to prevent.
+   */
+  union: Set<TraitId>;
   /** Both sides of the comparison, for deciding which columns to reserve. */
   sides: Alignment["sides"];
   spineY: number;
@@ -359,6 +366,31 @@ interface BuiltLayer {
 
 /** One column of the layer: the points on it and the row each sits on. */
 type Stage = { point: PointName; row: number }[];
+
+/**
+ * The rows the routed branch sits on.
+ *
+ * Normally it *shares* the dense MLP's two rows, and that sharing is deliberate: on every family
+ * where the expert bank replaces the feed-forward, a layer is either sparse or dense and the two sets
+ * of points can never appear together, so one pair of rows serves both and a dense block stays in
+ * step with a sparse one column for column.
+ *
+ * `dense_mlp_beside_experts` is the case that breaks the assumption, because there both branches
+ * exist on the same layer — and a shared row then puts `router_logits` exactly on top of `mlp_pre`.
+ * So the routed branch moves to a pair of rows of its own, below the dense one. That is also the
+ * truer picture: the two branches both read the pre-feedforward residual and their outputs are
+ * summed, so they are siblings, and drawing them on one row in adjacent columns would suggest the
+ * router reads the dense branch's neurons instead.
+ */
+function routingRows(union: Set<TraitId>): {
+  logits: number;
+  weights: number;
+  indices: number;
+} {
+  return union.has("dense_mlp_beside_experts")
+    ? { logits: 4, weights: 4, indices: 5 }
+    : { logits: 2, weights: 2, indices: 3 };
+}
 
 interface LayerPlan {
   layer: number;
@@ -402,18 +434,19 @@ function buildLayer(ctx: Ctx, plan: LayerPlan): BuiltLayer {
     [{ point: "attn_stream_write", row: -1 }],
   ]);
 
+  const routing = routingRows(ctx.union);
   const mlpStages = reserve(ctx, layer, [
     [{ point: "mlp_stream_mix", row: 2 }],
     [{ point: "mlp_stream_collapse", row: 1 }],
     [{ point: "mlp_in", row: 1 }],
     [
-      { point: "router_logits", row: 2 },
+      { point: "router_logits", row: routing.logits },
       { point: "mlp_pre", row: 2 },
       { point: "mlp_pre_linear", row: 3 },
     ],
     [
-      { point: "expert_weights", row: 2 },
-      { point: "expert_indices", row: 3 },
+      { point: "expert_weights", row: routing.weights },
+      { point: "expert_indices", row: routing.indices },
       { point: "mlp_act", row: 1 },
     ],
     [{ point: "mlp_out", row: 1 }],
@@ -662,23 +695,28 @@ function rowFanouts(
   }
 
   const sparse = traits.has("moe");
+  const beside = traits.has("dense_mlp_beside_experts");
   // Whether the neuron basis is drawn anywhere in the stack, which is what reserves the width for it.
   // Not the same question as whether a *dense block* exists: under `dense_mlp_beside_experts` there
   // is no dense block at all and the basis is on every layer, because the MLP survives beside the
   // experts. Getting this wrong collapses the row to one glyph and the neurons land on the spine.
-  const hasNeuronBasis =
-    !sparse || traits.has("dense_mlp_beside_experts") || dims.layers >= 3;
+  const hasNeuronBasis = !sparse || beside || dims.layers >= 3;
+  const neurons = hasNeuronBasis ? dims.neurons : 1;
+  const routing = routingRows(traits);
 
-  out.set(1, Math.max(hasNeuronBasis ? dims.neurons : 1, streams));
-  out.set(
-    2,
-    Math.max(hasNeuronBasis ? dims.neurons : 1, sparse ? dims.experts : 1, mix),
-  );
+  out.set(1, Math.max(neurons, streams));
+  out.set(2, Math.max(neurons, sparse && !beside ? dims.experts : 1, mix));
   const row3 = Math.max(
     hasNeuronBasis && traits.has("gated_mlp") ? dims.neurons : 0,
-    sparse ? dims.activeExperts : 0,
+    sparse && !beside ? dims.activeExperts : 0,
   );
   if (row3 > 0) out.set(3, row3);
+  // The routed branch on rows of its own, claimed here so they get an offset -- an unclaimed row has
+  // none, and every glyph placed on it would land on the spine.
+  if (sparse && beside) {
+    out.set(routing.logits, Math.max(dims.experts, 1));
+    out.set(routing.indices, Math.max(dims.activeExperts, 1));
+  }
 
   return out;
 }
