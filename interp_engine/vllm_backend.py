@@ -1134,6 +1134,7 @@ class VLLMModel:
             ),
             n_layers=self.num_hidden_layers,
             tensor_parallel_size=self.tensor_parallel_size,
+            min_n=facts.min_batched_tokens(cfg) or 0,
         )
         if fitted != max_n:
             logger.warning("lowering max_num_batched_tokens %s -> %s so static buffers fit", max_n, fitted)

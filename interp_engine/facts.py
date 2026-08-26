@@ -777,6 +777,35 @@ def mandatory_kv_cache_dtype(architectures: Sequence[str] | None) -> str | None:
     return None
 
 
+# A multimodal model whose image tokens attend bidirectionally (Gemma 3, Gemma 4) has chunked
+# multimodal input forced OFF by vLLM, and one whole item must then fit in a single batch or the
+# engine refuses to start: "Chunked MM input disabled but max_tokens_per_mm_item (2496) is larger
+# than max_num_batched_tokens (512)". vLLM raises its own floor for this, but only while defaulting
+# `max_num_batched_tokens`, and clamps the result against `max_model_len` immediately after -- so a
+# caller who sizes the window to its prompt, which capture does, defeats the fix and gets the raise.
+#
+# A floor rather than the number, because the number is not in the HF config: the per-item token
+# count comes from vLLM's processing info for that family (2496 on Gemma 4, 256 on Gemma 3), and
+# deriving it here would mean reimplementing each family's image-token math against a private API.
+# Generous enough for every multimodal family served so far; if one ever needs more, vLLM's refusal
+# names the value it wanted, which is the only honest way to revise this.
+MM_MIN_BATCHED_TOKENS = 8192
+
+
+def min_batched_tokens(config: Any) -> int | None:
+    """The ``max_num_batched_tokens`` this checkpoint cannot boot below, or ``None`` if unconstrained.
+
+    Companion to :func:`mandatory_kv_cache_dtype`, and here for the same reason: a boot requirement
+    every harness has to know is one the library should answer, not one each caller rediscovers from
+    a stack trace.
+
+    Keyed on the config being a multimodal wrapper rather than on the family, since the constraint
+    follows from having a non-text modality at all. Text-only checkpoints get ``None`` and keep
+    vLLM's own defaults, which is what makes this safe to ask about unconditionally.
+    """
+    return MM_MIN_BATCHED_TOKENS if config is not None and text_config(config) is not config else None
+
+
 # --- quantization and the backward pass ---------------------------------------
 #
 # Quantization is invisible to *capture*: hooks read activations, which transformers dequantizes to a
