@@ -86,6 +86,12 @@ class Quirks:
     # no branch on this -- ``mlp_in``/``mlp_out`` tap ``layer.mlp``, which is the whole block
     # including any shared expert -- so it is reported for callers, not consumed here.
     moe_layers: tuple[int, ...] = ()
+    # Whether a sparse layer's routed experts are added *beside* the dense MLP instead of replacing
+    # it (Gemma-4, and so far only Gemma-4). That inverts the sentence above: ``layer.mlp`` is then
+    # one of two branches the block's own forward sums, so tapping it returns half a feed-forward.
+    # Consumed by capture, which refuses ``mlp_out`` on such a layer and points at ``mlp_out_post``.
+    # See :func:`facts.dense_mlp_beside_experts`.
+    dense_mlp_beside_experts: bool = False
     # Each sublayer's output is normalized before being added to the residual (Gemma-2/3/4
     # sandwich norms, OLMo-2/3 post-norms), so the *residual contribution* is a different tensor
     # from the raw submodule output. Enables the ``attn_out_post`` / ``mlp_out_post`` points.
@@ -556,6 +562,10 @@ class ArchSpec:
         # did it while `mlp_in`/`mlp_out` at the same position happily resolved to that same dense
         # module, so the two halves of the MLP vocabulary contradicted each other about one block.
         mlp = self.mlp_projection_holder(layer)
+        # The MLP's *own* router, deliberately, not `facts.moe_router_owner`: a router beside the MLP
+        # rather than inside it means the dense MLP is still there and still has a neuron basis to
+        # capture (Gemma-4 -- see `mlp_is_half_the_feed_forward`), so widening this to the block would
+        # refuse three points that exist. `moe_router` widens; this one must not.
         if self.is_moe_layer(layer) and facts.moe_router_attr(mlp) is not None:
             raise ValueError(
                 f"Layer {layer} of {self.architecture} is a sparse MoE block, so it has no single "
@@ -615,6 +625,17 @@ class ArchSpec:
         """Whether ``layer``'s MLP is a sparse mixture-of-experts block rather than a dense one."""
         return layer in self.quirks.moe_layers
 
+    def mlp_is_half_the_feed_forward(self, layer: int) -> bool:
+        """Whether ``layer.mlp`` is one of two feed-forward branches the block's forward sums.
+
+        True only where a sparse layer keeps its dense MLP *beside* the experts (Gemma-4): both
+        branches read the pre-feedforward residual through norms of their own, and the block adds
+        them. So ``layer.mlp`` is a complete module producing a complete ``d_model`` tensor that is
+        nonetheless not the layer's feed-forward -- which is why this is asked rather than inferred
+        from ``is_moe_layer``, true on families where the MLP *is* the whole block.
+        """
+        return self.is_moe_layer(layer) and self.quirks.dense_mlp_beside_experts
+
     def moe_router(self, layer: int) -> nn.Module:
         """The sparse block's router, whose output is the whole routing decision.
 
@@ -634,12 +655,16 @@ class ArchSpec:
                 "the neuron basis of a dense MLP."
             )
         mlp = self.mlp_module(layer)
-        attr = facts.moe_router_attr(mlp)
-        if attr is None:
+        # Beside the MLP as well as inside it: Gemma-4 hangs the router on the block, and asking only
+        # the MLP reported "no router submodule found" on a checkpoint whose router is one attribute
+        # away. See :func:`facts.moe_router_owner`.
+        owner = facts.moe_router_owner(self.block(layer), mlp)
+        if owner is None:
             raise AttributeError(
-                f"No router submodule found on layer {layer}'s {type(mlp).__name__} "
-                f"({self.architecture}); tried {facts.MOE_ROUTER_ATTRS}"
+                f"No router submodule found on layer {layer}'s {type(mlp).__name__} or on the block "
+                f"itself ({self.architecture}); tried {facts.MOE_ROUTER_ATTRS}"
             )
+        holder, attr = owner
         if "forward" in vars(mlp):
             # A quantizer or kernel loader has replaced the block's forward on the instance, and the
             # replacements route *inline*: transformers' MXFP4 path for gpt-oss calls
@@ -676,7 +701,7 @@ class ArchSpec:
                 "the fused path (for gpt-oss: quantization_config=Mxfp4Config(dequantize=True)) to get the "
                 "eager router, and with it the weights and indices, back."
             )
-        return getattr(mlp, attr)
+        return getattr(holder, attr)
 
     def inline_routing_logits(self, layer: int) -> tuple[nn.Module, str] | None:
         """Address of ``router_logits`` on a block that routes inline, or None if it calls its router.
@@ -696,6 +721,12 @@ class ArchSpec:
 
         Raises on a KV-shared layer, where the value tensor is genuinely produced by a different
         layer rather than merely being hard to find.
+
+        ``None`` also -- and this is why callers must ask :meth:`value_module` *first* rather than
+        reading None as "split a fused QKV" -- on a layer that has no value projection because it uses
+        the key's (:meth:`is_k_eq_v_layer`). That is a third case this return value cannot distinguish,
+        on a family whose :attr:`Quirks.fused_qkv` is false, so a caller reaching here with None on
+        Gemma-4 would go looking for a fused projection that does not exist.
         """
         if self.is_kv_shared_layer(layer):
             raise ValueError(self._kv_shared_refusal(layer, "value", "value projection", "DFA reads it too."))
@@ -953,6 +984,48 @@ class ArchSpec:
         :func:`facts.value_scale`."""
         return facts.value_scale(self.attn_module(layer))
 
+    def is_k_eq_v_layer(self, layer: int) -> bool:
+        """Whether ``layer`` takes its *key* projection's output as the value and has no ``v_proj``.
+
+        Gemma-4's ``attention_k_eq_v``, and only on the layers the modeling code applies it to: the
+        flag is model-wide but ``Gemma4TextAttention`` gates it on ``not is_sliding``, so a sliding
+        layer of the same checkpoint projects its value normally. Reading the flag alone would
+        describe every layer of the 12B, 26B and 31B as having no value projection when half of them
+        do -- and the sliding layers' ``num_key_value_heads`` differs from the global ones', so the
+        two kinds are not interchangeable in any case (:meth:`kv_heads_for_layer`).
+        """
+        if not self.k_eq_v:
+            return False
+        kinds = self.quirks.hybrid_layer_types
+        if not kinds or layer >= len(kinds):
+            # The flag with no layer table is a homogeneous trunk: nothing marks a layer sliding, so
+            # the alternative attention applies throughout.
+            return True
+        return "sliding" not in str(kinds[layer]).lower()
+
+    def value_module(self, layer: int) -> nn.Module | None:
+        """The module whose output is the value attention consumes, when that is not the projection.
+
+        The norm the family runs between projection and attention -- Gemma-4's ``v_norm`` -- or
+        ``None`` on every family where ``value`` is the projection's own output.
+
+        Preferred over :meth:`v_proj` wherever it exists, on *all* of that family's layers rather
+        than only the ones missing a projection. Two reasons, and the first would apply even if the
+        second never came up: the normed tensor is the one the attention pattern multiplies, so it is
+        what ``value`` names and what DFA needs; and vLLM has no separate value projection to compare
+        against (its ``Gemma4Attention`` splits a fused QKV) but runs the same ``v_norm``, so this is
+        the only boundary at which the two engines can be checked against each other at all.
+
+        Raises on a KV-shared layer, where the tensor is genuinely another layer's -- the same
+        refusal :meth:`v_proj` makes, and for the same reason: those layers are built with neither a
+        projection nor a norm.
+        """
+        if self.is_kv_shared_layer(layer):
+            raise ValueError(self._kv_shared_refusal(layer, "value", "value norm", "DFA reads it too."))
+        attn = self.attn_module(layer)
+        attr = facts.value_norm_attr(attn)
+        return getattr(attn, attr) if attr is not None else None
+
     def is_kv_shared_layer(self, layer: int) -> bool:
         """Whether ``layer`` reuses an earlier layer's keys/values and has no k/v projection."""
         return self.first_kv_shared_layer is not None and layer >= self.first_kv_shared_layer
@@ -1127,6 +1200,7 @@ def resolve_arch(model: nn.Module, config: Any) -> ArchSpec:
         qkv_layout=facts.eager_qkv_layout(architecture, config),
         gated_attn_out=gated_attn_out,
         moe_layers=model_facts.moe_layers,
+        dense_mlp_beside_experts=model_facts.dense_mlp_beside_experts,
         sandwich_norms=post_mlp_norm_attr is not None,
         tied_embeddings=tied,
         attn_sinks=bool(hints.get("attn_sinks", False)),

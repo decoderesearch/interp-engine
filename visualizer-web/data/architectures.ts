@@ -201,7 +201,7 @@ const FAMILIES: Architecture[] = [
       "google/gemma-4-E4B",
       "google/gemma-4-31B",
     ],
-    note: "Softcapping is back after Gemma 3 dropped it. Head width varies by layer, and two things this diagram does not draw: E2B and E4B reuse an earlier layer's keys and values past a cutoff (20 of E2B's 35 layers have no v_proj), while the 31B instead sets attention_k_eq_v, so its full-attention layers use the key projection as the value and have no v_proj either.",
+    note: "Softcapping is back after Gemma 3 dropped it. Head width varies by layer, and two things this diagram does not draw: E2B and E4B reuse an earlier layer's keys and values past a cutoff (20 of E2B's 35 layers have no v_proj), while the 31B instead sets attention_k_eq_v, so its full-attention layers use the key projection as the value and have no v_proj either. Only the first of those costs you the value point. Every layer that projects its own KV also norms the result with v_norm, and that norm's output is what attention consumes, so value is read there — which is the same tensor whether or not a v_proj produced it.",
   },
   {
     id: "Gemma4Moe",
@@ -221,7 +221,7 @@ const FAMILIES: Architecture[] = [
       "dense_mlp_beside_experts",
     ],
     exampleModels: ["google/gemma-4-26B-A4B-it"],
-    note: "The one family here whose class does not identify its wiring: it declares Gemma4ForConditionalGeneration like the dense SKUs and turns the experts on with enable_moe_block. Every layer is sparse, layer 0 included, and each keeps its neuron basis — which is what the Dense MLP beside experts trait draws. One thing the diagram still gets wrong: mlp_out is shown as the whole feed-forward when it is only the dense half, because the routed branch is a sibling of layer.mlp rather than inside it, and the two are summed after.",
+    note: "The one family here whose class does not identify its wiring: it declares Gemma4ForConditionalGeneration like the dense SKUs and turns the experts on with enable_moe_block. Every layer is sparse, layer 0 included, and each keeps its neuron basis — which is what the Dense MLP beside experts trait draws. That is also why mlp_out is refused here and nowhere else: the routed branch is a sibling of layer.mlp rather than inside it, so the module's output is the dense half of a sum the block does afterwards. mlp_out_post is downstream of that sum. The router is a sibling too, which is why it is drawn on the block.",
   },
   {
     id: "Gemma4UnifiedForConditionalGeneration",

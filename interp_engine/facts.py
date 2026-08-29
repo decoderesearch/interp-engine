@@ -1134,9 +1134,46 @@ def moe_router_attr(mlp: Any) -> str | None:
     """Attribute name of the sparse block's router, or ``None`` if this MLP has none.
 
     ``None`` on every dense MLP, including the dense prefix layers of a hybrid MoE model, so a
-    caller must not read it as "this checkpoint is not MoE".
+    caller must not read it as "this checkpoint is not MoE". Also ``None`` on a Gemma-4 sparse layer,
+    whose router is a sibling of the MLP rather than a child of it -- ask :func:`moe_router_owner`,
+    which looks in both places, unless you specifically mean the MLP's own.
     """
-    return next((name for name in MOE_ROUTER_ATTRS if hasattr(mlp, name)), None)
+    return next((name for name in MOE_ROUTER_ATTRS if _is_module(getattr(mlp, name, None))), None)
+
+
+def _is_module(candidate: Any) -> bool:
+    """Whether this attribute is a callable submodule rather than a flag or a tensor.
+
+    Duck-typed because this module holds no torch dependency (see the header). Presence alone is not
+    enough once the *block* is searched for a router as well as the MLP: a decoder layer can hold a
+    plain attribute under one of these names, and ``hasattr`` would hand a bool back to a caller
+    about to install a forward hook on it.
+    """
+    return callable(candidate) and hasattr(candidate, "forward")
+
+
+def moe_router_owner(layer: Any, mlp: Any) -> tuple[Any, str] | None:
+    """The module that holds the sparse block's router, and the attribute name -- or ``None``.
+
+    The MLP first, because that is where every other MoE family puts it: the router is a child of
+    the ``MixtralSparseMoeBlock`` / ``Qwen3MoeSparseMoeBlock`` / ``GptOssMLP`` that consumes it, so
+    on those the block is never searched and nothing about them changes.
+
+    Gemma-4 is the family that needs the second look. Its router is a sibling of ``layer.mlp``
+    (``layer.router``, beside ``layer.experts``), for the same reason its MLP is only half the
+    feed-forward: the routed branch is assembled by the *block's* forward, so the block owns both
+    halves and neither is inside the other. Asking only the MLP left all three routing points
+    unresolvable on the 26B, reported as "no router submodule found" -- a lookup failure that reads
+    like a checkpoint without a router rather than a router one level up.
+
+    ``None`` on a dense layer either way, which a caller must not read as "this checkpoint is not
+    MoE": the dense prefix of a hybrid trunk answers ``None`` too.
+    """
+    if (attr := moe_router_attr(mlp)) is not None:
+        return mlp, attr
+    if layer is not None and (attr := moe_router_attr(layer)) is not None:
+        return layer, attr
+    return None
 
 
 #: Sparse-block ``forward`` replacements that route *inline* -- computing the logits with the router's
@@ -1188,16 +1225,59 @@ def routing_convention(architecture: str) -> str | None:
 #: outside: element 0 is ``[tokens, k]`` where the default reading expects ``[tokens, n_experts]``,
 #: which is a plausible tensor under either name, and it took a cross-engine width mismatch to catch.
 #: :func:`assert_routing_shapes` is the check that makes the next one of these loud instead.
+#: A name for an element that is not one of the three points -- it is a real tensor a router returns
+#: which no canonical point means, and it exists so that a layout can say "the logits are *not* here"
+#: rather than leaving the slot labelled with the point that would then be read out of it.
+_NOT_A_POINT_PROBS = "router_probabilities"
 _DEFAULT_ROUTER_OUTPUT: tuple[str, ...] = ("router_logits", "expert_weights", "expert_indices")
 ROUTER_OUTPUTS: dict[str, tuple[str, ...]] = {
     "GraniteMoeForCausalLM": ("expert_indices", "expert_weights", "router_logits"),
     "GraniteMoeSharedForCausalLM": ("expert_indices", "expert_weights", "router_logits"),
     "GraniteMoeHybridForCausalLM": ("expert_indices", "expert_weights", "router_logits"),
+    # Gemma-4 returns the three tensors in the default *order* while element 0 is not the default
+    # tensor: `Gemma4TextRouter.forward` softmaxes over all 128 experts and returns those
+    # probabilities there. The width check cannot catch it -- probabilities over the bank are exactly
+    # as wide as logits over the bank -- and neither can a caller downstream, since both are
+    # per-token float rows whose entries are plausible either way. The block itself discards element
+    # 0, so it is not even a tensor the model uses. Its logits are one module deeper
+    # (:data:`ROUTER_LOGITS_SUBMODULE`), which is where `router_logits` resolves on this family.
+    "Gemma4ForConditionalGeneration": (_NOT_A_POINT_PROBS, "expert_weights", "expert_indices"),
+    "Gemma4UnifiedForConditionalGeneration": (_NOT_A_POINT_PROBS, "expert_weights", "expert_indices"),
+    "Gemma4ForCausalLM": (_NOT_A_POINT_PROBS, "expert_weights", "expert_indices"),
 }
 
 
+#: Where a family's *pre-softmax* logits are, for the families whose router module does not return
+#: them: the attribute, on the router, of the projection that produces them.
+#:
+#: Gemma-4 is the family (see :data:`ROUTER_OUTPUTS`). ``Gemma4TextRouter`` norms, scales and then
+#: projects, and it is that ``proj`` whose output the softmax consumes -- so this is a *read* of the
+#: tensor the routing decision was made from, not a recomputation of it, and it is bit-identical to
+#: what vLLM's own ``Gemma4Router.forward`` returns, which makes the two engines comparable at this
+#: point rather than only within one.
+#:
+#: Keyed by architecture and deliberately small, like every other table here. A family whose router
+#: returns its logits needs no entry, and guessing an entry for one would address a point at a
+#: submodule whose output has never been checked against what the family routes on.
+ROUTER_LOGITS_SUBMODULE: dict[str, str] = {
+    "Gemma4ForConditionalGeneration": "proj",
+    "Gemma4UnifiedForConditionalGeneration": "proj",
+    "Gemma4ForCausalLM": "proj",
+}
+
+
+def router_logits_submodule(architecture: str) -> str | None:
+    """The router submodule holding this family's pre-softmax logits, or None if the router returns them."""
+    return ROUTER_LOGITS_SUBMODULE.get(architecture)
+
+
 def router_output_index(architecture: str, point: str) -> int:
-    """Which element of this family's router output tuple carries ``point``."""
+    """Which element of this family's router output tuple carries ``point``.
+
+    Raises where the tuple carries no such tensor, which is a real answer and not a gap in the table:
+    a family can return probabilities where the default returns logits, and the caller then has to go
+    somewhere else for them (:func:`router_logits_submodule`) rather than read the slot.
+    """
     layout = ROUTER_OUTPUTS.get(architecture, _DEFAULT_ROUTER_OUTPUT)
     if point not in layout:
         raise ValueError(f"{architecture}'s router output carries {layout}, not {point!r}")
@@ -1221,6 +1301,16 @@ def assert_routing_shapes(point: str, tensor: Any, *, architecture: str, n_exper
             f"Its router's output tuple is not {_DEFAULT_ROUTER_OUTPUT}; register the real order in "
             "`facts.ROUTER_OUTPUTS`."
         )
+    if point == "router_logits" and _looks_like_a_distribution(tensor):
+        raise ValueError(
+            f"{architecture}'s captured 'router_logits' is non-negative everywhere and sums to 1 per "
+            "token, so it is a softmax over the expert bank rather than the logits that went into one. "
+            "A family can return the probabilities where the default tuple returns logits (Gemma-4 "
+            "does, and the width check above cannot see it, because a distribution over the bank is "
+            "exactly as wide as the logits over it). Point 'router_logits' at the router's own "
+            "projection with `facts.ROUTER_LOGITS_SUBMODULE` and mark the slot in "
+            "`facts.ROUTER_OUTPUTS`."
+        )
     if point == "expert_indices" and tensor.dtype.is_floating_point:
         raise ValueError(
             f"{architecture}'s captured 'expert_indices' is {tensor.dtype}, and a selection is integers. "
@@ -1232,6 +1322,28 @@ def assert_routing_shapes(point: str, tensor: Any, *, architecture: str, n_exper
             f"{architecture}'s captured {point!r} is {width} wide, which is neither the top-k ({top_k}) "
             f"nor the expert count ({n_experts}). Register the real order in `facts.ROUTER_OUTPUTS`."
         )
+
+
+def _looks_like_a_distribution(tensor: Any) -> bool:
+    """Whether every row of ``tensor``'s last axis is non-negative and sums to one.
+
+    The tell that separates a softmax's output from its input, and the only property that does: the
+    two are the same shape, the same dtype and the same width, and both are per-token float rows whose
+    entries look like scores. Both halves are needed -- logits happen to sum near 1 sometimes, and a
+    non-negative row need not be normalized -- and together they are a thing real logits over 128
+    experts do not do.
+
+    Written with no torch dependency (see the header) and defensively: anything that does not answer
+    these questions is not a distribution as far as this is concerned, because the caller's job is a
+    shape assertion and it must not be the thing that raises.
+    """
+    try:
+        if tensor.dtype.is_floating_point is False:
+            return False
+        as_float = tensor.detach().float()
+        return bool((as_float >= 0).all()) and bool(((as_float.sum(-1) - 1.0).abs() < 1e-3).all())
+    except (AttributeError, RuntimeError, TypeError):
+        return False
 
 
 def inline_routing_logits_index(mlp: Any) -> int | None:
@@ -1284,6 +1396,24 @@ def dense_mlp_beside_experts(cfg: Any) -> bool:
     checkpoint's dense siblings also carry.
     """
     return bool(config_attr(cfg, "enable_moe_block", False))
+
+
+#: The attribute both engines' Gemma-4 decoder layers set from ``enable_moe_block``, marking a block
+#: that hangs the routed branch beside its dense MLP. A *layer* flag rather than a config read, which
+#: is what the vLLM worker needs: it holds a block with no layer index to ask
+#: :func:`is_moe_layer` about, and the two trees set this from the same config field, so asking the
+#: block cannot disagree with what the eager backend concluded from the config.
+DENSE_MLP_BESIDE_EXPERTS_FLAG = "enable_moe_block"
+
+
+def experts_beside_this_layers_mlp(layer: Any) -> bool:
+    """Whether *this* block sums a routed branch with its dense MLP's output.
+
+    False on a Gemma-4 layer that is dense, so this is per block rather than per checkpoint -- and
+    false everywhere outside the family, where a sparse layer has no dense MLP to sum with. See
+    :func:`dense_mlp_beside_experts` for what the arrangement is and why it needs saying.
+    """
+    return bool(getattr(layer, DENSE_MLP_BESIDE_EXPERTS_FLAG, False))
 
 
 def is_moe_layer(cfg: Any, layer: int) -> bool:
@@ -1430,6 +1560,41 @@ def value_scale(attn_module: Any) -> float:
         if isinstance(scale, int | float):
             return float(scale)
     return 1.0
+
+
+#: A norm applied to the value vectors *between* the projection and attention, so the tensor
+#: attention consumes is this module's output rather than the projection's. Gemma-4 is the family:
+#: ``Gemma4TextAttention.forward`` runs ``value_states = self.v_norm(value_states)`` on every layer
+#: that projects its own KV, and vLLM's ``Gemma4Attention`` runs the same line on the V slice of its
+#: fused QKV -- so the two engines agree here in a way they cannot at the projection, which vLLM does
+#: not have separately.
+#:
+#: The same idea as :data:`ATTN_VALUE_SCALE_ATTRS`, one step further: that corrects a scalar the
+#: forward applies after the projection, and this names a module that does. Kept as a module rather
+#: than folded into the scale because an RMS norm is per token, not a constant, so no factor
+#: reproduces it.
+#:
+#: Exact names, and only the ones verified against a family's forward. A ``v_norm`` that a forward
+#: does *not* apply to the value would make this the wrong tensor -- silently, since it is the right
+#: shape -- which is the same trap ``use_qk_norm=True`` beside an ``nn.Identity`` sets.
+ATTN_VALUE_NORM_ATTRS: tuple[str, ...] = ("v_norm",)
+
+
+def value_norm_attr(attn_module: Any) -> str | None:
+    """Attribute name of the norm this layer's value passes through, or ``None`` if there is none.
+
+    ``None`` on every family but Gemma-4, where ``value`` is the projection's own output and nothing
+    about the resolution changes.
+
+    Two things this buys on Gemma-4, and the second is why it is a module question rather than a
+    correction applied afterwards. The value it names is the one attention multiplies the pattern by,
+    where ``v_proj``'s output is a norm short of it -- true on *every* layer of the family, including
+    the sliding ones that do have a ``v_proj``. And on a ``attention_k_eq_v`` layer there is no
+    ``v_proj`` at all: the forward passes the *key* projection's output to ``v_norm``, so this module
+    is the only boundary the value crosses, and asking for the projection there is a question with no
+    answer (see :meth:`interp_engine.arch.ArchSpec.is_k_eq_v_layer`).
+    """
+    return next((name for name in ATTN_VALUE_NORM_ATTRS if _is_module(getattr(attn_module, name, None))), None)
 
 
 def value_head_dim(cfg: Any, head_dim: int) -> int:

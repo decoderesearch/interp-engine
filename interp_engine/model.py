@@ -533,6 +533,42 @@ class EagerModel:
             "the sublayer points ('attn_out', 'mlp_out'), which do exist at every position."
         )
 
+    def _require_whole_feed_forward(self, layer: int) -> None:
+        """Refuse ``mlp_out`` where ``layer.mlp`` is one branch of a two-branch feed-forward.
+
+        Gemma-4's sparse layers keep the dense MLP and hang the router and experts *beside* it, then
+        sum ``post_ffn_norm_1(mlp(x)) + post_ffn_norm_2(experts(x))`` inside the block's own forward.
+        So ``layer.mlp`` is a complete module whose output is half of what this point names, at the
+        right width and the right token positions, with nothing about it to notice -- which is the
+        one failure mode this engine refuses on principle rather than serving.
+
+        Refused rather than served from the sum, because the sum has no module boundary: it is a
+        local of the block's forward, reachable only the way the kernel-local points are, and there
+        is already a point that means the tensor a caller of this one wants. ``mlp_out_post`` is the
+        ``post_feedforward_layernorm``'s output -- downstream of the sum, so it includes both
+        branches -- and it is what keeps ``resid_post == resid_mid + mlp_out_post`` true here, so
+        every residual decomposition is unaffected.
+
+        Note what is NOT refused. ``mlp_act`` and the rest of the neuron basis are the dense
+        branch's own internals and mean exactly what they mean elsewhere. ``mlp_in`` is the dense
+        branch's input and is served: the block normalizes the same residual twice, once per branch,
+        so there is no single tensor "the feed-forward reads" to prefer over it -- ``resid_mid`` is
+        the quantity both branches are functions of.
+        """
+        if not self.arch.mlp_is_half_the_feed_forward(layer):
+            return
+        raise ValueError(
+            f"Layer {layer} of {self.arch.architecture} runs its routed experts BESIDE the dense MLP "
+            "rather than instead of it, and sums the two branches inside the block's forward. So "
+            "'mlp_out' -- the output of `layer.mlp` -- is the dense branch alone: a correctly shaped "
+            "d_model tensor that is half this layer's feed-forward, which is why it is refused rather "
+            "than returned. Capture 'mlp_out_post' instead: it is the post-feedforward norm's output, "
+            "downstream of the sum, so it carries both branches and is the layer's actual residual "
+            "contribution (resid_post == resid_mid + mlp_out_post holds). The dense branch's own "
+            "internals are unaffected -- 'mlp_in', 'mlp_pre', 'mlp_pre_linear' and 'mlp_act' all "
+            "resolve here -- and the routed branch is described by the routing points."
+        )
+
     # --- canonical hook-point resolution ------------------------------------
     def points(self) -> tuple[PointSpec, ...]:
         """Every point addressable on *this* model: the global table plus what its trunk adds.
@@ -645,6 +681,7 @@ class EagerModel:
             # (OPT's `fc1`/`fc2`) has these two tensors but no module whose input/output they are.
             return self.arch.mlp_boundary(layer, "in")
         if name == "mlp_out":
+            self._require_whole_feed_forward(layer)
             return self.arch.mlp_boundary(layer, "out")
         if name == "attn_in":
             # Symmetric with `mlp_in`: what the attention block reads, i.e. the normed residual.
@@ -768,8 +805,15 @@ class EagerModel:
             # (`derived_routing` below), which is a capture-path concern and has no address to return.
             if name == "router_logits" and (inline := self.arch.inline_routing_logits(layer)) is not None:
                 return inline
+            router = self.arch.moe_router(layer)
+            # A family whose router returns *probabilities* where the tuple's logits slot is has its
+            # logits one module deeper, and that projection's output is what its own softmax consumed
+            # -- read, not recomputed. Gemma-4 only; see `facts.ROUTER_LOGITS_SUBMODULE`. Asked before
+            # the tuple index so the slot that does not hold logits is never indexed for them.
+            if name == "router_logits" and (attr := facts.router_logits_submodule(self.arch.architecture)):
+                return getattr(router, attr), "output"
             element = facts.router_output_index(self.arch.architecture, name)
-            return self.arch.moe_router(layer), f"output:{element}"
+            return router, f"output:{element}"
         if name == "mlp_out_post":
             # The MLP's *residual contribution*: `resid_post = resid_mid + mlp_out_post` holds for
             # this and fails for raw `mlp_out` on any post-norm architecture. On a model with no
@@ -798,6 +842,14 @@ class EagerModel:
             standalone = self.arch.attn_out_gate_proj(layer)
             return (standalone or self.arch.q_proj(layer)), "output"
         if name == "value":
+            # A norm between the projection and attention wins over the projection, because this point
+            # means the tensor the attention pattern is applied to and the norm is the last thing that
+            # touches it. Gemma-4 only, so far -- and there it is also the *whole* answer on a
+            # `attention_k_eq_v` layer, which has no value projection to prefer it over: the value is
+            # the key projection's output, read before k_norm and before RoPE, so nothing but this
+            # norm's output distinguishes it from the key. See `ArchSpec.value_module`.
+            if (normed := self.arch.value_module(layer)) is not None:
+                return normed, "output"
             v = self.arch.v_proj(layer)
             if v is not None:
                 return v, "output"

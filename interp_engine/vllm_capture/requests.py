@@ -32,9 +32,11 @@ from interp_engine.vllm_capture._demux import (
 )
 from interp_engine.vllm_capture._hooks import (
     _sum_residual,
+    flat_value,
     hidden_from_call,
     layer_return_tensor,
     returns_full_residual,
+    value_columns,
 )
 from interp_engine.vllm_capture._hooks import position_mask as _position_mask
 from interp_engine.vllm_capture._payload import (
@@ -53,6 +55,7 @@ from interp_engine.vllm_capture._tree import (
     absent_point_reason,
     resolve_capture_module,
     scale_capture,
+    value_span,
 )
 from interp_engine.vllm_capture.attn import _attn_op_module, _attn_sinks
 from interp_engine.vllm_capture.capture import worker_addresses
@@ -248,6 +251,46 @@ def _mk_out_point_hook(demux: _Demux, site: Address):
     return _hook
 
 
+def _mk_value_hook(demux: _Demux, site: Address):
+    """``value``, which on most families is one third of a packed projection's output.
+
+    The only point here whose module can carry two other tensors beside the one it names: vLLM fuses
+    q, k and v into one ``QKVParallelLinear`` on every family that has a fused implementation, so the
+    hook sees ``[q | k | v]`` and this narrows it to the last third (``_tree.value_span``). Where the
+    resolved module produces the value alone -- a value norm, which Gemma-4 has and which is the tensor
+    its attention actually consumes -- the span is ``None`` and the only adjustment is the rank
+    (``_hooks.flat_value``), because a norm over ``head_dim`` is handed the per-head view.
+
+    Either way the adjustment happens *before* steering and is undone after it, so a steer on this
+    point writes the value in the shape a capture of it reports, leaves the queries and keys of the same
+    matrix alone, and hands the module back its own shape. Writing into a copy of the packed tensor is
+    what makes the middle claim true, and is why the slice is copied out rather than passed as a view.
+    """
+
+    def _hook(module, _a, output):  # noqa: ANN001
+        full = output[0] if isinstance(output, tuple) else output
+        span = value_span(module)
+        if span is None:
+            # A value norm, which was handed the per-head view: steer in the shape a capture of this
+            # point reports (`flat_value`) and hand the module's own shape back.
+            flat = flat_value(full)
+            steered = _process_point(demux, site, flat)
+            if steered is flat:
+                return output
+            new = steered.view(full.shape)
+        else:
+            start, stop = span
+            sliced = value_columns(full, module).contiguous()
+            steered = _process_point(demux, site, sliced)
+            if steered is sliced:
+                return output
+            new = full.clone()
+            new[..., start:stop] = steered
+        return (new, *output[1:]) if isinstance(output, tuple) else new
+
+    return _hook
+
+
 def _mk_layer_return_hook(demux: _Demux, site: Address):
     """One of the mHC quantities the decoder layer returns alongside its hidden state.
 
@@ -348,7 +391,7 @@ _DEMUX_OUT_HOOKS = {
     "attn_out_post": _mk_out_point_hook,
     "mlp_out": _mk_out_point_hook,
     "mlp_out_post": _mk_out_point_hook,
-    "value": _mk_out_point_hook,
+    "value": _mk_value_hook,
     "q_norm_out": _mk_out_point_hook,
     "k_norm_out": _mk_out_point_hook,
     "router_logits": _mk_out_point_hook,

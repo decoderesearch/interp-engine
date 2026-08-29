@@ -291,12 +291,49 @@ way for a layer to have no `v_proj`, and it does not overlap with KV sharing: th
 against a key of `rope(k_norm(k_proj(h)))`, so the two are the same projection read through
 different norms, not the same tensor.
 
-**What the engine does with that today is wrong in the quiet direction.** `_first_attr` treats a
-present-but-`None` attribute as absent, so `ArchSpec.v_proj` returns `None` on those layers — which
-is the signal it uses for "fused QKV, the caller must split" — on a family whose `fused_qkv` is
-false. The layer needs a third answer: `value` is capturable, from `k_proj` and the `v_norm` after
-it, and refusing or mis-addressing it is not the same as it not being there. Nothing exercises this
-yet because the 31B has been swept without the value points.
+**The third answer that layer needed is the norm, and it applies to the whole family.**
+`ArchSpec.v_proj` still returns `None` there, which is the signal it uses for "fused QKV, the caller
+must split", on a family whose `fused_qkv` is false — so `value` no longer asks it first.
+`ArchSpec.value_module` does, and it returns the `v_norm` whenever the family has one
+(`facts.ATTN_VALUE_NORM_ATTRS`). Two things that buys, and the first would apply even without
+`attention_k_eq_v`:
+
+- `Gemma4TextAttention.forward` runs `value_states = self.v_norm(value_states)` on **every** layer
+  that projects its own KV, so the projection's output is a norm short of the tensor the attention
+  pattern multiplies. `value` was off by that norm on the sliding layers too, which do have a
+  `v_proj`.
+- vLLM has no value projection to compare against at all — its `Gemma4Attention` splits one fused
+  `qkv_proj`, with the K weights loaded into the V slot on the `k_eq_v` layers — but it runs the same
+  `v_norm` on the V slice. So this is the only boundary at which the two engines hold the same tensor,
+  which is what makes the point checkable rather than merely servable. `_tree._value_module` is the
+  vLLM side, and it prefers the norm in the same order for the same reason.
+
+**Reading a norm costs a rank, and the point does not pay it.** A norm over `head_dim` can only be
+given the per-head view, so both engines hand `v_norm` a `(…, n_kv_heads, head_dim)` tensor where a
+`v_proj` would have produced the flat one — and `value` would then be 4-D on this family and 3-D on the
+next, against a `Width.HEADS` declaration and `run_with_cache`'s `[batch, seq, width]`. Flattened back
+on both sides (`hooks.flat_per_head`, `vllm_capture._hooks.flat_value`), including on the way *into* a
+steer, so a vector measured on a capture of `value` is the shape the write expects; the module gets its
+own rank back before the attention reshapes it. Eagerly the head count is checked rather than assumed,
+because the other 4-D layout in circulation is `[batch, heads, pos, head_dim]` — transformers norms
+after the head transpose on ten families — and flattening that one puts the head count where every
+reader expects the sequence.
+
+**Off Gemma-4, `value` on vLLM is one third of a packed matrix.** Every family with a fused vLLM
+implementation goes through `QKVParallelLinear`, whose output is `[q | k | v]` on the last axis, so an
+output hook there returns all three under the value's name at three times the width.
+`_tree.value_span` measures the q and k widths off the projection's own rank-local geometry
+(`num_heads`, `num_kv_heads`, `head_size`, each divided by the TP size in its `__init__`) and
+`_hooks.value_columns` applies it on both install paths, refusing a geometry it can read only in part —
+every wrong offset into a packed matrix yields a right-shaped tensor of another projection's heads. On
+the per-request path the narrowing happens *before* steering, so a steer on `value` leaves the same
+matrix's q and k alone.
+
+The `k_eq_v` layers stay the interesting case for a *reader*: `value` there is `v_norm(k_proj(h))`
+where the key is `rope(k_norm(k_proj(h)))`, so the two points come off one projection through
+different norms and only one of them has RoPE applied. `ArchSpec.is_k_eq_v_layer` answers which layers
+those are, gated on `not sliding` the way the modeling code gates it — the flag is model-wide and the
+structure is not.
 
 Two more ways the value side can differ from the query side, both of which produce a correctly shaped
 and completely wrong per-head split if you reshape by `head_dim`:
@@ -438,7 +475,7 @@ n_experts]` tensor that is plausible rather than obviously wrong.
   which they are, because the LongCat guard makes the `mlp_pre` refusal require a router **on the MLP
   module**, and Gemma-4's is a sibling. The parameter count of a sparse layer includes the dense MLP,
   so the usual `(n_layers - n_sparse) * dense_mlp` undercounts (the 26B by ~0.5B). And `mlp_out` is
-  **not** the whole feed-forward here, which is the one that has no fix yet — see below.
+  **not** the whole feed-forward here, so it is refused — see below.
 
 Which experts fired _is_ capturable, one level down: `router_logits` / `expert_weights` /
 `expert_indices` are three elements of the router module's own output tuple, resolved by
@@ -484,18 +521,33 @@ module at all. Gemma-4 is the exception noted above, and the refusal already let
 right reason rather than by luck: it is gated on the router being found *on the MLP module*, the same
 guard that keeps LongCat's shortcut MoE from suppressing its two real feed-forwards.
 
-**Open on Gemma-4's 26B**, both from the same fact — the routed branch is a sibling of `layer.mlp`
-rather than a part of it:
+**Three things follow on Gemma-4's 26B from that one fact** — the routed branch is a sibling of
+`layer.mlp` rather than a part of it, so the *block* owns both halves of the feed-forward:
 
-- `mlp_out` taps `layer.mlp` and so returns the dense branch alone, missing the experts' contribution
-  entirely. Correctly shaped, wrong tensor, no tell. Either the point has to mean the summed
-  feed-forward here (which has no module boundary — the sum happens in the block's `forward`) or it
-  has to be refused with an explanation, and that choice has not been made.
-- `arch.moe_router` looks for the router under `layer.mlp` and Gemma-4 hangs it on the block, so
-  `router_logits` / `expert_weights` / `expert_indices` do not resolve at all. When they do, note that
-  `Gemma4TextRouter` returns `(router_probabilities, top_k_weights, top_k_index)` — element 0 is
-  already softmaxed over all 128 experts, so it matches the default tuple *order* while not being
-  logits, and `assert_routing_shapes` cannot tell the difference because the width is right.
+- **`mlp_out` is refused**, on both backends. It taps `layer.mlp`, which here returns the dense branch
+  alone: correctly shaped `[tokens, d_model]`, at the right positions, missing the experts entirely,
+  and with nothing about it to notice — both engines build the same tree, so a cross-engine sweep
+  agrees on the same half rather than catching it. The summed tensor has no module boundary to serve
+  instead (the sum is a local of the block's `forward`), and there is already a point that means it:
+  `mlp_out_post` is the `post_feedforward_layernorm`'s output, downstream of the sum, and the one for
+  which `resid_post == resid_mid + mlp_out_post` holds. `ArchSpec.mlp_is_half_the_feed_forward` is the
+  question both refusals ask. Nothing else moves: `mlp_in`, `mlp_pre`, `mlp_pre_linear` and `mlp_act`
+  are the dense branch's own internals and mean what they mean everywhere else.
+- **The router is looked for on the block as well as on the MLP** (`facts.moe_router_owner`). Asking
+  only `layer.mlp` left all three routing points unresolvable on the 26B. Presence alone is not enough
+  now that a decoder layer is searched: `facts.moe_router_attr` requires a callable submodule, because
+  a block can hold a plain flag under one of these names and the caller is about to install a forward
+  hook on whatever comes back.
+- **`router_logits` is read one module deeper than the tuple.** `Gemma4TextRouter.forward` returns
+  `(router_probabilities, top_k_weights, top_k_index)`: element 0 matches the default tuple *order*
+  while being a softmax over all 128 experts, and is exactly as wide as the logits over the same bank,
+  so neither `ROUTER_OUTPUTS` nor a width check can see it — and the block discards it. So the point
+  reads the router's own `proj` output, which is what that softmax consumed and what vLLM's
+  `Gemma4Router.forward` returns outright, leaving the two engines comparable
+  (`facts.ROUTER_LOGITS_SUBMODULE`, plus a `ROUTER_OUTPUTS` row naming slot 0 for what it is).
+  `assert_routing_shapes` also rejects a `router_logits` that is non-negative everywhere and sums to 1
+  per token, which is the family-agnostic version of the same catch. Elements 1 and 2 are the weights
+  and indices the block really routes with, and are read where every other family's are.
 
 In our shipping set only gpt-oss-20b is MoE (32 experts, top-4, no shared expert, every layer
 sparse). Its 3D batched expert weights matter only to code reading MLP weight matrices, and the

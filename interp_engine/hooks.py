@@ -46,6 +46,35 @@ def extract_hidden(output: object, index: int = 0) -> torch.Tensor:
     return output  # type: ignore[return-value]
 
 
+def flat_per_head(tensor: torch.Tensor, *, heads: int) -> tuple[torch.Tensor, torch.Size | None]:
+    """A capture that arrived with a head axis, as the flat ``[batch, pos, heads * head_dim]`` a point
+    declares -- with the shape to restore, for a hook that has to write back.
+
+    `value` needs this and `z` does not, for a reason that is about modules rather than about heads.
+    The module `value` resolves to is a *norm* wherever the family has one, and a norm over `head_dim`
+    has to be given the per-head view: Gemma-4 runs `v_norm` on `v_proj(h).view(..., n_kv, head_dim)`
+    and vLLM runs the same norm on `v.unflatten(-1, (n_kv, head_dim))`. So the point arrives per head
+    on one family and flat on the next, while `Width.HEADS` and `run_with_cache` both promise one
+    rank -- and TransformerLens' `hook_v` is the per-head spelling of this point, which is a
+    distinction the mapping table would lose if ours moved family to family.
+
+    The head count is checked rather than assumed, because the other 4-D layout a norm can produce is
+    `[batch, heads, pos, head_dim]` (transformers norms after the head transpose on ten families), and
+    flattening *that* yields a tensor whose second axis is the head count. Every reader would take it
+    for the sequence, `[batch, seq, width]` would still describe it, and nothing downstream could see
+    it was wrong.
+    """
+    if tensor.ndim != 4:
+        return tensor, None
+    if tensor.shape[-2] != heads:
+        raise ValueError(
+            f"Expected a per-head capture with {heads} heads on its second-to-last axis, got "
+            f"{tuple(tensor.shape)}. A head-major layout ([batch, heads, pos, head_dim]) is the "
+            "likely reason, and flattening it would put the head count where the sequence belongs."
+        )
+    return tensor.flatten(-2, -1), tensor.shape[-2:]
+
+
 def parse_point(point: str) -> tuple[str, int]:
     """Split a hook side into ``(side, tuple index)``: ``"output"`` -> ``("output", 0)``,
     ``"output:2"`` -> ``("output", 2)``.

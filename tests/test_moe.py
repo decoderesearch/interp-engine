@@ -28,10 +28,17 @@ from types import SimpleNamespace
 import pytest
 import torch
 from harness import GPT2, load_model
-from synthetic_families import shrunk_gpt_oss, shrunk_granite_moe
+from synthetic_families import moe_gemma4_on_meta, shrunk_gpt_oss, shrunk_granite_moe
 
 from interp_engine import expert_assignment, facts, moe_routing, run_with_cache
-from interp_engine.facts import ModelFacts, is_moe_layer, moe_router_attr, n_experts, resolve_facts
+from interp_engine.facts import (
+    ModelFacts,
+    is_moe_layer,
+    moe_router_attr,
+    moe_router_owner,
+    n_experts,
+    resolve_facts,
+)
 from interp_engine.hooks import HookManager
 
 # --- expert counts, across the four spellings in use -------------------------
@@ -235,18 +242,44 @@ def _sparse_model(monkeypatch):
 
 def test_the_router_attribute_is_found_under_both_spellings():
     """`gate` on Mixtral/Qwen/OLMoE/DeepSeek, `router` on gpt-oss."""
-    assert moe_router_attr(SimpleNamespace(gate=object(), experts=object())) == "gate"
-    assert moe_router_attr(SimpleNamespace(router=object(), experts=object())) == "router"
+    assert moe_router_attr(SimpleNamespace(gate=torch.nn.Identity(), experts=torch.nn.Identity())) == "gate"
+    assert moe_router_attr(SimpleNamespace(router=torch.nn.Identity(), experts=torch.nn.Identity())) == "router"
 
 
 def test_a_dense_mlps_gate_projection_is_not_mistaken_for_a_router():
     """`gate_proj` is the SwiGLU gate, and the dense prefix layers of an MoE model have one."""
-    assert moe_router_attr(SimpleNamespace(gate_proj=object(), up_proj=object(), down_proj=object())) is None
+    dense = SimpleNamespace(gate_proj=torch.nn.Identity(), up_proj=torch.nn.Identity(), down_proj=torch.nn.Identity())
+    assert moe_router_attr(dense) is None
 
 
 def test_a_shared_experts_gate_is_not_mistaken_for_the_router():
     """Qwen3-Next puts a 1-wide sigmoid `shared_expert_gate` in the same block as the router."""
-    assert moe_router_attr(SimpleNamespace(shared_expert_gate=object(), experts=object())) is None
+    assert moe_router_attr(SimpleNamespace(shared_expert_gate=torch.nn.Identity(), experts=torch.nn.Identity())) is None
+
+
+def test_a_flag_named_like_the_router_is_not_mistaken_for_it():
+    """Presence is not enough now that the *block* is searched as well as the MLP.
+
+    A decoder layer can hold a plain attribute under one of these names, and the caller is about to
+    install a forward hook on whatever comes back -- so a bool here has to read as "no router" rather
+    than as one that fails three frames later.
+    """
+    assert moe_router_attr(SimpleNamespace(router=True)) is None
+    assert moe_router_attr(SimpleNamespace(gate=0.5)) is None
+
+
+def test_the_router_is_found_beside_the_mlp_as_well_as_inside_it():
+    """Gemma-4 hangs the router on the block, so asking only the MLP found no router at all."""
+    router, mlp = torch.nn.Identity(), SimpleNamespace(gate_proj=torch.nn.Identity(), down_proj=torch.nn.Identity())
+    block = SimpleNamespace(mlp=mlp, router=router)
+    assert moe_router_owner(block, mlp) == (block, "router")
+
+
+def test_the_mlps_own_router_wins_over_the_blocks():
+    """Every other MoE family puts it inside the block that consumes it, and that stays the answer."""
+    inner, outer = torch.nn.Identity(), torch.nn.Identity()
+    mlp = SimpleNamespace(gate=inner, experts=torch.nn.Identity())
+    assert moe_router_owner(SimpleNamespace(mlp=mlp, router=outer), mlp) == (mlp, "gate")
 
 
 def test_the_three_points_read_three_elements_of_one_module_output(monkeypatch):
@@ -358,7 +391,7 @@ def test_a_writable_point_cannot_be_aimed_at_a_reported_value(monkeypatch):
 def test_a_bare_tensor_output_says_which_element_is_missing():
     """A router that returns only its logits: the two derived points must fail loudly, since element
     1 of a bare tensor is not a smaller tensor -- it is a row of the logits."""
-    module = torch.nn.Identity()
+    module = torch.torch.nn.Identity()
     with HookManager() as hm, pytest.raises(ValueError, match="only element 0 exists"):
         hm.read(module, lambda t: None, point="output:1")
         module(torch.zeros(4, N_EXPERTS))
@@ -585,3 +618,108 @@ def test_the_dense_prefix_of_a_sparse_model_says_which_layers_route(monkeypatch)
     monkeypatch.setattr(model.arch, "quirks", replace(model.arch.quirks, moe_layers=(4, 5)))
     with pytest.raises(ValueError, match=r"routes only on layers \[4, 5\]"):
         model.resolve_point("expert_indices", 0)
+
+
+# --- experts *beside* the dense MLP (Gemma-4) ---------------------------------
+#
+# The arrangement every assumption above is written against is "the expert bank replaces the MLP".
+# Gemma-4 keeps the MLP and adds the routed branch next to it, so the block sums two feed-forward
+# branches and owns both. Each test here is a name that meant the wrong tensor, or no tensor, before.
+
+SLIDING, GLOBAL = 0, 5  # one period of the 5:1 pattern; every layer of the fixture is sparse
+
+
+@pytest.fixture(scope="module")
+def gemma4_moe():
+    return moe_gemma4_on_meta()
+
+
+def test_mlp_out_is_refused_where_the_mlp_is_half_the_feed_forward(gemma4_moe):
+    """The one refusal here that is not about a missing module.
+
+    `layer.mlp` resolves, runs, and returns a d_model tensor at the right token positions -- it is
+    simply one of two branches the block adds together, so serving it under this name hands back half
+    a feed-forward with nothing to notice. Both engines produced that half and *agreed* on it to four
+    nines in the sweep, so no cross-engine check could have caught it.
+    """
+    with pytest.raises(ValueError, match="BESIDE the dense MLP") as excinfo:
+        gemma4_moe.resolve_point("mlp_out", GLOBAL)
+    assert "mlp_out_post" in str(excinfo.value)
+
+
+def test_mlp_out_post_is_downstream_of_the_sum(gemma4_moe):
+    """Which is why it is what the refusal points at: the post-feedforward norm reads both branches,
+    so this is the layer's whole residual contribution and `resid_post == resid_mid + mlp_out_post`
+    still holds."""
+    block = gemma4_moe.arch.decoder_layers[GLOBAL]
+    assert gemma4_moe.resolve_point("mlp_out_post", GLOBAL) == (block.post_feedforward_layernorm, "output")
+
+
+def test_the_neuron_basis_survives_on_a_sparse_layer_here(gemma4_moe):
+    """The other half of the same fact. Refusing `mlp_act` on a sparse layer is right everywhere else
+    -- the expert bank has no single neuron basis -- and wrong here, where the dense MLP is still
+    present with its neurons intact."""
+    mlp = gemma4_moe.arch.decoder_layers[GLOBAL].mlp
+    assert gemma4_moe.resolve_point("mlp_act", GLOBAL) == (mlp.down_proj, "input")
+    assert gemma4_moe.resolve_point("mlp_in", GLOBAL)[0] is mlp
+
+
+def test_the_router_is_found_although_it_hangs_on_the_block(gemma4_moe):
+    """It is a sibling of `layer.mlp`, not a child, so looking only under the MLP reported "no router
+    submodule found" -- which reads as a checkpoint without a router rather than one level up."""
+    block = gemma4_moe.arch.decoder_layers[GLOBAL]
+    assert gemma4_moe.arch.moe_router(GLOBAL) is block.router
+
+
+def test_router_logits_are_read_before_the_softmax_not_after(gemma4_moe):
+    """The landmine. `Gemma4TextRouter.forward` returns `(router_probabilities, weights, indices)`:
+    element 0 matches the default tuple's *order* while being a softmax over all experts, and it is as
+    wide as logits over the same bank, so neither the layout table nor the width assertion sees it. The
+    logits are the router's own projection, one module deeper -- and the block discards element 0
+    entirely, so it is not even a tensor the model uses.
+    """
+    router = gemma4_moe.arch.decoder_layers[GLOBAL].router
+    assert gemma4_moe.resolve_point("router_logits", GLOBAL) == (router.proj, "output")
+
+
+def test_the_selection_still_comes_from_the_routers_own_tuple(gemma4_moe):
+    """Only element 0 moved. Elements 1 and 2 are the weights and indices the block routes with, in
+    the default order, so they are read where every other family's are."""
+    router = gemma4_moe.arch.decoder_layers[GLOBAL].router
+    assert gemma4_moe.resolve_point("expert_weights", GLOBAL) == (router, "output:1")
+    assert gemma4_moe.resolve_point("expert_indices", GLOBAL) == (router, "output:2")
+
+
+def test_a_softmaxed_row_is_rejected_under_the_logits_name():
+    """The assertion that would have caught the above without knowing the family. Width cannot: a
+    distribution over the bank is exactly as wide as the logits over it."""
+    probabilities = torch.full((4, 8), 1 / 8)
+    with pytest.raises(ValueError, match="softmax over the expert bank"):
+        facts.assert_routing_shapes("router_logits", probabilities, architecture="Fictional", n_experts=8, top_k=2)
+
+
+def test_real_logits_pass_that_assertion():
+    """Guarding the guard: it must not fire on the tensor it exists to admit."""
+    facts.assert_routing_shapes("router_logits", torch.randn(4, 8), architecture="Fictional", n_experts=8, top_k=2)
+
+
+@pytest.mark.parametrize("layer", [SLIDING, GLOBAL])
+def test_value_is_read_at_the_norm_the_attention_consumes(gemma4_moe, layer):
+    """`v_norm` runs on every layer that projects its own KV, so the projection's output is a norm
+    short of the tensor the attention pattern multiplies -- true on the sliding layers that do have a
+    `v_proj` as much as on the global ones that do not.
+    """
+    attn = gemma4_moe.arch.decoder_layers[layer].self_attn
+    assert gemma4_moe.resolve_point("value", layer) == (attn.v_norm, "output")
+
+
+def test_the_k_eq_v_layer_has_no_value_projection_to_read_instead(gemma4_moe):
+    """Which is what made this layer need a third answer. `attention_k_eq_v` builds the full-attention
+    layers with `v_proj = None`, and `ArchSpec.v_proj` returns None for "fused QKV, caller must split"
+    -- on a family whose `fused_qkv` is false, so a caller reading it that way goes looking for a fused
+    projection that does not exist.
+    """
+    attn = gemma4_moe.arch.decoder_layers[GLOBAL].self_attn
+    assert attn.v_proj is None
+    assert gemma4_moe.arch.is_k_eq_v_layer(GLOBAL)
+    assert not gemma4_moe.arch.is_k_eq_v_layer(SLIDING)  # the flag is model-wide, the structure is not

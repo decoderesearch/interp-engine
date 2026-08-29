@@ -34,6 +34,8 @@ from interp_engine.vllm_capture import (
     _Demux,
     decode_tensor_payload,
 )
+from interp_engine.vllm_capture._hooks import flat_value
+from interp_engine.vllm_capture._tree import value_span
 from interp_engine.vllm_capture.attn import worker_capture_attn, worker_collect_attn
 from interp_engine.vllm_capture.capture import (
     worker_collect_capture,
@@ -77,10 +79,24 @@ class _FusedNorm(nn.Module):
         return self._norm(summed), summed
 
 
+class _QKVLinear(_Linear):
+    """vLLM's ``QKVParallelLinear``: one matrix whose output is ``[q | k | v]`` on the last axis.
+
+    It states its own rank-local geometry, which is what ``_tree.value_span`` measures the q and k
+    widths with. Stated here for the same reason the tuple return is: without it a hook on this module
+    hands back all three projections under the value's name, at the right dtype and the right token
+    count and three times too wide.
+    """
+
+    def __init__(self, d_in: int, *, heads: int, kv_heads: int, head_size: int) -> None:
+        super().__init__(d_in, (heads + 2 * kv_heads) * head_size)
+        self.num_heads, self.num_kv_heads, self.head_size = heads, kv_heads, head_size
+
+
 class _Attention(nn.Module):
     def __init__(self, *, qk_norm: str) -> None:
         super().__init__()
-        self.qkv_proj = _Linear(D_MODEL, 3 * N_HEADS * HEAD_DIM)
+        self.qkv_proj = _QKVLinear(D_MODEL, heads=N_HEADS, kv_heads=N_HEADS, head_size=HEAD_DIM)
         self.o_proj = _Linear(N_HEADS * HEAD_DIM, D_MODEL)
         # Per-head on Qwen3 (`self.q_norm(q.view(..., n_heads, head_dim))`), flat on OLMo-2.
         self.q_norm = _FusedNorm(HEAD_DIM if qk_norm == "per_head" else N_HEADS * HEAD_DIM)
@@ -246,6 +262,68 @@ def test_attn_in_on_a_pre_norm_block_is_not_the_residual():
 
 
 # --- the plain module boundaries --------------------------------------------
+
+
+# --- value, which is one third of a packed projection's output ----------------
+
+
+def test_value_is_the_v_third_of_the_packed_projection_not_all_of_it():
+    """The bug these rows exist to keep fixed. vLLM fuses q, k and v into one matrix, so a plain
+    output hook here returns queries and keys under the value's name -- right dtype, right token
+    count, three times too wide. Nothing caught it for as long as the point has existed, because
+    `value` was declared servable and resolved on every family while being absent from the comparison
+    sweep, so no cell ever compared it to anything.
+    """
+    out = _run(_worker(_PreNormLayer()), ["value.0"])
+    assert out["value.0"].shape == (TOKENS, N_HEADS * HEAD_DIM)
+
+
+def test_the_third_it_takes_is_the_last_one():
+    """An offset error is the failure mode here, and it is invisible in the shape: q, k and v are the
+    same width on this fixture, so slicing the *query* third would pass the assertion above."""
+    layer = _PreNormLayer()
+    out = _run(_worker(layer), ["value.0", "attn_in.0"])
+    # `attn_in` is what the attention module was handed, which on a pre-norm block is already normed,
+    # so replaying the projection on it reproduces exactly the packed tensor the hook saw.
+    packed = layer.self_attn.qkv_proj(out["attn_in.0"])[0]
+    torch.testing.assert_close(out["value.0"], packed.chunk(3, dim=-1)[2])
+    assert not torch.allclose(out["value.0"], packed.chunk(3, dim=-1)[0])
+
+
+def test_the_span_is_measured_and_not_assumed_to_be_a_third():
+    """Under GQA the three are not equal widths, and dividing by three lands inside the keys."""
+    packed = SimpleNamespace(num_heads=8, num_kv_heads=2, head_size=4)
+    assert value_span(packed) == (40, 48)
+
+
+def test_a_module_that_produces_the_value_alone_is_taken_whole():
+    """Gemma-4's `v_norm`, which is what its attention consumes and the only boundary where the two
+    engines hold the same tensor. It states no head geometry, so there is nothing to slice."""
+    assert value_span(_FusedNorm(HEAD_DIM)) is None
+
+
+def test_the_value_norms_per_head_output_is_flattened_to_the_points_own_rank():
+    """The other half of locating this point, and the opposite problem to the slice above.
+
+    A norm over `head_dim` can only be given the per-head view, so vLLM hands `v_norm`
+    `[tokens, n_kv_heads, head_dim]` -- one rank taller than `value` is anywhere else, and taller than
+    the eager capture it is scored against. `flat_value` is a no-op on the packed branch, which arrives
+    flat already.
+    """
+    per_head = torch.arange(TOKENS * 2 * HEAD_DIM, dtype=torch.float32).reshape(TOKENS, 2, HEAD_DIM)
+    flat = flat_value(per_head)
+    assert flat.shape == (TOKENS, 2 * HEAD_DIM)
+    assert torch.equal(flat.unflatten(-1, (2, HEAD_DIM)), per_head)
+
+    already_flat = torch.zeros(TOKENS, 2 * HEAD_DIM)
+    assert flat_value(already_flat) is already_flat
+
+
+def test_a_half_stated_geometry_is_refused_rather_than_sliced():
+    """The one case that must not fall back to either branch: every wrong offset into a packed matrix
+    returns another projection's heads at exactly the right width."""
+    with pytest.raises(ValueError, match="cannot be measured"):
+        value_span(SimpleNamespace(num_heads=8, num_kv_heads=None, head_size=4))
 
 
 def test_mlp_act_is_the_down_projections_input_and_d_mlp_wide():

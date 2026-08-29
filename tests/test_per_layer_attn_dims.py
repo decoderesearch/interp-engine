@@ -24,7 +24,14 @@ import pytest
 import torch
 from harness import GPT2, ModelSpec, load_model, require_hf_token
 
-from interp_engine import attn_capture_layers, per_head_value, recompute_attn_from_payloads, run_with_cache
+from interp_engine import (
+    SteerSpec,
+    attn_capture_layers,
+    per_head_value,
+    recompute_attn_from_payloads,
+    run_with_cache,
+    steer,
+)
 from interp_engine.facts import (
     first_kv_shared_layer,
     head_dim_for_layer,
@@ -32,6 +39,7 @@ from interp_engine.facts import (
     kv_source_layer,
     resolve_facts,
 )
+from interp_engine.hooks import flat_per_head
 from interp_engine.vllm_backend import head_dim_for_layer as dims_head_dim_for_layer
 from interp_engine.vllm_backend import kv_shared_source_layer, scaling_for_layer, value_head_dim_for_layer
 
@@ -196,6 +204,142 @@ def test_value_still_works_on_an_unshared_layer_at_its_own_head_width(gemma4):
     cache = run_with_cache(gemma4, ids, [("value", layer)])
     value = per_head_value(gemma4, cache, layer)
     assert value.shape[-2:] == (gemma4.n_kv_heads, 512)
+
+
+# --- what rank `value` has, on a model small enough to run here --------------
+#
+# The gated test above is what caught this and it is the wrong place to keep it: `value` resolves to
+# `v_norm` on this family, a norm over `head_dim` is handed the per-head view, and the shape that
+# comes back is therefore a property of every Gemma-4 rather than of the 35-layer one. A tiny
+# randomly-initialized checkpoint answers it in a second and answers it in CI, where the token may be
+# absent. Weights nobody trained are enough because nothing below compares a *value* against
+# transformers -- only ranks, and one tensor against the module that produced it.
+
+
+_GEMMA4_RUNNABLE: dict[str, object] = {
+    "num_hidden_layers": 6,  # one period of the 5:1 sliding-to-full pattern, so both kinds are here
+    "hidden_size": 64,
+    "intermediate_size": 128,
+    "num_attention_heads": 4,
+    "num_key_value_heads": 2,
+    "num_global_key_value_heads": 1,  # the full-attention layers count their KV heads differently
+    "head_dim": 16,
+    "vocab_size": 99,
+    "attention_k_eq_v": True,  # so the full-attention layers are built with `v_proj = None`
+}
+
+
+@pytest.fixture(scope="module")
+def tiny_gemma4():
+    """A runnable Gemma-4 at 4 heads x 16, random weights, on the CPU."""
+    transformers = pytest.importorskip("transformers")
+    from interp_engine import EagerModel
+
+    hf_class = getattr(transformers, "Gemma4ForCausalLM", None)
+    if hf_class is None:
+        pytest.skip("transformers has no Gemma4ForCausalLM")
+    config = hf_class.config_class(**_GEMMA4_RUNNABLE)
+    config.architectures = ["Gemma4ForCausalLM"]
+    config._attn_implementation = "eager"
+    torch.manual_seed(0)
+    return EagerModel("Gemma4ForCausalLM", hf_model=hf_class(config).eval(), tokenizer=object(), device="cpu")
+
+
+def _both_kinds(model) -> list[int]:
+    """One sliding layer and one full-attention layer, which here differ in KV heads and in `v_proj`."""
+    full = [layer for layer in range(model.n_layers) if model.arch.is_k_eq_v_layer(layer)]
+    sliding = [layer for layer in range(model.n_layers) if not model.arch.is_k_eq_v_layer(layer)]
+    assert full and sliding, "the fixture is supposed to hold both kinds of attention layer"
+    return [sliding[0], full[0]]
+
+
+def _tokens() -> torch.Tensor:
+    return torch.tensor([[3, 7, 11, 5, 9]])
+
+
+def _watch(module) -> dict:
+    """Record a module's output, alongside the handle to unregister."""
+    seen: dict = {}
+    seen["handle"] = module.register_forward_hook(lambda _m, _i, out: seen.setdefault("v", out.detach()))
+    return seen
+
+
+def test_value_is_flat_although_the_norm_that_produced_it_saw_heads(tiny_gemma4):
+    """`[batch, pos, n_kv_heads * head_dim]`, which is what the point means on every other family."""
+    for layer in _both_kinds(tiny_gemma4):
+        cache = run_with_cache(tiny_gemma4, _tokens(), [("value", layer)])
+        heads = tiny_gemma4.arch.kv_heads_for_layer(layer)
+        head_dim = tiny_gemma4.arch.value_head_dim_for_layer(layer)
+        assert cache.get("value", layer).shape == (1, 5, heads * head_dim), f"layer {layer}"
+
+
+def test_the_flattening_is_a_reshape_of_the_norms_own_output(tiny_gemma4):
+    """Not a second reading of some neighbouring tensor: the same numbers, one rank down."""
+    for layer in _both_kinds(tiny_gemma4):
+        norm = tiny_gemma4.arch.value_module(layer)
+        assert norm is not None
+        seen = _watch(norm)
+        try:
+            cache = run_with_cache(tiny_gemma4, _tokens(), [("value", layer)])
+        finally:
+            seen["handle"].remove()
+        produced = seen["v"]
+        assert produced.ndim == 4, "the norm is given the per-head view; that is the premise here"
+        assert torch.equal(cache.get("value", layer), produced.flatten(-2, -1))
+
+
+def test_per_head_value_splits_it_back_into_the_heads_the_norm_saw(tiny_gemma4):
+    """The round trip, which is what the DFA path needs and what the flat capture had broken."""
+    for layer in _both_kinds(tiny_gemma4):
+        cache = run_with_cache(tiny_gemma4, _tokens(), [("value", layer)])
+        heads = tiny_gemma4.arch.kv_heads_for_layer(layer)
+        head_dim = tiny_gemma4.arch.value_head_dim_for_layer(layer)
+        assert per_head_value(tiny_gemma4, cache, layer).shape == (1, 5, heads, head_dim)
+
+
+def test_a_steer_at_value_writes_flat_and_hands_the_attention_back_its_shape(tiny_gemma4):
+    """A vector for this point was measured on a capture of it, so both ends have to be the flat one.
+
+    The attention reshapes what the norm returns, so a hook that wrote the flat tensor straight back
+    would either raise inside the model or -- worse, and this is why the delta is checked and not just
+    the absence of an exception -- reach a view that reads the heads in the wrong order.
+
+    On the *sliding* layer, deliberately. The full-attention layers here count one KV head, so their
+    flat width equals their head width and a vector broadcasts against the flat shape and the per-head
+    one alike: the test would pass whether or not anything reshaped, which is the version of it that
+    was written first.
+    """
+    layer = _both_kinds(tiny_gemma4)[0]
+    assert tiny_gemma4.arch.kv_heads_for_layer(layer) > 1
+    clean = run_with_cache(tiny_gemma4, _tokens(), [("value", layer)]).get("value", layer)
+    vector = torch.arange(clean.shape[-1], dtype=clean.dtype) / clean.shape[-1]
+    with steer(tiny_gemma4, [SteerSpec(vector=vector, layer=layer, coeff=2.0, point="value")]):
+        steered = run_with_cache(tiny_gemma4, _tokens(), [("value", layer)]).get("value", layer)
+    assert torch.allclose(steered, clean + 2.0 * vector, atol=1e-5)
+
+
+def test_a_head_major_capture_is_refused_rather_than_flattened():
+    """The layout this cannot flatten, and the reason the head count is checked at all.
+
+    transformers norms *after* the head transpose on ten families, and `[batch, heads, pos, head_dim]`
+    flattens to a tensor whose second axis counts heads. `[batch, seq, width]` still describes it, so
+    every reader downstream would take that axis for the sequence and none could see the difference.
+    """
+    head_major = torch.zeros(1, 4, 5, 16)  # [batch, heads, pos, head_dim]
+    with pytest.raises(ValueError, match="head-major"):
+        flat_per_head(head_major, heads=2)
+
+    token_major = torch.zeros(1, 5, 2, 16)
+    flat, restore = flat_per_head(token_major, heads=2)
+    assert flat.shape == (1, 5, 32)
+    assert restore == torch.Size([2, 16])
+    assert flat.unflatten(-1, restore).shape == token_major.shape
+
+
+def test_a_capture_that_never_had_a_head_axis_is_left_alone():
+    """Every family without a value norm, where the projection's output is already the point."""
+    flat = torch.zeros(1, 5, 32)
+    assert flat_per_head(flat, heads=2) == (flat, None)
 
 
 # --- the same dims, on the vLLM client's side of the wire --------------------

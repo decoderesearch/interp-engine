@@ -15,7 +15,7 @@ import torch
 from interp_engine.hooks import hidden_arg_index
 from interp_engine.hooks import hidden_from_call as _hidden_from_call
 from interp_engine.vllm_capture._payload import select_stream
-from interp_engine.vllm_capture._tree import LAYER_RETURN_INDEX
+from interp_engine.vllm_capture._tree import LAYER_RETURN_INDEX, value_span
 
 
 def position_mask(positions: Iterable[int], num_tokens: int, like: torch.Tensor) -> torch.Tensor:
@@ -106,6 +106,50 @@ def layer_return_tensor(output: object, name: str) -> torch.Tensor:
     return tensor
 
 
+def value_columns(tensor: torch.Tensor, module: object) -> torch.Tensor:
+    """``tensor`` narrowed to the value, when the module that produced it packs q and k beside it.
+
+    The one point whose module can carry two other tensors under the same output: vLLM fuses q, k and
+    v into one ``QKVParallelLinear`` on every family with a fused implementation. See
+    :func:`~interp_engine.vllm_capture._tree.value_span`, which decides the columns and refuses a
+    geometry it cannot measure -- returned whole where the module produces the value alone, which is a
+    value norm (Gemma-4's) or a standalone value projection.
+
+    Shared by the two install paths, which is the point of it being a function. The capture-only path
+    (:func:`_make_output_hook`) and the per-request demux (``requests._mk_value_hook``) resolve the same
+    module and would otherwise each need their own copy of the arithmetic -- and one of them getting it
+    while the other did not is precisely the shape of the bug this fixes.
+    """
+    span = value_span(module) if isinstance(module, torch.nn.Module) else None
+    if span is None:
+        return tensor
+    start, stop = span
+    if tensor.shape[-1] < stop:
+        # The projection states a geometry its own output does not have, so the offsets point at
+        # columns that are not the value. Silence here captures whatever lies there.
+        raise ValueError(
+            f"{type(module).__name__} packs q/k/v into {tensor.shape[-1]} columns but states a value "
+            f"at [{start}:{stop}], so 'value' cannot be located in its output."
+        )
+    return tensor[..., start:stop]
+
+
+def flat_value(tensor: torch.Tensor) -> torch.Tensor:
+    """The value as ``[tokens, n_kv_heads * head_dim]``, from a module that produced it per head.
+
+    The other half of locating this point, and needed for the opposite reason to
+    :func:`value_columns`: where the module is a *norm* rather than the packed projection, it was
+    handed the per-head view because that is the only shape a norm over ``head_dim`` can take
+    (``v.unflatten(-1, (num_kv_heads, head_dim))`` in vLLM's ``Gemma4Attention``, and the same view in
+    transformers). So the point arrives one rank too tall there and flat everywhere else, and
+    :func:`interp_engine.hooks.flat_per_head` says why one rank is worth insisting on.
+
+    No head count to check against here, unlike the eager side: vLLM flattens the batch away, so axis
+    0 is tokens on every point and everything after it is the width.
+    """
+    return tensor if tensor.ndim <= 2 else tensor.flatten(1, -1)
+
+
 def _sum_residual(output: object, module: object = None) -> torch.Tensor:
     """The residual stream from a decoder layer's ``(hidden, residual)`` return.
 
@@ -169,6 +213,9 @@ def _make_output_hook(store: dict, key: str, name: str, accumulate: bool = False
             t = _sum_residual(output, _m).detach().clone()
         elif name in LAYER_RETURN_INDEX:
             t = layer_return_tensor(output, name).detach().clone()
+        elif name == "value":
+            packed = output[0] if isinstance(output, tuple) else output
+            t = flat_value(value_columns(packed, _m)).detach().clone()
         else:
             t = (output[0] if isinstance(output, tuple) else output).detach().clone()
         _store_capture(store, key, t, accumulate, stream)
