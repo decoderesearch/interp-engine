@@ -27,7 +27,7 @@ from interp_engine.address import Address, to_address
 from interp_engine.attn_scores import capture_attn_scores
 from interp_engine.dispatch import TokensLike, as_batched_tokens, as_token_ids, refuse
 from interp_engine.facts import text_config
-from interp_engine.hooks import HookManager
+from interp_engine.hooks import HookManager, flat_per_head
 from interp_engine.model import EagerModel
 from interp_engine.points import token_flattened
 from interp_engine.protocol import InterpModel
@@ -385,6 +385,13 @@ def _run_with_cache_eager(
         # use 16.
         heads = model.arch.kv_heads_for_layer(key.layer or 0) if key.name.startswith("k_") else model.n_heads
         cache.tensors[key] = _to_token_major(cache.tensors[key], seq, heads)
+
+    for key in {k for k in cache.tensors if k.name == "value"}:
+        # Flat, however the family produced it: a value norm sees the per-head view and a value
+        # projection does not, and `value` is one point. See `hooks.flat_per_head`.
+        layer = key.layer or 0
+        flat, _ = flat_per_head(cache.tensors[key], heads=model.arch.kv_heads_for_layer(layer))
+        cache.tensors[key] = flat
 
     if wants_attn:
         attentions = output.attentions  # one [batch, n_heads, q, k] per softmax-attention layer

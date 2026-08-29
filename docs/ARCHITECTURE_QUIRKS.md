@@ -308,6 +308,17 @@ must split", on a family whose `fused_qkv` is false — so `value` no longer ask
   which is what makes the point checkable rather than merely servable. `_tree._value_module` is the
   vLLM side, and it prefers the norm in the same order for the same reason.
 
+**Reading a norm costs a rank, and the point does not pay it.** A norm over `head_dim` can only be
+given the per-head view, so both engines hand `v_norm` a `(…, n_kv_heads, head_dim)` tensor where a
+`v_proj` would have produced the flat one — and `value` would then be 4-D on this family and 3-D on the
+next, against a `Width.HEADS` declaration and `run_with_cache`'s `[batch, seq, width]`. Flattened back
+on both sides (`hooks.flat_per_head`, `vllm_capture._hooks.flat_value`), including on the way *into* a
+steer, so a vector measured on a capture of `value` is the shape the write expects; the module gets its
+own rank back before the attention reshapes it. Eagerly the head count is checked rather than assumed,
+because the other 4-D layout in circulation is `[batch, heads, pos, head_dim]` — transformers norms
+after the head transpose on ten families — and flattening that one puts the head count where every
+reader expects the sequence.
+
 **Off Gemma-4, `value` on vLLM is one third of a packed matrix.** Every family with a fused vLLM
 implementation goes through `QKVParallelLinear`, whose output is `[q | k | v]` on the last axis, so an
 output hook there returns all three under the value's name at three times the width.

@@ -32,6 +32,7 @@ from interp_engine.vllm_capture._demux import (
 )
 from interp_engine.vllm_capture._hooks import (
     _sum_residual,
+    flat_value,
     hidden_from_call,
     layer_return_tensor,
     returns_full_residual,
@@ -257,20 +258,26 @@ def _mk_value_hook(demux: _Demux, site: Address):
     q, k and v into one ``QKVParallelLinear`` on every family that has a fused implementation, so the
     hook sees ``[q | k | v]`` and this narrows it to the last third (``_tree.value_span``). Where the
     resolved module produces the value alone -- a value norm, which Gemma-4 has and which is the tensor
-    its attention actually consumes -- the span is ``None`` and this is ``_mk_out_point_hook``.
+    its attention actually consumes -- the span is ``None`` and the only adjustment is the rank
+    (``_hooks.flat_value``), because a norm over ``head_dim`` is handed the per-head view.
 
-    The narrowing happens *before* steering rather than after capture, so a steer on this point writes
-    the value and leaves the queries and keys of the same matrix alone. Writing back into the packed
-    tensor is what makes that true, and is why the slice is copied out rather than passed as a view.
+    Either way the adjustment happens *before* steering and is undone after it, so a steer on this
+    point writes the value in the shape a capture of it reports, leaves the queries and keys of the same
+    matrix alone, and hands the module back its own shape. Writing into a copy of the packed tensor is
+    what makes the middle claim true, and is why the slice is copied out rather than passed as a view.
     """
 
     def _hook(module, _a, output):  # noqa: ANN001
         full = output[0] if isinstance(output, tuple) else output
         span = value_span(module)
         if span is None:
-            new = _process_point(demux, site, full)
-            if new is full:
+            # A value norm, which was handed the per-head view: steer in the shape a capture of this
+            # point reports (`flat_value`) and hand the module's own shape back.
+            flat = flat_value(full)
+            steered = _process_point(demux, site, flat)
+            if steered is flat:
                 return output
+            new = steered.view(full.shape)
         else:
             start, stop = span
             sliced = value_columns(full, module).contiguous()

@@ -23,7 +23,7 @@ import torch.nn.functional as F
 
 from interp_engine.arch import special_token_positions
 from interp_engine.dispatch import CapabilityUnsupported, TokensLike, as_batched_tokens, as_token_ids
-from interp_engine.hooks import HookManager
+from interp_engine.hooks import HookManager, flat_per_head
 from interp_engine.model import EagerModel
 from interp_engine.protocol import InterpModel
 from interp_engine.steer_specs import (
@@ -352,6 +352,15 @@ def steer(
         for key, group in grouped.items():
 
             def make_fn(group: list[SteerSpec], stream: int | None = key[2]):
+                # A vector for `value` was measured on a capture of `value`, so the hook has to steer
+                # in the shape the capture reported: flat, even where the module underneath produced a
+                # head axis (`hooks.flat_per_head`). Restored before the module gets its output back --
+                # the attention is about to reshape it, and a delta is not a licence to change rank.
+                kv_heads = (
+                    model.arch.kv_heads_for_layer(group[0].layer or 0)
+                    if any(spec.point == "value" for spec in group)
+                    else None
+                )
                 # Absolute position of the first row this hook sees on the next forward. The
                 # prompt (prefill) forward covers positions [0, prompt_len); every forward after
                 # generates one token, so positions >= prompt_len are never masked.
@@ -363,6 +372,9 @@ def steer(
                     # one, so the masking and the two methods stay written against the shape they
                     # were written for, and the untouched streams are put back verbatim at the end.
                     tensor = full if stream is None else basis.select_stream(full, stream)
+                    per_head = None
+                    if kv_heads is not None:
+                        tensor, per_head = flat_per_head(tensor, heads=kv_heads)
                     seq = tensor.shape[1] if tensor.ndim >= 2 else tensor.shape[0]
                     keep = None  # per-position steering multiplier for this forward (None => all 1)
                     if masked_positions:
@@ -377,6 +389,8 @@ def steer(
                     for spec in group:
                         delta = steer_delta(spec, out, _prepared_vector(spec, out))
                         out = out + (delta * keep if keep is not None else delta)
+                    if per_head is not None:
+                        out = out.unflatten(-1, per_head)
                     return out if stream is None else basis.replace_stream(full, stream, out)
 
                 return _fn

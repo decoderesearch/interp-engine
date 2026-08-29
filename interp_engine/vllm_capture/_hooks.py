@@ -134,6 +134,22 @@ def value_columns(tensor: torch.Tensor, module: object) -> torch.Tensor:
     return tensor[..., start:stop]
 
 
+def flat_value(tensor: torch.Tensor) -> torch.Tensor:
+    """The value as ``[tokens, n_kv_heads * head_dim]``, from a module that produced it per head.
+
+    The other half of locating this point, and needed for the opposite reason to
+    :func:`value_columns`: where the module is a *norm* rather than the packed projection, it was
+    handed the per-head view because that is the only shape a norm over ``head_dim`` can take
+    (``v.unflatten(-1, (num_kv_heads, head_dim))`` in vLLM's ``Gemma4Attention``, and the same view in
+    transformers). So the point arrives one rank too tall there and flat everywhere else, and
+    :func:`interp_engine.hooks.flat_per_head` says why one rank is worth insisting on.
+
+    No head count to check against here, unlike the eager side: vLLM flattens the batch away, so axis
+    0 is tokens on every point and everything after it is the width.
+    """
+    return tensor if tensor.ndim <= 2 else tensor.flatten(1, -1)
+
+
 def _sum_residual(output: object, module: object = None) -> torch.Tensor:
     """The residual stream from a decoder layer's ``(hidden, residual)`` return.
 
@@ -198,7 +214,8 @@ def _make_output_hook(store: dict, key: str, name: str, accumulate: bool = False
         elif name in LAYER_RETURN_INDEX:
             t = layer_return_tensor(output, name).detach().clone()
         elif name == "value":
-            t = value_columns(output[0] if isinstance(output, tuple) else output, _m).detach().clone()
+            packed = output[0] if isinstance(output, tuple) else output
+            t = flat_value(value_columns(packed, _m)).detach().clone()
         else:
             t = (output[0] if isinstance(output, tuple) else output).detach().clone()
         _store_capture(store, key, t, accumulate, stream)

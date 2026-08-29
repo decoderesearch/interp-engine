@@ -34,6 +34,7 @@ from interp_engine.vllm_capture import (
     _Demux,
     decode_tensor_payload,
 )
+from interp_engine.vllm_capture._hooks import flat_value
 from interp_engine.vllm_capture._tree import value_span
 from interp_engine.vllm_capture.attn import worker_capture_attn, worker_collect_attn
 from interp_engine.vllm_capture.capture import (
@@ -299,6 +300,23 @@ def test_a_module_that_produces_the_value_alone_is_taken_whole():
     """Gemma-4's `v_norm`, which is what its attention consumes and the only boundary where the two
     engines hold the same tensor. It states no head geometry, so there is nothing to slice."""
     assert value_span(_FusedNorm(HEAD_DIM)) is None
+
+
+def test_the_value_norms_per_head_output_is_flattened_to_the_points_own_rank():
+    """The other half of locating this point, and the opposite problem to the slice above.
+
+    A norm over `head_dim` can only be given the per-head view, so vLLM hands `v_norm`
+    `[tokens, n_kv_heads, head_dim]` -- one rank taller than `value` is anywhere else, and taller than
+    the eager capture it is scored against. `flat_value` is a no-op on the packed branch, which arrives
+    flat already.
+    """
+    per_head = torch.arange(TOKENS * 2 * HEAD_DIM, dtype=torch.float32).reshape(TOKENS, 2, HEAD_DIM)
+    flat = flat_value(per_head)
+    assert flat.shape == (TOKENS, 2 * HEAD_DIM)
+    assert torch.equal(flat.unflatten(-1, (2, HEAD_DIM)), per_head)
+
+    already_flat = torch.zeros(TOKENS, 2 * HEAD_DIM)
+    assert flat_value(already_flat) is already_flat
 
 
 def test_a_half_stated_geometry_is_refused_rather_than_sliced():
