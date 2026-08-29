@@ -214,6 +214,57 @@ def kv_shared_gemma4_on_meta() -> Any:
         return EagerModel("Gemma4ForCausalLM", hf_model=model, tokenizer=NoTokenizer(), device=None)
 
 
+#: Dims for :func:`moe_gemma4_on_meta`. ``enable_moe_block`` and ``attention_k_eq_v`` are the subject
+#: and the rest is as small as the modeling code accepts. ``num_hidden_layers`` spans one period of
+#: Gemma-4's 5:1 sliding-to-full pattern so the fixture holds both kinds of attention layer: the flag
+#: is model-wide but applies only to the full-attention ones, and a fixture of one kind could not tell
+#: a per-layer answer from a per-model one.
+_GEMMA4_MOE: dict[str, Any] = {
+    "num_hidden_layers": 6,
+    "hidden_size": 64,
+    "intermediate_size": 128,
+    "moe_intermediate_size": 32,
+    "num_attention_heads": 4,
+    "num_key_value_heads": 2,
+    "num_global_key_value_heads": 1,
+    "head_dim": 16,
+    "vocab_size": 99,
+    "enable_moe_block": True,
+    "num_experts": 8,
+    "top_k_experts": 2,
+    "attention_k_eq_v": True,
+}
+
+
+def moe_gemma4_on_meta() -> Any:
+    """A meta-device Gemma-4 whose layers hang experts beside the dense MLP, as an ``EagerModel``.
+
+    Three structures no other family has, all of them switched on by config flags the default
+    ``Gemma4TextConfig`` leaves off, and all three answered by the module tree with no weights:
+
+    - ``enable_moe_block`` builds ``router``/``experts`` as *siblings* of ``layer.mlp``, so the MLP is
+      one of two branches the block's forward sums;
+    - the same flag keeps the dense MLP, so a sparse layer here still has a neuron basis;
+    - ``attention_k_eq_v`` builds the full-attention layers with ``v_proj = None``, taking the key
+      projection's output as the value.
+
+    The checkpoint that has all three is the 26B, which is gated and 50-odd gigabytes. This is
+    transformers' own modeling code at the same flags, which is what a structural question needs.
+    """
+    from interp_engine import EagerModel
+
+    hf_class = hf_class_for("Gemma4ForCausalLM")
+    if hf_class is None:
+        raise LookupError("transformers has no Gemma4ForCausalLM")
+    config = hf_class.config_class(**_GEMMA4_MOE)
+    config.architectures = ["Gemma4ForCausalLM"]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with torch.device("meta"):
+            model = hf_class(config)
+        return EagerModel("Gemma4ForCausalLM", hf_model=model, tokenizer=NoTokenizer(), device=None)
+
+
 #: Dims for :func:`shrunk_lfm2_moe`. ``layer_types`` is the point of the fixture and is spelled out
 #: rather than shrunk: LFM2 interleaves short-convolution blocks with attention ones, and a fixture
 #: with only the second kind would not have the block whose shape is under test. ``num_dense_layers``

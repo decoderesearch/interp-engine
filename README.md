@@ -111,8 +111,7 @@ We verify correctness in two main ways:
 ## Known Issues
 
 - **Gemma 4 requires transformers 5.14.1** because 5.15 moved `head_dim` into `per_layer_config` and vLLM's config read dies before a weight loads ([vllm#51744](https://github.com/vllm-project/vllm/issues/51744)).
-- **Gemma 4 26B `mlp_out` is half an answer** — it returns the dense branch of a two-branch feed-forward with no warning, so read `mlp_out_post` for the true residual contribution ([GEMMA4_REMAINING.md](GEMMA4_REMAINING.md)).
-- **Two Gemma 4 points raise instead of returning**: the 26B's routing points, whose router sits on the block rather than under `layer.mlp`, and `value` on full-attention layers, whose refusal wrongly blames multi-head latent attention ([GEMMA4_REMAINING.md](GEMMA4_REMAINING.md)).
+- **Gemma 4 26B refuses `mlp_out`**, because `layer.mlp` there is one branch of a two-branch feed-forward; `mlp_out_post` is the residual contribution and is served ([ARCHITECTURE_QUIRKS.md](docs/ARCHITECTURE_QUIRKS.md#moe-tap-the-block-not-the-experts)).
 - **DeepSeek-V2 on transformers older than 5.15.0** captures a wrong attention temperature — the engine warns at load, and upgrading is the fix ([COMPATIBILITY.md](docs/COMPATIBILITY.md)).
 - **MXFP4 checkpoints (gpt-oss) need `interp-engine[quant]`**, which the `[vllm]` extra does not include; without it transformers dequantizes them to bf16 at roughly 3x the weights, which can turn a model that fits into one that does not.
 

@@ -91,7 +91,7 @@ export const POINTS: PointSpec[] = [
     width: "kv_heads",
     role: "attn",
     description:
-      "The value projection's output, before heads are repeated for GQA.",
+      "The value tensor attention multiplies the pattern by, before heads are repeated for GQA. The value projection's output on most families; the output of the norm after it on a family that norms its values (Gemma 4).",
     vllm: "hooks",
     refusedBy: {
       mla: "Latent attention expands the compressed key/value latent inside the forward, so no module's output is the value. Capture the latent itself, or use z, which exists either way.",
@@ -257,6 +257,10 @@ export const POINTS: PointSpec[] = [
     role: "mlp",
     description: "The MLP module's raw output, on every architecture.",
     vllm: "hooks",
+    refusedBy: {
+      dense_mlp_beside_experts:
+        "Here the routed experts sit beside the dense MLP rather than replacing it, and the block sums the two branches, so the MLP module's output is half the feed-forward — at the full d_model width, with nothing about it to notice. Read mlp_out_post, which is downstream of the sum.",
+    },
   },
   {
     name: "mlp_out_post",

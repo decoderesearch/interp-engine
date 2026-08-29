@@ -15,7 +15,7 @@ import torch
 from interp_engine.hooks import hidden_arg_index
 from interp_engine.hooks import hidden_from_call as _hidden_from_call
 from interp_engine.vllm_capture._payload import select_stream
-from interp_engine.vllm_capture._tree import LAYER_RETURN_INDEX
+from interp_engine.vllm_capture._tree import LAYER_RETURN_INDEX, value_span
 
 
 def position_mask(positions: Iterable[int], num_tokens: int, like: torch.Tensor) -> torch.Tensor:
@@ -106,6 +106,34 @@ def layer_return_tensor(output: object, name: str) -> torch.Tensor:
     return tensor
 
 
+def value_columns(tensor: torch.Tensor, module: object) -> torch.Tensor:
+    """``tensor`` narrowed to the value, when the module that produced it packs q and k beside it.
+
+    The one point whose module can carry two other tensors under the same output: vLLM fuses q, k and
+    v into one ``QKVParallelLinear`` on every family with a fused implementation. See
+    :func:`~interp_engine.vllm_capture._tree.value_span`, which decides the columns and refuses a
+    geometry it cannot measure -- returned whole where the module produces the value alone, which is a
+    value norm (Gemma-4's) or a standalone value projection.
+
+    Shared by the two install paths, which is the point of it being a function. The capture-only path
+    (:func:`_make_output_hook`) and the per-request demux (``requests._mk_value_hook``) resolve the same
+    module and would otherwise each need their own copy of the arithmetic -- and one of them getting it
+    while the other did not is precisely the shape of the bug this fixes.
+    """
+    span = value_span(module) if isinstance(module, torch.nn.Module) else None
+    if span is None:
+        return tensor
+    start, stop = span
+    if tensor.shape[-1] < stop:
+        # The projection states a geometry its own output does not have, so the offsets point at
+        # columns that are not the value. Silence here captures whatever lies there.
+        raise ValueError(
+            f"{type(module).__name__} packs q/k/v into {tensor.shape[-1]} columns but states a value "
+            f"at [{start}:{stop}], so 'value' cannot be located in its output."
+        )
+    return tensor[..., start:stop]
+
+
 def _sum_residual(output: object, module: object = None) -> torch.Tensor:
     """The residual stream from a decoder layer's ``(hidden, residual)`` return.
 
@@ -169,6 +197,8 @@ def _make_output_hook(store: dict, key: str, name: str, accumulate: bool = False
             t = _sum_residual(output, _m).detach().clone()
         elif name in LAYER_RETURN_INDEX:
             t = layer_return_tensor(output, name).detach().clone()
+        elif name == "value":
+            t = value_columns(output[0] if isinstance(output, tuple) else output, _m).detach().clone()
         else:
             t = (output[0] if isinstance(output, tuple) else output).detach().clone()
         _store_capture(store, key, t, accumulate, stream)

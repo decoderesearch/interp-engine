@@ -491,8 +491,65 @@ def _attn_out_proj(layer: torch.nn.Module) -> torch.nn.Module:
 
 
 def _attn_qkv_proj(layer: torch.nn.Module) -> torch.nn.Module:
-    """The fused qkv projection; ``value`` is the v-slice of its output."""
+    """The fused qkv projection; ``value`` is the v-slice of its output (:func:`value_span`)."""
     return _first_submodule(_attn_module(layer), _ATTN_QKV_PROJ_ATTRS, "fused qkv projection")
+
+
+#: What a packed qkv projection states about its own geometry, all three rank-local. Present together
+#: on vLLM's ``QKVParallelLinear``, which divides both head counts by the TP size in its ``__init__``,
+#: and on none of the modules that produce the value by itself -- which is what makes their presence
+#: the discriminator :func:`value_span` uses.
+_QKV_GEOMETRY = ("num_heads", "num_kv_heads", "head_size")
+
+
+def value_span(module: torch.nn.Module) -> tuple[int, int] | None:
+    """Which columns of ``module``'s output are the value, or ``None`` when all of them are.
+
+    ``None`` is the answer for a module that produces the value alone -- the ``v_norm``
+    :func:`_value_module` prefers where a family has one, or a standalone value projection. A span is
+    the answer for vLLM's fused ``QKVParallelLinear``, whose output is ``[q | k | v]`` concatenated on
+    the last axis.
+
+    **This is a fix, not a refinement.** Without it the point returned q and k alongside the value,
+    three times too wide, on every family whose vLLM implementation fuses its qkv -- which is all of
+    them. Nothing caught it because ``value`` was served but never *scored*: it is declared
+    ``VllmSupport.HOOKS`` in :mod:`interp_engine.points`, it resolves on every family, and it was absent
+    from the comparison sweep's point list, so no cell ever compared it against the eager reference's
+    ``n_kv_heads * head_dim``. A point can be wrong indefinitely while every engine that serves it
+    agrees, or while nobody asks.
+
+    Read off the projection rather than the attention module, so the numbers come from the same object
+    whose output is being cut. Where the geometry is stated only in part, this refuses: every wrong
+    offset into a packed matrix yields a right-shaped tensor of another projection's heads, which is the
+    failure this exists to prevent rather than one to risk on a guess.
+    """
+    stated = {name: getattr(module, name, None) for name in _QKV_GEOMETRY}
+    if all(value is None for value in stated.values()):
+        return None
+    if not all(isinstance(value, int) for value in stated.values()):
+        raise ValueError(
+            f"Cannot locate the value within {type(module).__name__}'s output: it states "
+            f"{stated}, so the q and k widths in front of it cannot be measured. 'value' is refused "
+            "rather than sliced at a guessed offset, which would return another projection's heads at "
+            "the right width."
+        )
+    heads, kv_heads, head_size = (stated[name] for name in _QKV_GEOMETRY)
+    return ((heads + kv_heads) * head_size, (heads + 2 * kv_heads) * head_size)  # type: ignore[operator]
+
+
+def _value_module(layer: torch.nn.Module) -> torch.nn.Module:
+    """The module whose output is the value attention consumes.
+
+    A value norm where the family has one, and the fused qkv projection otherwise -- the same
+    preference, in the same order, as the eager backend's ``ArchSpec.value_module``. vLLM's
+    ``Gemma4Attention.forward`` splits its qkv and then runs ``v = self.v_norm(v)``, so on that family
+    this is both the tensor attention multiplies the pattern by *and* the only boundary where the two
+    engines hold the same thing: eager has a separate ``v_proj`` on some layers and none at all on the
+    ``attention_k_eq_v`` ones, while this backend has neither, only slices of one fused matrix.
+    """
+    attn = _attn_module(layer)
+    attr = facts.value_norm_attr(attn)
+    return getattr(attn, attr) if attr is not None else _attn_qkv_proj(layer)
 
 
 def _post_sublayer_norm(layer: torch.nn.Module, *, mlp_side: bool) -> torch.nn.Module | None:
@@ -548,13 +605,30 @@ def _mlp_down_proj(layer: torch.nn.Module) -> torch.nn.Module:
 
 
 def _moe_router(layer: torch.nn.Module) -> torch.nn.Module:
-    """The sparse block's routing gate; its OUTPUT[0] is ``router_logits``.
+    """The sparse block's routing gate, whose output is ``router_logits``.
 
     A real ``ReplicatedLinear`` on vLLM (``router_logits, _ = self.gate(hidden_states)``), which is
     why the logits survive the fusion that eats ``expert_weights``/``expert_indices``: the top-k and
     the renormalization happen inside the FusedMoE kernel downstream of this call.
+
+    Searched on the block as well as on the MLP, because Gemma-4 hangs its router beside ``layer.mlp``
+    rather than inside it (``facts.moe_router_owner``, which the eager backend resolves through as
+    well, so neither backend can find a router the other cannot).
+
+    On that family the module returns the logits *bare* rather than as an element of a tuple, and it
+    is genuinely the pre-softmax tensor: vLLM's ``Gemma4Router.forward`` ends at its own ``proj`` and
+    hands the result to the MoE kernel. Worth stating because HF's namesake does not -- it softmaxes
+    and returns the probabilities first, so the eager backend reads one module deeper
+    (``facts.ROUTER_LOGITS_SUBMODULE``) to compare against what this one returns.
     """
-    return _first_submodule(_mlp_module(layer), facts.MOE_ROUTER_ATTRS, "MoE router")
+    owner = facts.moe_router_owner(layer, _mlp_module(layer))
+    if owner is None:
+        raise RuntimeError(
+            f"Could not locate the MoE router on {type(layer).__name__} or its MLP "
+            f"(tried {facts.MOE_ROUTER_ATTRS} on both)"
+        )
+    holder, attr = owner
+    return getattr(holder, attr)
 
 
 def _architecture(model: torch.nn.Module) -> str:
@@ -585,6 +659,33 @@ def _fused_qk_norm_reason(layer: torch.nn.Module | None, name: str) -> str | Non
         "fused kernel, which is handed the norms' weights rather than called on them. The modules are "
         "present and hookable and would simply never fire, so the point is refused instead. The eager "
         "backend serves it on this family."
+    )
+
+
+def _split_feed_forward_reason(layer: torch.nn.Module | None, name: str) -> str | None:
+    """Why ``mlp_out`` is refused on a block whose MLP is half its feed-forward, or None.
+
+    vLLM's ``Gemma4DecoderLayer`` is built the same way HF's is -- ``self.mlp`` runs
+    unconditionally and, where ``enable_moe_block`` is set, ``post_feedforward_layernorm_1(mlp(x))``
+    is summed with the routed branch inside the block's own forward -- so the tensor at ``layer.mlp``
+    is the dense half on this backend too.
+
+    Worth stating rather than left to the sweep, because both engines return that half and *agree*
+    about it: the 26B's ``mlp_out`` cell was green at cos 0.9999, which is a cross-engine check
+    passing on a tensor that is not what its name says. Only the eager backend's refusal
+    (``EagerModel._require_whole_feed_forward``) would have made the cell disappear, and a column
+    that declines what the reference serves reads as a vLLM limitation. So both refuse.
+    """
+    if name != "mlp_out" or layer is None or not facts.experts_beside_this_layers_mlp(layer):
+        return None
+    return (
+        f"{type(layer).__name__} adds its routed experts BESIDE the dense MLP rather than instead of "
+        "it, summing the two branches in its own forward, so this point's module carries the dense "
+        "branch alone -- half this layer's feed-forward at the full d_model width, which is why it is "
+        "refused rather than returned. Capture 'mlp_out_post' instead: the post-feedforward norm reads "
+        "the sum, so it is the layer's whole residual contribution. The eager backend refuses this "
+        "name on the same layers, and serves 'mlp_act' and the dense branch's other internals here "
+        "just as this one does."
     )
 
 
@@ -627,9 +728,16 @@ def absent_point_reason(model: torch.nn.Module, name: str, layer: torch.nn.Modul
     took over its arithmetic and reads its weights directly -- see :func:`_fused_qk_norm_reason`.
     ``layer`` is what those two need, and is optional because the parallel-block case is a property
     of the model rather than of any one block.
+
+    And the last is a module that is called, and returns a whole tensor, that is nonetheless a
+    *fraction* of what the point names -- Gemma-4's dense MLP beside its experts, see
+    :func:`_split_feed_forward_reason`. That one is the only case here the sweep could not have
+    caught, because both engines produce the same half.
     """
     if (fused := _fused_qk_norm_reason(layer, name)) is not None:
         return fused
+    if (split := _split_feed_forward_reason(layer, name)) is not None:
+        return split
     if (mhc := _absent_mhc_reason(layer, name)) is not None:
         return mhc
     if (streams := _multi_stream_residual_reason(layer, name)) is not None:
@@ -767,7 +875,7 @@ def _resolve_module(layer: torch.nn.Module, name: str) -> torch.nn.Module:
     if name == "z":
         return _attn_out_proj(layer)
     if name == "value":
-        return _attn_qkv_proj(layer)
+        return _value_module(layer)
     if name == "mlp_act":
         return _mlp_down_proj(layer)
     if name == "router_logits":

@@ -197,6 +197,26 @@ _EAGER = {"eager", "tlens_v2", "tlens_v3", "nnsight"}
 # while `mlp_act` is downstream of the fusion at the down projection's input. That asymmetry is the
 # reason these three are listed separately rather than as one "MLP internals" group.
 #
+# `value` and `z` are the attention sublayer's two per-head interiors, `eager` against `vllm`. They
+# were absent from this table for as long as it has existed, and their absence is why a plain bug in
+# the vLLM path lasted just as long: `value` there resolved to the *fused* `qkv_proj` and nothing cut
+# the v third out of it, so the point returned queries and keys under the value's name, three times too
+# wide, on every family whose vLLM implementation fuses its qkv -- which is all of them. `points.py`
+# declared it `VllmSupport.HOOKS` the whole time and it resolved on every family, so the engine looked
+# like it served the point. Only a cell comparing it to something would have said otherwise. Fixed at
+# `_tree.value_span`, and these rows are what keeps it fixed.
+#
+# The two are listed separately, and `value` is the interesting one, because the tensor it names is not
+# always a projection's output: a family can norm or scale its values between the projection and the
+# attention, and then the projection's output is a step short of what the pattern is applied to. Gemma-4
+# norms (`v_norm`, on every layer that projects its own KV) and MiMo-V2 scales. `z` has none of that --
+# it is the output projection's input on both engines, whatever produced the value -- so a row where
+# `value` disagrees and `z` agrees localizes the difference to the value's own path, and one where both
+# disagree points at the pattern instead.
+#
+# `softmax_attention_only`, like the rest of the attention rows: a linear-attention or state-space
+# block has neither.
+#
 # `router_logits` is `eager` against `vllm`, and it is the one point here whose disagreement is not a
 # matter of degree: the logits pick which experts run, so a mismatch large enough to reorder the
 # top-k means the two engines evaluated *different subnetworks* and every downstream cell on that
@@ -297,6 +317,8 @@ POINTS: dict[str, dict] = {
     "q_norm_out": {"engines": {"eager"} | _VLLM, "kind": "per_head", "softmax_attention_only": True},
     "k_norm_in": {"engines": {"eager"} | _VLLM, "kind": "per_head", "softmax_attention_only": True},
     "k_norm_out": {"engines": {"eager"} | _VLLM, "kind": "per_head", "softmax_attention_only": True},
+    "value": {"engines": {"eager"} | _VLLM, "kind": "per_head", "softmax_attention_only": True},
+    "z": {"engines": {"eager"} | _VLLM, "kind": "per_head", "softmax_attention_only": True},
     "router_logits": {"engines": {"eager"} | _VLLM, "kind": "router"},
     "embeddings": {"engines": {"eager", "vllm"}, "kind": "vector", "global": True},
     "final_norm": {"engines": {"eager", "vllm"}, "kind": "vector", "global": True},
@@ -675,6 +697,22 @@ REFERENCE_GAPS: tuple[dict, ...] = (
             "`config.do_layer_norm_before` decides whether it runs before the MLP (opt-125m) or after "
             "it (opt-350m). interp-engine refuses rather than binding the wrong module on one of the two "
             "shapes; TransformerLens knows which from its own conversion"
+        ),
+    },
+    {
+        "models": ("google/gemma-4-26B-A4B*",),
+        "points": ("mlp_out",),
+        "reason": (
+            "experts beside the dense MLP: every layer here keeps `layer.mlp` and hangs the router and "
+            "experts on the *block*, then sums the two branches in its own forward -- so the module this "
+            "point taps is the dense half of a two-branch feed-forward. The unusual thing about this gap "
+            "is that it is not a disagreement: both engines built the same tree and returned the same "
+            "half, and the cell was green at cos 0.9999 for four layers before anyone read what the "
+            "tensor was. So it is refused on both (`EagerModel._require_whole_feed_forward` and "
+            "`vllm_capture._tree._split_feed_forward_reason`) rather than compared. `mlp_out_post` is the "
+            "post-feedforward norm's output, downstream of the sum, and is scored on both engines -- it "
+            "is also the row that keeps the residual decomposition checkable here, since "
+            "resid_post == resid_mid + mlp_out_post holds for it and not for the raw point"
         ),
     },
     {
