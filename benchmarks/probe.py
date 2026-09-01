@@ -41,10 +41,14 @@ class EnvStamp:
 #: rather than where it runs. ``VLLM_DEEP_GEMM_WARMUP=skip`` is set by ``run_bench`` on every sweep
 #: (see ``skip_broken_deepgemm_warmup``) and moves DeepGEMM's first compile out of startup and into
 #: the first forward, which is a real difference in ``warmup_s`` on the FP8 rows.
+#:
+#: Only variables the installed vLLM still reads belong here. ``VLLM_ATTENTION_BACKEND`` and
+#: ``VLLM_USE_V1`` were dropped from vLLM (the backend moved to the ``attention_config`` engine
+#: argument, and V0 is gone), and neither name appears anywhere in 0.28.0. Stamping one annotated a
+#: run with a setting that had no effect -- the one reading somebody chasing a discrepancy would
+#: trust, and the worst kind to be wrong.
 _RECORDED_ENV: tuple[str, ...] = (
     "VLLM_DEEP_GEMM_WARMUP",
-    "VLLM_ATTENTION_BACKEND",
-    "VLLM_USE_V1",
     "CUDA_VISIBLE_DEVICES",
 )
 

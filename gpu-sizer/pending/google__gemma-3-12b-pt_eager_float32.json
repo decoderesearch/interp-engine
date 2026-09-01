@@ -1,0 +1,10 @@
+{
+  "model": "google/gemma-3-12b-pt",
+  "backend": "eager",
+  "dtype": "float32",
+  "max_model_len": 2048,
+  "expect": "fail",
+  "bound_needs": "a card small enough for 45.4 GiB of float32 weights to overrun it",
+  "why": "EagerModel's own dtype default: 12.2B x 4 bytes is 45.4 GiB, over a 44.4 GiB card",
+  "needs": "needs a card small enough for 45.4 GiB of float32 weights to overrun it; this card is 178.56 GiB"
+}

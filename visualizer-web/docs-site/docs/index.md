@@ -80,6 +80,8 @@ async def steered(model, token_ids, spec):
 | [Generation](./generation.md)           | Text, streams, logprobs, steered decode      |
 | [Chat and tokens](./chat.md)            | Templates, per-turn spans, pooling           |
 | [Async and servers](./async.md)         | Event loops, concurrency, `sync_model`       |
+| [GPU Sizer](./gpu-sizer.md)             | What hardware runs a model, and at what settings |
+| [Sizer API](./gpu-sizer-api.md)         | The same configs as JSON, over one `GET`      |
 
 Per-backend support for each point: the <a href="/">visualizer</a> and
 [SUPPORTED_POINTS.md](https://github.com/decoderesearch/interp-engine/blob/main/docs/SUPPORTED_POINTS.md).

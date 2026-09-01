@@ -320,30 +320,20 @@ def _auto_reads(n_layers: int, n_streams: int) -> list[Address]:
     return [Address("resid_post", i) for i in range(n_layers)]
 
 
-# Bytes per parameter for a dtype spelled as a string, narrowest tag first: `fp4` must be tested
-# before `fp8` or a substring match reports the wrong width, and 4-bit is the row that matters --
-# counting a 4-bit tensor at 1 byte doubles it.
-_DTYPE_BYTES: tuple[tuple[tuple[str, ...], float], ...] = (
-    (("fp4", "nvfp4", "mxfp4", "int4", "uint4", "nf4"), 0.5),
-    (("fp8", "int8", "uint8", "e4m3", "e5m2"), 1.0),
-    (("float32", "fp32"), 4.0),
-    (("bfloat16", "float16", "bf16", "fp16"), 2.0),
-)
-
-
 def _dtype_bytes_from_name(name: Any) -> float | None:
     """Bytes per parameter for a dtype named as a string, or None when the name is unrecognized.
 
-    None rather than a default, so a caller falls back to the model-wide dtype instead of a guess:
-    this reads fields no schema constrains, and a wrong *narrower* answer is what OOMs a pod.
+    Delegates to :func:`interp_engine.memory.dtype_bytes_or_none`, which is the canonical table. Two
+    copies of this are a silent 2x waiting to happen: the widths decide whether a checkpoint is
+    priced at 4-bit or 8-bit, and a table that disagreed with itself across two modules would be
+    wrong in the direction that OOMs, in one module only, with nothing to point at it.
+
+    Imported inside the function rather than at module scope purely to keep this module's import
+    graph flat; ``memory`` imports nothing heavy, so the cost is one ``sys.modules`` hit.
     """
-    if not name:
-        return None
-    text = str(name).lower()
-    for tags, size in _DTYPE_BYTES:
-        if any(tag in text for tag in tags):
-            return size
-    return None
+    from interp_engine.memory import dtype_bytes_or_none
+
+    return dtype_bytes_or_none(name)
 
 
 def _storage_dtype_bytes(config: Any) -> float:

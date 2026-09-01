@@ -1,0 +1,115 @@
+{
+  "model_id": "openai-community/gpt2",
+  "backend": "vllm",
+  "outcome": "pass",
+  "spec": {
+    "backend": "vllm",
+    "dtype": "bfloat16",
+    "kv_cache_dtype": "auto",
+    "max_model_len": 1024,
+    "max_num_batched_tokens": 2048,
+    "max_num_seqs": 256,
+    "gpu_memory_utilization": 0.9,
+    "num_gpus": 1,
+    "static_sites": 0,
+    "enforce_eager": null,
+    "batch_size": 1,
+    "seq_len": 0,
+    "requires_grad": false,
+    "attn_implementation": "",
+    "n_capture_points": 0
+  },
+  "gpu": {
+    "name": "NVIDIA A40",
+    "total_bytes": 47768928256,
+    "total_gib": 44.49,
+    "compute_capability": [
+      8,
+      6
+    ],
+    "ecc_enabled": true,
+    "provenance": "measured on this host (ECC enabled)"
+  },
+  "estimate": {
+    "fits": true,
+    "total_bytes": 3511041494,
+    "pool_bytes": 956039270,
+    "outside_bytes": 2555002224,
+    "headroom_bytes": 2221890602,
+    "kv_capacity_tokens": 1141323,
+    "terms": [
+      {
+        "name": "vllm_overshoot",
+        "bytes": 644245094,
+        "side": "outside"
+      },
+      {
+        "name": "fragmentation",
+        "bytes": 1910757130,
+        "side": "outside"
+      },
+      {
+        "name": "cuda_context",
+        "bytes": 644245094,
+        "side": "pool"
+      },
+      {
+        "name": "weights",
+        "bytes": 274045440,
+        "side": "pool"
+      },
+      {
+        "name": "kv_cache_floor",
+        "bytes": 37748736,
+        "side": "pool"
+      }
+    ],
+    "warnings": [],
+    "weights_source": "safetensors-metadata"
+  },
+  "measured": {
+    "baseline_bytes": 0,
+    "post_load_bytes": 43361763328,
+    "post_warmup_bytes": 43361763328,
+    "peak_bytes": 43361763328,
+    "pool_claimed_bytes": 42992035430,
+    "outside_measured_bytes": 369727898,
+    "torch_peak_bytes": 0,
+    "kv_cache_tokens": 1151632,
+    "samples": 98
+  },
+  "stress": {
+    "max_concurrency_passed": 8,
+    "first_failing_concurrency": 0,
+    "prompt_tokens": 1008,
+    "requests_ok": 8,
+    "requests_failed": 0,
+    "latencies_ms": [
+      148.21463311091065,
+      150.3953170031309,
+      152.629405958578,
+      157.3894650209695,
+      186.3535929005593,
+      193.21192102506757,
+      199.30802611634135,
+      200.951405800879
+    ],
+    "failure_kind": "",
+    "failure_detail": ""
+  },
+  "cannot_verify": [
+    "fp8",
+    "nvfp4"
+  ],
+  "expected": "pass",
+  "error": "",
+  "versions": {
+    "torch": "2.13.0+cu130",
+    "transformers": "5.14.1",
+    "vllm": "0.27.1",
+    "interp_engine": "1.3.4",
+    "driver": "580.159.04"
+  },
+  "duration_s": 29.2,
+  "recorded_at": "2026-08-24T21:40:39Z"
+}

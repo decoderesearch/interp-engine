@@ -1,0 +1,111 @@
+{
+  "model_id": "google/gemma-3-12b-pt",
+  "backend": "vllm",
+  "outcome": "crash",
+  "spec": {
+    "backend": "vllm",
+    "dtype": "bfloat16",
+    "kv_cache_dtype": "auto",
+    "max_model_len": 8192,
+    "max_num_batched_tokens": 2048,
+    "max_num_seqs": 256,
+    "gpu_memory_utilization": 0.9,
+    "num_gpus": 1,
+    "static_sites": 0,
+    "enforce_eager": null,
+    "batch_size": 1,
+    "seq_len": 0,
+    "requires_grad": false,
+    "attn_implementation": "",
+    "n_capture_points": 0
+  },
+  "gpu": {
+    "name": "NVIDIA B200",
+    "total_bytes": 191728975872,
+    "total_gib": 178.56,
+    "compute_capability": [
+      10,
+      0
+    ],
+    "ecc_enabled": true,
+    "provenance": "measured on this host (ECC enabled)"
+  },
+  "estimate": {
+    "fits": true,
+    "total_bytes": 36553524774,
+    "pool_bytes": 28240120646,
+    "outside_bytes": 8313404128,
+    "headroom_bytes": 10859493460,
+    "kv_capacity_tokens": 341096,
+    "terms": [
+      {
+        "name": "vllm_overshoot",
+        "bytes": 644245094,
+        "side": "outside"
+      },
+      {
+        "name": "fragmentation",
+        "bytes": 7669159034,
+        "side": "outside"
+      },
+      {
+        "name": "cuda_context",
+        "bytes": 644245094,
+        "side": "pool"
+      },
+      {
+        "name": "weights",
+        "bytes": 24374650080,
+        "side": "pool"
+      },
+      {
+        "name": "kv_cache_floor",
+        "bytes": 3221225472,
+        "side": "pool"
+      }
+    ],
+    "warnings": [],
+    "weights_source": "safetensors-metadata"
+  },
+  "measured": {
+    "baseline_bytes": 0,
+    "post_load_bytes": 0,
+    "post_warmup_bytes": 0,
+    "peak_bytes": 172530597888,
+    "pool_claimed_bytes": 172556078284,
+    "outside_measured_bytes": 0,
+    "torch_peak_bytes": 0,
+    "kv_cache_tokens": 537580,
+    "samples": 239
+  },
+  "stress": {
+    "max_concurrency_passed": 0,
+    "first_failing_concurrency": 0,
+    "prompt_tokens": 8176,
+    "requests_ok": 0,
+    "requests_failed": 0,
+    "latencies_ms": [],
+    "failure_kind": "",
+    "failure_detail": ""
+  },
+  "reservations": {
+    "per_rank_bytes": 0,
+    "host_bytes": 0,
+    "note": "--reserve-gib / --host-reserve-gib"
+  },
+  "engine_env": {},
+  "engine_env_note": "",
+  "cannot_verify": [],
+  "expected": "pass",
+  "why": "22.7 GiB of weights on a 44 GiB card -- the edge case this whole tool exists for",
+  "error": "RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}\n(EngineCore pid=63086)   File \"/root/interp-engine/.venv/lib/python3.12/site-packages/vllm/model_executor/layers/attention/kv_transfer_utils.py\", line 40, in wrapper\n(EngineCore pid=63086)     return func(*args, **kwargs)\n(EngineCore pid=63086)            ^^^^^^^^^^^^^^^^^^^^^\n(EngineCore pid=63086)   File \"/root/interp-engine/.venv/lib/python3.12/site-packages/vllm/model_executor/layers/attention/attention.py\", line 836, in unified_attention_with_output\n(EngineCore pid=63086)     self.impl.forward(\n(EngineCore pid=63086)   File \"/root/interp-engine/.venv/lib/python3.12/site-packages/vllm/v1/attention/backends/flash_attn.py\", line 1041, in forward\n(EngineCore pid=63086)     flash_attn_varlen_func(\n(EngineCore pid=63086)   File \"/root/interp-engine/.venv/lib/python3.12/site-packages/vllm/vllm_flash_attn/flash_attn_interface.py\", line 402, in flash_attn_varlen_func\n(EngineCore pid=63086)     out, softmax_lse, _, _ = _flash_attn_fwd(\n(EngineCore pid=63086)                              ^^^^^^^^^^^^^^^^\n(EngineCore pid=63086)   File \"/root/interp-engine/.venv/lib/python3.12/site-packages/vllm/vllm_flash_attn/cute/interface.py\", line 1027, in _flash_attn_fwd\n(EngineCore pid=63086)     assert seqused_q is None and seqused_k is None, \\\n(EngineCore pid=63086)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n(EngineCore pid=63086) AssertionError: SM100 forward with head_dim=256 does not support seqused_q/seqused_k\nINFO 08-26 01:19:49 [utils.py:612] [shutdown] Process manager: send sigterm to process EngineCore",
+  "versions": {
+    "torch": "2.13.0+cu130",
+    "transformers": "5.14.1",
+    "vllm": "0.27.1",
+    "interp_engine": "1.3.4",
+    "driver": "580.126.09"
+  },
+  "duration_s": 72.6,
+  "recorded_at": "2026-08-26T01:19:53Z"
+}

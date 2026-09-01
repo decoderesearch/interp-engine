@@ -25,4 +25,7 @@ export const DEMO_GIF_HEIGHT = 843;
 export const BENCHMARK_VIDEO =
   "https://neuronpedia.s3.amazonaws.com/site-assets/ie-benchmark-hi.mp4";
 
+export const SIZER_VIDEO =
+  "https://neuronpedia.s3.amazonaws.com/site-assets/gpu-sizer-2.mp4";
+
 export const DEMO_GIF_ORIGIN = new URL(DEMO_GIF).origin;

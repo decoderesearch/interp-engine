@@ -1,0 +1,9 @@
+{
+  "model": "google/gemma-3-12b-pt",
+  "backend": "vllm",
+  "dtype": "bfloat16",
+  "max_model_len": 8192,
+  "expect": "pass",
+  "why": "head_dim=256 on sm_100, the shape the vLLM floor was raised for: this is the row that says the floor works",
+  "needs": "a B200 or other sm_100 card on vLLM >= 0.28.0. The 0.27.1 record here was deleted rather than kept: it died in kernel warmup on FA4's `SM100 forward with head_dim=256 does not support seqused_q/seqused_k`, which vllm-project/vllm#52050 fixes in 0.28.0 -- now the declared floor in pyproject.toml -- so it bounded nothing and was stamping `known to fail` on a configuration the pinned floor runs"
+}

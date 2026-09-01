@@ -29,6 +29,7 @@ This repo contains:
 
 1. [`validator/`](validator/), which compares/validates it against TransformerLens, and nnsight/nnterp on real architectures.
 2. [`visualizer-web/`](visualizer-web/), a "cheat sheet" hosted at [interp-engine.org](https://interp-engine.org) of each 'point' (eg `resid_post.16`), standardized across architectures.
+3. [`gpu-sizer/`](gpu-sizer/), which finds the GPU/config you need to fit an interp-engine model (and what performance you'll get), to avoid OOMing while working. [docs](https://interp-engine.org/docs/gpu-sizer) | [API](https://interp-engine.org/docs/gpu-sizer-api)
 
 ## Installation
 
@@ -108,18 +109,29 @@ We verify correctness in two main ways:
 1. A test suite that checks results across several models - what each check is designed to catch is in [INTERNALS.md](docs/INTERNALS.md#correctness).
 2. A full `validator` comparison engine that checks most hook points across 50+ models, at early, middle and late layers - fully reproducible, with detailed results saved in the git repo at [`validator/`](validator/).
 
-## Known Issues
+## GPU-Sizer
 
-- **Gemma 4 requires transformers 5.14.1** because 5.15 moved `head_dim` into `per_layer_config` and vLLM's config read dies before a weight loads ([vllm#51744](https://github.com/vllm-project/vllm/issues/51744)).
-- **Gemma 4 26B refuses `mlp_out`**, because `layer.mlp` there is one branch of a two-branch feed-forward; `mlp_out_post` is the residual contribution and is served ([ARCHITECTURE_QUIRKS.md](docs/ARCHITECTURE_QUIRKS.md#moe-tap-the-block-not-the-experts)).
-- **DeepSeek-V2 on transformers older than 5.15.0** captures a wrong attention temperature — the engine warns at load, and upgrading is the fix ([COMPATIBILITY.md](docs/COMPATIBILITY.md)).
-- **MXFP4 checkpoints (gpt-oss) need `interp-engine[quant]`**, which the `[vllm]` extra does not include; without it transformers dequantizes them to bf16 at roughly 3x the weights, which can turn a model that fits into one that does not.
+<p align="center">
+  <img src="https://neuronpedia.s3.amazonaws.com/site-assets/gpu-sizer.gif" alt="interp-engine demo gif" width="100%">
+</p>
+
+[docs](https://interp-engine.org/docs/gpu-sizer) | [API](https://interp-engine.org/docs/gpu-sizer-api)
+
+Never OOM again - `interp-engine` includes gpu-sizer, an intuitive UI which tells you what GPU(s) and configs you need to get the best performance out of your selected model. For example, [interp-engine.org/sizer/Qwen/Qwen3.6-27B](https://interp-engine.org/sizer/Qwen/Qwen3.6-27B) shows that you can run `Qwen3.6-27B` with interp-engine's vllm-static backend for max speed while keeping it in a single 80GB A100, and have ~40k tokens for the KV Cache.
 
 ## Why use an Interpretability Engine instead of building from scratch?
 
 1. **Speed**: Get performance without sacrificing correctness.
 2. **Standardization + Verification**: Eliminate ambiguity when referring to points, plus a full test suite included.
 3. **Faster Dev / Fewer Tokens Used**: You could spend ten million tokens and have your AI write, test, and make production-ready an interpretability engine. Or you could just `pip install interp-engine[vllm]`.
+
+## Caveats
+
+- **Gemma 4 requires transformers 5.14.1** because 5.15 moved `head_dim` into `per_layer_config` and vLLM's config read dies before a weight loads ([vllm#51744](https://github.com/vllm-project/vllm/issues/51744)).
+- **DeepSeek-V2 on transformers older than 5.15.0** captures a wrong attention temperature — the engine warns at load, and upgrading is the fix ([COMPATIBILITY.md](docs/COMPATIBILITY.md)).
+- **MXFP4 checkpoints (gpt-oss) need `interp-engine[quant]`**, which the `[vllm]` extra does not include; without it transformers dequantizes them to bf16 at roughly 3x the weights, which can turn a model that fits into one that does not.
+
+Per-architecture structural quirks — which points a family serves and why — are not caveats but facts about the architecture, and live in [ARCHITECTURE_QUIRKS.md](docs/ARCHITECTURE_QUIRKS.md).
 
 ## Development / Contributing
 

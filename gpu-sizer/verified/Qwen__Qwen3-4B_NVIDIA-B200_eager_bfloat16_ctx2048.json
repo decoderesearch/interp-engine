@@ -1,0 +1,119 @@
+{
+  "model_id": "Qwen/Qwen3-4B",
+  "backend": "eager",
+  "outcome": "pass",
+  "spec": {
+    "backend": "eager",
+    "dtype": "bfloat16",
+    "kv_cache_dtype": "auto",
+    "max_model_len": 2048,
+    "max_num_batched_tokens": 0,
+    "max_num_seqs": 0,
+    "gpu_memory_utilization": 0.0,
+    "num_gpus": 1,
+    "static_sites": 0,
+    "enforce_eager": null,
+    "batch_size": 1,
+    "seq_len": 2032,
+    "requires_grad": false,
+    "attn_implementation": "sdpa",
+    "n_capture_points": 0
+  },
+  "gpu": {
+    "name": "NVIDIA B200",
+    "total_bytes": 191728975872,
+    "total_gib": 178.56,
+    "compute_capability": [
+      10,
+      0
+    ],
+    "ecc_enabled": true,
+    "provenance": "measured on this host (ECC enabled)"
+  },
+  "estimate": {
+    "fits": true,
+    "total_bytes": 11172090470,
+    "pool_bytes": 0,
+    "outside_bytes": 0,
+    "headroom_bytes": 180556885402,
+    "kv_capacity_tokens": 0,
+    "terms": [
+      {
+        "name": "weights",
+        "bytes": 8044936192,
+        "side": "eager"
+      },
+      {
+        "name": "logits",
+        "bytes": 1852403712,
+        "side": "eager"
+      },
+      {
+        "name": "hidden_states",
+        "bytes": 10403840,
+        "side": "eager"
+      },
+      {
+        "name": "mlp_intermediate",
+        "bytes": 83230720,
+        "side": "eager"
+      },
+      {
+        "name": "workspace",
+        "bytes": 536870912,
+        "side": "eager"
+      },
+      {
+        "name": "cuda_context",
+        "bytes": 644245094,
+        "side": "eager"
+      }
+    ],
+    "warnings": [],
+    "weights_source": "safetensors-metadata"
+  },
+  "measured": {
+    "baseline_bytes": 0,
+    "post_load_bytes": 8858370048,
+    "post_warmup_bytes": 9216983040,
+    "peak_bytes": 9835642880,
+    "pool_claimed_bytes": 0,
+    "outside_measured_bytes": 9835642880,
+    "torch_peak_bytes": 8794691584,
+    "kv_cache_tokens": 0,
+    "samples": 75
+  },
+  "stress": {
+    "max_concurrency_passed": 2,
+    "first_failing_concurrency": 0,
+    "prompt_tokens": 2032,
+    "requests_ok": 2,
+    "requests_failed": 0,
+    "latencies_ms": [
+      79.66612605378032,
+      44.26202084869146
+    ],
+    "failure_kind": "",
+    "failure_detail": ""
+  },
+  "reservations": {
+    "per_rank_bytes": 0,
+    "host_bytes": 0,
+    "note": "--reserve-gib / --host-reserve-gib"
+  },
+  "engine_env": {},
+  "engine_env_note": "",
+  "cannot_verify": [],
+  "expected": "pass",
+  "why": "the eager arm of the equation, where activations rather than weights dominate",
+  "error": "",
+  "versions": {
+    "torch": "2.13.0+cu130",
+    "transformers": "5.14.1",
+    "vllm": "0.27.1",
+    "interp_engine": "1.3.4",
+    "driver": "580.126.09"
+  },
+  "duration_s": 22.6,
+  "recorded_at": "2026-08-26T01:17:52Z"
+}

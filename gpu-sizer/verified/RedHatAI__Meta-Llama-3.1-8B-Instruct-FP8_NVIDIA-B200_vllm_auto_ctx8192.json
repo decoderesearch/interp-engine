@@ -1,0 +1,120 @@
+{
+  "model_id": "RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8",
+  "backend": "vllm",
+  "outcome": "pass",
+  "spec": {
+    "backend": "vllm",
+    "dtype": "auto",
+    "kv_cache_dtype": "auto",
+    "max_model_len": 8192,
+    "max_num_batched_tokens": 2048,
+    "max_num_seqs": 256,
+    "gpu_memory_utilization": 0.9,
+    "num_gpus": 1,
+    "static_sites": 0,
+    "enforce_eager": null,
+    "batch_size": 1,
+    "seq_len": 0,
+    "requires_grad": false,
+    "attn_implementation": "",
+    "n_capture_points": 0
+  },
+  "gpu": {
+    "name": "NVIDIA B200",
+    "total_bytes": 191728975872,
+    "total_gib": 178.56,
+    "compute_capability": [
+      10,
+      0
+    ],
+    "ecc_enabled": true,
+    "provenance": "measured on this host (ECC enabled)"
+  },
+  "estimate": {
+    "fits": true,
+    "total_bytes": 19112592582,
+    "pool_bytes": 10799188454,
+    "outside_bytes": 8313404128,
+    "headroom_bytes": 10859493460,
+    "kv_capacity_tokens": 1242299,
+    "terms": [
+      {
+        "name": "vllm_overshoot",
+        "bytes": 644245094,
+        "side": "outside"
+      },
+      {
+        "name": "fragmentation",
+        "bytes": 7669159034,
+        "side": "outside"
+      },
+      {
+        "name": "cuda_context",
+        "bytes": 644245094,
+        "side": "pool"
+      },
+      {
+        "name": "weights",
+        "bytes": 9081201536,
+        "side": "pool"
+      },
+      {
+        "name": "kv_cache_floor",
+        "bytes": 1073741824,
+        "side": "pool"
+      }
+    ],
+    "warnings": [
+      "quantized checkpoint (compressed-tensors): 8.5 GiB served natively, but ~15.0 GiB if the kernels are missing and transformers dequantizes silently -- install the `quant` extra and pre-cache its Hub kernels"
+    ],
+    "weights_source": "safetensors-metadata"
+  },
+  "measured": {
+    "baseline_bytes": 0,
+    "post_load_bytes": 174334148608,
+    "post_warmup_bytes": 174336245760,
+    "peak_bytes": 174512406528,
+    "pool_claimed_bytes": 172556078284,
+    "outside_measured_bytes": 1956328244,
+    "torch_peak_bytes": 0,
+    "kv_cache_tokens": 1239264,
+    "samples": 144
+  },
+  "stress": {
+    "max_concurrency_passed": 4,
+    "first_failing_concurrency": 0,
+    "prompt_tokens": 8176,
+    "requests_ok": 4,
+    "requests_failed": 0,
+    "latencies_ms": [
+      1848.8413849845529,
+      3110.0945342332125,
+      3521.620323881507,
+      4505.658993963152
+    ],
+    "failure_kind": "",
+    "failure_detail": ""
+  },
+  "reservations": {
+    "per_rank_bytes": 0,
+    "host_bytes": 0,
+    "note": "--reserve-gib / --host-reserve-gib"
+  },
+  "engine_env": {
+    "VLLM_FLASHINFER_AUTOTUNE_SKIP_OPS": "fp8_gemm"
+  },
+  "engine_env_note": "FlashInfer's fp8_gemm autotune segfaults on sm_100 (vLLM 0.27.1, FlashInfer 0.6.16.post3), after the weights and KV cache are built -- a kernel gap, not a capacity one",
+  "cannot_verify": [],
+  "expected": "pass",
+  "why": "native FP8 weights: half of bf16, but only with Ada/Hopper tensor cores behind them",
+  "error": "",
+  "versions": {
+    "torch": "2.13.0+cu130",
+    "transformers": "5.14.1",
+    "vllm": "0.27.1",
+    "interp_engine": "1.3.4",
+    "driver": "580.126.09"
+  },
+  "duration_s": 43.9,
+  "recorded_at": "2026-08-26T01:20:38Z"
+}

@@ -85,6 +85,44 @@ const GLOBAL = {
 } as const;
 
 /**
+ * The shared Hub token's allowance, per address, for `/api/hub`.
+ *
+ * A different scarcity from the three above. Nothing here bills by the token:
+ * what runs out is the standing this project's Hub account has with
+ * huggingface.co, and the punishment for spending it is that *everyone's*
+ * lookups start failing at once. So the number is set to the shape of honest
+ * use rather than to a budget -- thirty models an hour is more than anyone
+ * comparing hardware gets through, and far short of a crawl.
+ *
+ * Thirty an hour is 720 a day from one address, so {@link HUB_GLOBAL} is what
+ * actually bounds the token's exposure -- the same division of labour as Riz's
+ * two tiers, and for the same reason: addresses are rented by the thousand, so
+ * a per-IP window prices abuse without capping it.
+ */
+const HUB = { limit: 30, window: "1 h" } as const;
+
+/**
+ * Every reader together, against the shared Hub token.
+ *
+ * 2,400 a day is a little over three addresses running {@link HUB} flat out,
+ * which is the right shape: comfortably above what a day of genuine traffic
+ * asks for, and well under the volume that gets an account's reads throttled at
+ * the other end.
+ *
+ * This ceiling refuses more gently than Riz's does, because unlike a spent
+ * Anthropic budget it is not the end of the road. The build-time cache still
+ * answers for the models most readers want without consuming anything here, and
+ * the refusal names the way past it: a token of the reader's own, which skips
+ * this route and this counter entirely. Overridable for the same reason as
+ * `RIZ_GLOBAL_DAILY` -- the right number is a judgement about one Hub account's
+ * standing, and the alternative to tuning it is a deploy.
+ */
+const HUB_GLOBAL = {
+  limit: Number(process.env.HUB_GLOBAL_DAILY ?? 2400),
+  window: "24 h",
+} as const;
+
+/**
  * Vercel's Upstash integration provisions `KV_REST_API_*`; Upstash's own
  * dashboard gives you `UPSTASH_REDIS_REST_*`. `Redis.fromEnv()` reads only the
  * second pair, so both are read here rather than leaving a correctly
@@ -128,6 +166,22 @@ const budget = redis
     })
   : null;
 
+const hub = redis
+  ? new Ratelimit({
+      redis,
+      prefix: "hub:ip",
+      limiter: Ratelimit.slidingWindow(HUB.limit, HUB.window),
+    })
+  : null;
+
+const hubBudget = redis
+  ? new Ratelimit({
+      redis,
+      prefix: "hub:global",
+      limiter: Ratelimit.slidingWindow(HUB_GLOBAL.limit, HUB_GLOBAL.window),
+    })
+  : null;
+
 /** Whether a limiter exists. The route refuses when this is false. */
 export const configured = redis !== null;
 
@@ -139,8 +193,7 @@ export const configured = redis !== null;
 export const exempt = process.env.NODE_ENV === "development";
 
 export type LimitVerdict =
-  | { ok: true }
-  | { ok: false; reason: string; retryAfter: number };
+  { ok: true } | { ok: false; reason: string; retryAfter: number };
 
 /**
  * Which client this is. Vercel sets `x-forwarded-for` and appends, so the
@@ -183,7 +236,11 @@ function bucket(address: string): string {
   const left = head ? head.split(":") : [];
   const right = tail ? tail.split(":") : [];
   const groups = address.includes("::")
-    ? [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill("0"), ...right]
+    ? [
+        ...left,
+        ...Array(Math.max(0, 8 - left.length - right.length)).fill("0"),
+        ...right,
+      ]
     : left;
 
   return `${groups.slice(0, 4).join(":")}::/64`;
@@ -206,7 +263,8 @@ export async function checkLimit(key: string): Promise<LimitVerdict> {
     console.error("[ask] rate limiter unreachable", error);
     return {
       ok: false,
-      reason: "Riz is having trouble keeping count right now. Try again in a minute.",
+      reason:
+        "Riz is having trouble keeping count right now. Try again in a minute.",
       retryAfter: 60,
     };
   }
@@ -238,7 +296,8 @@ export async function checkLimit(key: string): Promise<LimitVerdict> {
     console.error("[ask] global budget unreachable", error);
     return {
       ok: false,
-      reason: "Riz is having trouble keeping count right now. Try again in a minute.",
+      reason:
+        "Riz is having trouble keeping count right now. Try again in a minute.",
       retryAfter: 60,
     };
   }
@@ -251,6 +310,68 @@ export async function checkLimit(key: string): Promise<LimitVerdict> {
       ok: false,
       reason:
         "Riz has hit his daily limit across everyone asking. He'll be back tomorrow — the docs at github.com/decoderesearch/interp-engine are always up.",
+      retryAfter: retryAfter(total.reset),
+    };
+  }
+  return { ok: true };
+}
+
+/**
+ * The allowance for one lookup against the shared Hub token.
+ *
+ * Two windows rather than `checkLimit`'s three: one address, then everyone. The
+ * middle tier there exists to separate a held-down enter key from a paced
+ * script, a distinction with no analogue here, where a lookup is a lookup.
+ */
+export async function checkHubLimit(key: string): Promise<LimitVerdict> {
+  if (!hub || !hubBudget) return { ok: true };
+
+  let window;
+  try {
+    window = await hub.limit(key);
+  } catch (error) {
+    console.error("[hub] rate limiter unreachable", error);
+    return {
+      ok: false,
+      reason:
+        "the lookup service is having trouble keeping count right now — try again in a minute, or add your own Hugging Face token below",
+      retryAfter: 60,
+    };
+  }
+
+  if (!window.success) {
+    return {
+      ok: false,
+      reason: `that is ${HUB.limit} model lookups in an hour on the shared token, which is where it stops — add your own Hugging Face token below to keep going`,
+      retryAfter: retryAfter(window.reset),
+    };
+  }
+
+  // After the per-address window and never alongside it, for the reason
+  // `checkLimit` gives at the same point: a refused request that still spends
+  // the shared counter lets one blocked address burn everyone else's
+  // allowance, which turns a rate limit into a denial of service.
+  let total;
+  try {
+    total = await hubBudget.limit("all");
+  } catch (error) {
+    console.error("[hub] global budget unreachable", error);
+    return {
+      ok: false,
+      reason:
+        "the lookup service is having trouble keeping count right now — try again in a minute, or add your own Hugging Face token below",
+      retryAfter: 60,
+    };
+  }
+
+  if (!total.success) {
+    // Says nothing about this reader, who has done nothing wrong, and offers
+    // the way through rather than a time to come back at.
+    console.warn(`[hub] global daily budget of ${HUB_GLOBAL.limit} exhausted`);
+    return {
+      ok: false,
+      reason:
+        "the shared token has hit its daily lookup limit across everyone using it — cached models still work, and your own Hugging Face token below skips the queue entirely",
       retryAfter: retryAfter(total.reset),
     };
   }

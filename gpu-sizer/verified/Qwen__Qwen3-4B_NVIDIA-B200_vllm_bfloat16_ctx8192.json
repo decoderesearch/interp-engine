@@ -1,0 +1,116 @@
+{
+  "model_id": "Qwen/Qwen3-4B",
+  "backend": "vllm",
+  "outcome": "pass",
+  "spec": {
+    "backend": "vllm",
+    "dtype": "bfloat16",
+    "kv_cache_dtype": "auto",
+    "max_model_len": 8192,
+    "max_num_batched_tokens": 2048,
+    "max_num_seqs": 256,
+    "gpu_memory_utilization": 0.9,
+    "num_gpus": 1,
+    "static_sites": 0,
+    "enforce_eager": null,
+    "batch_size": 1,
+    "seq_len": 0,
+    "requires_grad": false,
+    "attn_implementation": "",
+    "n_capture_points": 0
+  },
+  "gpu": {
+    "name": "NVIDIA B200",
+    "total_bytes": 191728975872,
+    "total_gib": 178.56,
+    "compute_capability": [
+      10,
+      0
+    ],
+    "ecc_enabled": true,
+    "provenance": "measured on this host (ECC enabled)"
+  },
+  "estimate": {
+    "fits": true,
+    "total_bytes": 18210544966,
+    "pool_bytes": 9897140838,
+    "outside_bytes": 8313404128,
+    "headroom_bytes": 10859493460,
+    "kv_capacity_tokens": 1111293,
+    "terms": [
+      {
+        "name": "vllm_overshoot",
+        "bytes": 644245094,
+        "side": "outside"
+      },
+      {
+        "name": "fragmentation",
+        "bytes": 7669159034,
+        "side": "outside"
+      },
+      {
+        "name": "cuda_context",
+        "bytes": 644245094,
+        "side": "pool"
+      },
+      {
+        "name": "weights",
+        "bytes": 8044936192,
+        "side": "pool"
+      },
+      {
+        "name": "kv_cache_floor",
+        "bytes": 1207959552,
+        "side": "pool"
+      }
+    ],
+    "warnings": [],
+    "weights_source": "safetensors-metadata"
+  },
+  "measured": {
+    "baseline_bytes": 0,
+    "post_load_bytes": 174453686272,
+    "post_warmup_bytes": 174455783424,
+    "peak_bytes": 174455783424,
+    "pool_claimed_bytes": 172556078284,
+    "outside_measured_bytes": 1899705140,
+    "torch_peak_bytes": 0,
+    "kv_cache_tokens": 1109600,
+    "samples": 109
+  },
+  "stress": {
+    "max_concurrency_passed": 4,
+    "first_failing_concurrency": 0,
+    "prompt_tokens": 8176,
+    "requests_ok": 4,
+    "requests_failed": 0,
+    "latencies_ms": [
+      1070.5064348876476,
+      1854.535257909447,
+      2138.017435092479,
+      2738.896992057562
+    ],
+    "failure_kind": "",
+    "failure_detail": ""
+  },
+  "reservations": {
+    "per_rank_bytes": 0,
+    "host_bytes": 0,
+    "note": "--reserve-gib / --host-reserve-gib"
+  },
+  "engine_env": {},
+  "engine_env_note": "",
+  "cannot_verify": [],
+  "expected": "pass",
+  "why": "mainstream GQA dense, the shape most users actually run",
+  "error": "",
+  "versions": {
+    "torch": "2.13.0+cu130",
+    "transformers": "5.14.1",
+    "vllm": "0.27.1",
+    "interp_engine": "1.3.4",
+    "driver": "580.126.09"
+  },
+  "duration_s": 32.9,
+  "recorded_at": "2026-08-26T01:16:23Z"
+}

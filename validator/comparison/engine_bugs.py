@@ -131,52 +131,19 @@ ENGINE_BUGS: tuple[EngineBug, ...] = (
     # MXFP4 converter raising on load); both cells are ✅ and the declarations are gone. That is the
     # intended lifecycle -- a fixed engine takes its own row back, and nothing here has to be trusted
     # to have been deleted on time, because a stale row over a passing cell shows as ✅ anyway.
-    # Both TL rows on Gemma-4, in the order they have to be read: the bridge cannot load the family at
-    # all, so `bug_for` -- which answers for a cell that never ran and has no points to name -- must
-    # reach #1647 first. #1646 is a second, independent defect that is invisible from here until the
-    # first is fixed: with no model, there are no MLP hooks to be missing. It is declared anyway so the
-    # cells land on the right issue the day the load starts working, and so deleting the load-failure
-    # row (the lifecycle every row here is meant to have) does not quietly lose the other bug.
-    EngineBug(
-        engine="tlens_v3",
-        model="google/gemma-4-*",
-        url="https://github.com/TransformerLensOrg/TransformerLens/issues/1647",
-        title="TransformerBridge cannot load heterogeneous Gemma 4 configs with Transformers 5.15",
-        mechanism="`map_default_transformer_lens_config` probes `head_dim` and `num_key_value_heads` on "
-        "the whole-model config inside `hasattr` guards. transformers 5.15 moved Gemma-4's widths into "
-        "`per_layer_config` and raises AmbiguousGlobalPerLayerAttributeError on a global read, which "
-        "`hasattr` does not swallow, so the bridge dies during config translation before any weight loads.",
-        workaround="transformers 5.14.1, which spells the same fact as `global_head_dim`. "
-        "`allow_global_per_layer_attribute_access` gets past the raise but broadcasts one width over "
-        "layers that do not share it, which is worse than the crash.",
-    ),
-    EngineBug(
-        engine="tlens_v3",
-        model="google/gemma-4-*",
-        url="https://github.com/TransformerLensOrg/TransformerLens/issues/1646",
-        title="Gemma 4 MLPs omit hook_pre, hook_pre_linear, and hook_post",
-        mechanism="Gemma-3's adapter maps the block MLP with `self._gated_mlp()` and gets GatedMLPBridge's "
-        "neuron-basis aliases; Gemma-4's maps the identical gate_proj/up_proj/down_proj structure to a bare "
-        "GeneralizedComponent, which carries only `hook_in`/`hook_out`. A mapping gap, not an architectural "
-        "one -- Gemma4TextMLP is an ordinary gated MLP.",
-        points=("mlp_pre", "mlp_pre_linear", "mlp_act"),
-    ),
-    EngineBug(
-        # Both vLLM columns, because this is one defect in one place: ModelConfig construction, which
-        # every vLLM engine does identically and which happens before a static wrap is installed or a
-        # weight is read. The static column would otherwise report ❌ for a checkpoint this vLLM cannot
-        # start at all, which reads as a static fault.
-        engine="vllm*",
-        model="google/gemma-4-*",
-        url="https://github.com/vllm-project/vllm/issues/51744",
-        title="vllm/vllm-openai:latest fails to start Gemma4 with Transformers 5.15.0",
-        mechanism="transformers 5.15 makes Gemma-4's `head_dim` a per-layer attribute that raises on a "
-        "whole-model read; vLLM's Gemma4ModelArchConfigConvertor.get_head_size reads it with "
-        "`getattr(cfg, 'head_dim', 0)`, whose default only swallows AttributeError, so ModelConfig "
-        "construction dies before any weight is loaded.",
-        workaround="transformers 5.14.1, or a vLLM carrying vllm-project/vllm#48432, which reads the "
-        "max over per_layer_config.",
-    ),
+    # All three Gemma-4 rows are gone, each for the reason this file wants them gone. TransformerLens
+    # 3.7.2 closed #1647 (the bridge's config translation) and #1646 (the missing MLP aliases), and
+    # tlens_v3 now agrees on every point of all five Gemma-4 checkpoints. vLLM 0.28.0 reads the
+    # per-layer geometry properly, so vllm-project/vllm#51744 no longer describes anything that
+    # happens: `google/gemma-4-31B` went from a dead load to 54 agreed / 0 differs.
+    #
+    # The 12B and 26B still disagree with `eager` on their middle layers, and that is deliberately
+    # left as a plain non-passing verdict rather than moved to a new row. It is not #51744 -- those
+    # models load -- and nothing here can be filed against vLLM yet: `eager`, `tlens_v3` and `nnsight`
+    # all wrap HF transformers, so the three of them agreeing is one implementation, not three, and
+    # the bar at the top of this file is an investigation with a repro. Until somebody does it, the
+    # honest cell is the one that says the two engines disagree and does not say whose fault it is.
+    #
     # The same defect in two adapters, filed separately because the fix is in two projects. Both read the
     # HF module's output for the sublayer contribution, and BLOOM's sublayers add the residual inside
     # themselves -- so `attn_out` comes back as `resid_mid` and `mlp_out` as `resid_post`, off by a whole

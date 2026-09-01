@@ -13,11 +13,11 @@
  * mark in the header is the way back to it, and the reason the dialog is allowed
  * to be dismissed with one press: nothing here is behind it.
  *
- * Four slides, and the first three are the repository's own claims with the
+ * Five slides, and the first three are the repository's own claims with the
  * evidence attached rather than prose about them — the throughput chart and the
  * point table are the same components the caption's hover cards open, from
- * `components/evidence/`. The fourth is the only one that is about this page,
- * and it is last on purpose: what the diagram is for is a question about
+ * `components/evidence/`. The last two are the only ones about this page, and
+ * they are last on purpose: what the diagram is for is a question about
  * interp-engine, and it does not read as an answer until the three before it
  * have been made.
  *
@@ -38,7 +38,12 @@ import { GithubMark } from "@/components/GithubMark";
 import { PointGrid } from "@/components/evidence/PointSupport";
 import { Throughput } from "@/components/evidence/Throughput";
 import { ALL_POINTS } from "@/data/points";
-import { DEMO_GIF, DEMO_GIF_HEIGHT, DEMO_GIF_WIDTH } from "@/lib/assets";
+import {
+  DEMO_GIF,
+  DEMO_GIF_HEIGHT,
+  DEMO_GIF_WIDTH,
+  SIZER_VIDEO,
+} from "@/lib/assets";
 import { markVisited, useFirstVisit } from "@/lib/firstVisit";
 import { cn } from "@/lib/utils";
 
@@ -120,6 +125,32 @@ const SLIDES: Slide[] = [
     ),
     body: () => <Demo />,
   },
+  {
+    id: "sizer",
+    label: "GPU Sizer",
+    lede: (
+      <>
+        What GPU do you need to run interp-engine on a model? Use the GPU sizer
+        to choose a model, set the performance you want, and get exact GPU
+        configs that will fit without OOMing - copy the code instantly.
+        There&apos;s also a{" "}
+        {/* A new tab, so the tour is still here to come back to: this is the one
+            slide whose prose sends the reader somewhere, and a same-tab
+            navigation out of a first-visit dialog closes it for good. */}
+        <a
+          href="/docs/gpu-sizer-api"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="GPU sizer API documentation (opens in a new tab)"
+          className="text-sky-700 underline decoration-sky-700/30 underline-offset-2 hover:decoration-sky-700"
+        >
+          GPU sizer API
+        </a>
+        .
+      </>
+    ),
+    body: () => <SizerDemo />,
+  },
 ];
 
 export function Welcome({
@@ -173,12 +204,15 @@ export function Welcome({
           type="button"
           aria-label="Tutorial"
           title="Tutorial"
+          // Only the invariants here. What the trigger looks like is the
+          // header's business -- it is a pill beside the docs button there and
+          // a labelled row in the phone menu, and both come from `className`.
           className={cn(
-            "flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-900",
+            "flex shrink-0 cursor-pointer items-center transition-colors",
             className,
           )}
         >
-          <CircleQuestionMark className="h-[18px] w-[18px] shrink-0" />
+          <CircleQuestionMark className="h-[18px] w-[18px] shrink-0 sm:h-4 sm:w-4" />
           {children}
         </button>
       </Dialog.Trigger>
@@ -205,7 +239,7 @@ export function Welcome({
             event.preventDefault();
             content.current?.focus();
           }}
-          className="fixed inset-0 z-50 m-auto flex h-fit max-h-[calc(100dvh-16px)] w-[min(720px,calc(100vw-16px))] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl focus:outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95"
+          className="fixed inset-0 z-50 m-auto flex h-fit max-h-[calc(100dvh-16px)] w-[min(820px,calc(100vw-16px))] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl focus:outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95"
         >
           {/* Outside the scroll box below it, so the title and the way out of
               the dialog stay put while a slide taller than the window is read
@@ -280,7 +314,7 @@ export function Welcome({
                   className="shrink-0 cursor-pointer rounded-full bg-slate-100 px-3 py-1.5 text-center text-[13px] font-medium whitespace-nowrap text-slate-600 transition-colors hover:bg-slate-200 hover:text-slate-800 data-active:bg-sky-700 data-active:text-white data-active:hover:bg-sky-700 sm:min-w-0 sm:flex-1"
                 >
                   <span
-                      className="mr-1.5 font-mono text-[11px] opacity-60"
+                    className="mr-1.5 font-mono text-[11px] opacity-60"
                     aria-hidden
                   >
                     {index + 1}
@@ -366,6 +400,30 @@ function Code({
     >
       {children}
     </pre>
+  );
+}
+
+/**
+ * The fifth slide, waiting for its recording.
+ *
+ * Same shape as {@link Demo} so the two read as one pair: a figure holding one
+ * piece of media at the column's full width. Swap the placeholder for the `img`
+ * or `video` when there is a capture to put here, and put any prose above it in
+ * the slide's `lede` rather than in this body.
+ */
+function SizerDemo() {
+  return (
+    <>
+      <video
+        src={SIZER_VIDEO}
+        autoPlay
+        muted
+        loop
+        playsInline
+        aria-label="GPU Sizer: choose a model, set the performance you want, and get exact GPU configs that will fit without OOMing - copy the code instantly."
+        className="mb-3 w-full rounded-md"
+      />
+    </>
   );
 }
 

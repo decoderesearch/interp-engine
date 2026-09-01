@@ -3,9 +3,10 @@
 /**
  * Whether this reader has been here before, from `localStorage`.
  *
- * The one piece of state in this app that is neither in the URL nor in a
- * component: the tour has to open by itself exactly once, and a query parameter
- * would put "has read the introduction" in a link people send each other.
+ * One of the two pieces of state in this app that are neither in the URL nor in
+ * a component — `lib/askDismissed.ts` is the other, and the same shape. The tour
+ * has to open by itself exactly once, and a query parameter would put "has read
+ * the introduction" in a link people send each other.
  *
  * Shaped as a store rather than a hook with an effect in it. Reading storage
  * during a render is a read of something the prerender does not have, and the

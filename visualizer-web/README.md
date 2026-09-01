@@ -146,10 +146,42 @@ off-screen nor on top of the picker, since the band is at the top of the window 
 underneath. Beside a row, an icon on the left would open the card across the list it is helping you
 read, so the icon sits at the edge the card comes out of, and the card clears the list entirely.
 
-The header keeps only two things: the wordmark, and **Single Mode | Compare Mode** on the left. A
-toggle rather than a button that swaps for a different button — the mode is legible from either
-state, entering and leaving are the same control, and the header's left edge keeps its width, so
-nothing shifts under the pointer when the mode changes.
+The header keeps only two things: the wordmark, and **GPU Sizer | Model Viz + Points | Compare** in
+the centre. Model Viz + Points is still what a plain visit opens on; the sizer leads the row because
+it is the one that answers a question you arrive with rather than one the diagram raises. A toggle rather than a button that swaps for a different button — the mode is legible from
+whichever one you are in, entering and leaving are the same control, and the header's left edge keeps
+its width, so nothing shifts under the pointer when the mode changes. All three labels appear only
+from `lg`; below that the group is three glyphs, because a third name costs more than the row had to
+spare.
+
+Each tab carries a **circled question mark** after its label, and hovering it says what the mode is
+for in a sentence or two — none of the three names is self-explanatory to somebody who has not used
+the page before, and the row has no space for prose. It is the same hand-driven `Popover` as the
+circled i beside the architecture picker, for the same reason: a `HoverCard` never opens on touch, so
+mouse gets hover and every other pointer gets a tap, told apart by `pointerType` rather than by a
+viewport width. A `span` with a button's role, since the tab it sits in is already a button, and it
+stops its own click so that reaching for the description does not change the mode. It is held back to
+`lg` with the labels — below that a tab is one glyph, and a second glyph beside it would only raise
+the question of which one is the mode.
+
+The group is drawn as **folder tabs**, not as a pill floating in the header. It is pulled down past
+the header's bottom padding and its hairline so that it rests on the edge and is square along it, and
+its own bottom border is painted the body's colour: the sky-700 divider runs the width of the window
+and the tab group cuts a slate-50 notch out of it, which is what makes the group read as opening into
+the pane below rather than sitting on top of it. The fill behind the unselected labels is the body's
+colour too, so they and all of the padding recede and the sky fill of the active tab is the only
+thing the eye has to find. That fill is rounded on all four corners and carries a band of padding
+below it: the gap is what the active tab opens onto the pane through, and without it the tab reads as
+a button jammed against the content.
+
+The three tabs are **equal width**, not text width, so the group does not look ragged and no tab
+becomes a smaller target than its neighbours. That comes from `1fr` columns in a shrink-to-fit grid,
+which size every column to the widest of the three — "Compare" gets the same tab as "Model Viz +
+Points" without a hard-coded width to re-guess whenever a label is renamed.
+
+On a phone none of this applies: the header cannot hold the group, so it moves to a floating pill in
+the bottom centre, and a tab attached to nothing would be the wrong shape. That one keeps its
+rounding and its shadow.
 
 Two words of the caption under the wordmark are hoverable, and each opens the evidence for its own
 claim. **Fast** gives the throughput table — one machine's tok/s on four checkpoints across three
@@ -269,12 +301,25 @@ warranted one ran forever whether or not anybody had asked for it.
 
 ## Comparing two architectures
 
-**Compare Mode** splits the screen: a second diagram appears below the first, separated by a
+**Compare** splits the screen: a second diagram appears below the first, separated by a
 hairline, and each carries its own picker and timeline in the band above it. Neither picker offers
 what the other is already showing, though both keep the full axis, since dropping a year off one end
 would read as the range having changed rather than one release being unavailable. The pair scrolls
 as one, and points the two disagree about are ringed in red on both — an **engine difference**,
 which the legend spells out as missing on one side or derived differently.
+
+**GPU Sizer** is the third, and unlike the other two it is not a diagram at all: it replaces
+the panes and the sidebar with the sizer, which names a Hugging Face model and says which cards will
+run it and how. It is the one mode that lives in the **path** rather than the query —
+`/sizer/google/gemma-3-12b-pt` — because what it names is a repo on the Hub rather than a setting of
+this app, and a path spells that the way a query never would. The slash in a model id survives into
+the URL unescaped, so the URL is the id. `/sizer` on its own opens the sizer empty.
+
+There is no route behind it. `next.config.ts` rewrites every `/sizer/...` to `/`, so the page stays
+the one prerendered document it was, and `lib/sizer-link.ts` reads the path with the same discipline
+`lib/link.ts` applies to the query: read once on arrival, written back as a mirror. The two halves
+never collide — the query mirror keeps the pathname and the path mirror keeps the query — so the
+architecture you were looking at survives a trip through the sizer and is still there on the way out.
 
 Beside each picker, **Architecture diff vs …** says what that architecture is in terms of the other:
 `has QK-norm`, `no MoE`, one pill per trait the two disagree about, green for present and grey for
@@ -342,6 +387,9 @@ out — a plain visit stays at `/`, and a link carries only what it changed:
 | `vs`      | A second architecture, which opens compare mode with it in the lower pane.                             |
 | `point`   | A point's card, open, by address: `?point=resid_post.9`, `?point=resid_pre.2.stream-1`, `?point=embeddings`. |
 | `pane`    | `1` when the linked point is in the lower pane of a comparison. Meaningless, and dropped, without `vs`. |
+
+The sizer is the exception, and takes the path instead: `/sizer/<org>/<model>` opens it with that
+repo already resolved. See **GPU Sizer** above for why that one is not a parameter.
 
 The address is the engine's own — `format_address` from `interp_engine/address.py`, the same string a
 `Cache` takes and the same string the card prints — so a point you can read about is a point you can
@@ -662,8 +710,17 @@ npm install
 npm run dev
 ```
 
+Node 20.9 or newer, per `engines`. The first install is a few minutes and about 600 MB; after that
+`npm run dev` is ready in under a second, since Turbopack compiles routes on demand.
+
 The chat panel additionally needs `cp .env.example .env.local` and an `ANTHROPIC_API_KEY` in it. The
-diagram does not.
+diagram needs nothing. The GPU finder wants an `HF_TOKEN` in the same file — a read-only one is
+enough — which `/api/hub` uses to resolve models nobody has cached yet; without it the cached models
+still work and everything else asks the reader for a token of their own. Nothing in this app requires
+a GPU or the Python package.
+
+`npm run build` is the slower one, because `prebuild` recompiles Riz's knowledge bundle **and**
+installs and builds `docs-site/`. Use `npm run dev` unless you are checking the production build.
 
 ## The samples site at `/docs`
 
@@ -821,11 +878,23 @@ widened pre-emptively. The panel calls `/api/ask` on its own origin, so `connect
 covers it; the frog is `public/riz.png`, so `img-src 'self'` already covers that. The Anthropic call
 is made by the function, server side, where a browser policy does not apply.
 
-`img-src` is the one directive that has since been widened, and it is one host for one file: the
-introduction's screen recording, on the bucket the rest of Neuronpedia's site assets live on. The
-origin is imported from `lib/assets.ts` rather than typed into the policy, because this is a failure
-that hides — the slide renders, the recording does not, and the only sign of it is a console line
-nobody is reading.
+**Two directives have since been widened, and each names its hosts by import rather than by string**,
+for the same reason both times: a CSP that does not name a host fails in a way nobody sees.
+
+`img-src` and `media-src` carry one host for two files — the introduction's screen recording and the
+benchmark clip, on the bucket the rest of Neuronpedia's site assets live on, from `lib/assets.ts`.
+The slide renders, the recording does not, and the only sign of it is a console line nobody is
+reading.
+
+`connect-src` carries the Hub, from `HUB_ORIGINS` in `lib/hub.ts`, because the GPU finder can still
+resolve a model ID from the **browser**: most lookups go through `/api/hub` on the shared token, but a
+reader who supplies their own is sent straight to `huggingface.co` instead, so that token never
+touches this deployment. Three entries, not one — a `resolve/main/*` request for a
+real blob answers 302 to a regional CDN (`us.aws.cdn.hf.co`, `eu.aws.cdn.hf.co`, or
+`cdn-lfs*.huggingface.co` on repos not yet on Xet), and **CSP is enforced against every URL in a
+redirect chain**. Naming only the apex is the subtlest form of this bug: the `config.json` fetches
+pass, the safetensors header reads are refused, and the finder loses exactly the dimensions it reads
+headers to recover, on the models where `config.json` was incomplete to begin with.
 
 HSTS is `max-age` alone. `includeSubDomains` and `preload` are the right header for whoever owns a
 domain's apex and is prepared to serve all of it over HTTPS for the next two years; they are the

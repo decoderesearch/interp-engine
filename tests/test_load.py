@@ -307,15 +307,16 @@ def test_an_explicit_request_wins_and_costs_no_config_read():
     assert from_pretrained.call_count == 0
 
 
-# --- where a quantized checkpoint's weights are put ---------------------------
+# --- where the weights are put ------------------------------------------------
 #
-# For an unquantized checkpoint, "load then `.to(device)`" and "load onto device" reach the same
-# model, so `EagerModel` does the first and the choice is invisible. For a quantized one they do not:
-# a quantizer with no kernels for the device it is loading onto dequantizes to `dtype` instead, and
-# CPU is such a device for every FP8 scheme. So the default route builds bf16 weights at twice the
-# checkpoint's size and then tries to move *those* to the GPU -- DeepSeek-V4-Flash reaches ~285 GiB of
-# bf16 on the way to a card that holds its 156 GiB of FP8 with room to spare, and OOMs. What decides
-# it is a `device_map` in the load kwargs, which is what these read.
+# "Load then `.to(device)`" and "load onto device" reach the same model, but not by the same route:
+# the first builds the whole checkpoint in host RAM before the card is asked for anything. A model too
+# big for the card is then killed by the host OOM killer with the card still empty, so a card-sized
+# overrun cannot be caught and leaves no traceback. It is worse for a quantized checkpoint, where the
+# route also changes the weights: a quantizer with no kernels for the device it loads onto dequantizes
+# to `dtype`, and CPU is such a device for every FP8 scheme, so DeepSeek-V4-Flash reaches ~285 GiB of
+# bf16 on the way to a card that holds its 156 GiB of FP8 with room to spare. What decides it is a
+# `device_map` in the load kwargs, which is what these read.
 
 
 class _StopAfterKwargs(Exception):
@@ -350,15 +351,22 @@ def test_a_quantized_checkpoint_is_placed_at_load_time():
     assert _placement(quantized=True, device="cuda")["device_map"] == "cuda"
 
 
-def test_an_unquantized_checkpoint_is_still_loaded_and_then_moved():
-    """The existing path, unchanged: it costs nothing here and keeps the load device-agnostic."""
-    assert "device_map" not in _placement(quantized=False, device="cuda")
+def test_an_unquantized_checkpoint_is_placed_at_load_time_too():
+    """Not for the dtype reason above but for a host-RAM one, so it applies to every checkpoint.
+
+    Loading on the CPU and moving afterwards asks host RAM to hold the model before the card is asked
+    for anything, so float32 gemma-3-12b (45.4 GiB) was killed by the host OOM killer on a 44.4 GiB
+    A40 and again on a 31.3 GiB 5090 -- both times with a measured device peak of 0 bytes, which reads
+    as a card bound while bounding only host RAM.
+    """
+    assert _placement(quantized=False, device="cuda")["device_map"] == "cuda"
 
 
-def test_a_cpu_load_of_a_quantized_checkpoint_is_left_alone():
-    """CPU is the device the dequantization happens *for*, so naming it changes nothing — and asking
-    for a device_map on a CPU-only box brings accelerate into a load that does not need it."""
+def test_a_load_that_names_no_device_asks_for_no_placement():
+    """`device=None` means "wherever transformers puts it", and saying so as a `device_map` would pull
+    accelerate into a load that has not asked to be placed anywhere."""
     assert "device_map" not in _placement(quantized=True, device=None)
+    assert "device_map" not in _placement(quantized=False, device=None)
 
 
 def test_an_explicit_device_map_is_not_second_guessed():

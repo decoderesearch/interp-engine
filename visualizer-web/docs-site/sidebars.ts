@@ -43,6 +43,15 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       items: ["async"],
     },
+    // Last rather than first, though sizing a machine precedes loading a model on
+    // it: everything above is a code sample, and these two are a tool and its
+    // endpoint. Somebody reading for the API reaches for the sidebar, not the order.
+    {
+      type: "category",
+      label: "GPU Sizer",
+      collapsed: false,
+      items: ["gpu-sizer", "gpu-sizer-api"],
+    },
   ],
 };
 

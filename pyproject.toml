@@ -46,8 +46,21 @@ dev = [
 # EagerModel core must install on macOS/CPU). Apps that actually run the vLLM backend depend on
 # `interp-engine[vllm]` so the version pin lives here, next to the code that imports it.
 #
-# A FLOOR, not a ceiling, and deliberately uncapped: 0.27.1 is the oldest version there is evidence
-# for, not the version to run. Raise it only when engine code needs a newer API, and name that code.
+# A FLOOR, not a ceiling, and deliberately uncapped: 0.28.0 is the oldest version there is evidence
+# for, not the version to run. Raise it only when engine code needs a newer API, or when an older
+# release cannot produce numbers at all, and name the reason.
+#
+# Raised from 0.27.1 because 0.27.x cannot run a head_dim=256 model on Blackwell (sm_100+). It enabled
+# the FA4 head-dim 256 kernel there (vllm-project/vllm#42669), and that kernel rejects the
+# `seqused_q/k` which vLLM's own decoder attention always supplies, so the capture dies in kernel
+# warmup: `AssertionError: SM100 forward with head_dim=256 does not support seqused_q/seqused_k`.
+# vllm-project/vllm#52050 resolves FA2 for the shape and ships in 0.28.0. Confirmed on a B200:
+# google/gemma-3-12b-pt with no attention config crashes on 0.27.1 and captures on 0.28.0, where the
+# selector reaches TRITON_ATTN by itself. Not one checkpoint -- the predicate is head_dim == 256, which
+# is the whole Gemma 3 / PaliGemma / ColPali family, and the pre-Blackwell path is unaffected either
+# way. No upper bound is needed for it: #52980 re-enables the kernel once it can serve the shape, and
+# routes multimodal Gemma 3 to FA2 on purpose.
+#
 # Raised from 0.25.1 for `vllm_capture/mhc.py`, which reaches DeepSeek-V4's hyper-connection points
 # by patching all four tilelang mHC kernels in the model module's namespace (`KERNEL_NAMES`). One of
 # them, `mhc_pre_broadcast_tilelang`, does not exist before 0.26.0, so on 0.25.x every mHC point --
@@ -72,7 +85,7 @@ dev = [
 # The `sys_platform` marker below is the one axis a marker CAN answer: it makes the extra itself a
 # no-op on macOS rather than an error, so `[vllm]` is safe to ask for unconditionally.
 vllm = [
-    "vllm>=0.27.1; sys_platform == 'linux'",
+    "vllm>=0.28.0; sys_platform == 'linux'",
 ]
 # MXFP4-quantized models (e.g. gpt-oss) and block-FP8 ones (DeepSeek-V4-Flash) need the Triton kernel
 # loader, which in turn needs huggingface-hub>=1.0 / transformers>=5. Missing it is not always an
@@ -226,7 +239,7 @@ reportMissingTypeStubs = "none"
 # the cpu job's venv does not have, so those imports are unresolvable exactly where this runs -- but
 # switching the whole rule off would also stop reporting a misspelled first-party import. Note this
 # is invisible locally: a `.venv` with vllm installed resolves them and reports nothing either way.
-include = ["interp_engine"]
+include = ["interp_engine", "gpu-sizer"]
 exclude = [
     "**/node_modules",
     "**/__pycache__",
