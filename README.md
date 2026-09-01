@@ -29,7 +29,7 @@ This repo contains:
 
 1. [`validator/`](validator/), which compares/validates it against TransformerLens, and nnsight/nnterp on real architectures.
 2. [`visualizer-web/`](visualizer-web/), a "cheat sheet" hosted at [interp-engine.org](https://interp-engine.org) of each 'point' (eg `resid_post.16`), standardized across architectures.
-3. [`gpu-sizer/`](gpu-sizer/), scripts that help determine what GPU/config you need to fit an interp-engine model (and what performance you'll get), to avoid OOMing while working.
+3. [`gpu-sizer/`](gpu-sizer/), which finds the GPU/config you need to fit an interp-engine model (and what performance you'll get), to avoid OOMing while working. [docs](https://interp-engine.org/docs/gpu-sizer) | [API](https://interp-engine.org/docs/gpu-sizer-api)
 
 ## Installation
 
@@ -108,6 +108,16 @@ We verify correctness in two main ways:
 
 1. A test suite that checks results across several models - what each check is designed to catch is in [INTERNALS.md](docs/INTERNALS.md#correctness).
 2. A full `validator` comparison engine that checks most hook points across 50+ models, at early, middle and late layers - fully reproducible, with detailed results saved in the git repo at [`validator/`](validator/).
+
+## GPU-Sizer
+
+<p align="center">
+  <img src="https://neuronpedia.s3.amazonaws.com/site-assets/gpu-sizer.gif" alt="interp-engine demo gif" width="100%">
+</p>
+
+[docs](https://interp-engine.org/docs/gpu-sizer) | [API](https://interp-engine.org/docs/gpu-sizer-api)
+
+Never OOM again - `interp-engine` includes gpu-sizer, an intuitive UI which tells you what GPU(s) and configs you need to get the best performance out of your selected model. For example, [interp-engine.org/sizer/Qwen/Qwen3.6-27B](https://interp-engine.org/sizer/Qwen/Qwen3.6-27B) shows that you can run `Qwen3.6-27B` with interp-engine's vllm-static backend for max speed while keeping it in a single 80GB A100, and have ~40k tokens for the KV Cache.
 
 ## Why use an Interpretability Engine instead of building from scratch?
 
