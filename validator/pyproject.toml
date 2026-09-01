@@ -47,7 +47,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     # Capped at <9 to match interp-engine, so both suites run under one pytest version.
-    "pytest>=8.3.1,<9",
+    "pytest>=8.3.1,<10",
     # Same ranges as interp-engine's `dev` extra, so one `ruff format` verdict and one pyright rule
     # set covers the repo. Both are capped at a single minor: `ruff format` output and pyright's
     # checks change between releases, and CI gates on both, so an open ceiling turns an upstream
