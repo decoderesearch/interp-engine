@@ -387,9 +387,14 @@ export function Sizer({
 
         <div className="thin-scrollbar flex min-w-0 flex-col gap-y-4 px-4 pt-5 pb-5 lg:pl-6 xl:min-h-0 xl:overflow-y-auto xl:border-l xl:border-slate-200 xl:pl-6">
           <ColumnLabel>
-            {facts
-              ? `3️⃣ Results: GPUs that Fit ${shortModelName(facts.modelId)} on interp-engine ${backend}`
-              : "3️⃣ Results: GPUs that Fit"}
+            {facts ? (
+              <>
+                3️⃣ Results: GPUs that Fit <Token>{shortModelName(facts.modelId)}</Token>{" "}
+                on interp-engine <Token>{backend}</Token> backend
+              </>
+            ) : (
+              "3️⃣ Results: GPUs that Fit"
+            )}
           </ColumnLabel>
 
           {!facts && <Waiting />}
@@ -444,11 +449,31 @@ function Waiting() {
   );
 }
 
-function ColumnLabel({ children }: { children: string }) {
+function ColumnLabel({ children }: { children: ReactNode }) {
   return (
     <h3 className="font-heading -mb-1 text-sm font-semibold text-slate-800">
       {children}
     </h3>
+  );
+}
+
+/**
+ * The two things in the results heading that change with the controls: which model, and which
+ * engine. Everything either side of them is fixed text, so a heading in one weight makes the reader
+ * re-read the whole line to find the half that just moved.
+ *
+ * Dashed rather than solid, and white on a white column, so it reads as a slot the controls fill
+ * rather than as a button. A hair smaller than the heading because mono runs wide at the same size
+ * and would otherwise outweigh the words it sits between.
+ *
+ * The noun each one names — "backend" — stays outside the border, since what the controls change is
+ * the value and a slot drawn around both would be promising to fill a word that never moves.
+ */
+function Token({ children }: { children: ReactNode }) {
+  return (
+    <span className="rounded-md border border-dashed border-sky-700/50 bg-white px-1.5 py-0.5 font-mono text-[13px] font-bold whitespace-nowrap text-sky-700">
+      {children}
+    </span>
   );
 }
 
@@ -705,7 +730,10 @@ function ModelSummary({ facts }: { facts: ModelMemoryFacts }) {
   const [showNotes, setShowNotes] = useState(false);
   return (
     <div className="@container rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5">
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+      {/* No quantization badge: `dtype (weights)` below already reports the scheme, and reports it
+          better -- a checkpoint whose routed experts are narrower than the rest of it reads there as
+          `fp8 + fp4`, which the badge flattened to `fp8`. */}
+      <div className="flex flex-wrap items-baseline justify-center gap-x-2 gap-y-1">
         <span className="font-mono text-[12px] font-semibold text-slate-800">
           {facts.modelId}
         </span>
@@ -714,17 +742,15 @@ function ModelSummary({ facts }: { facts: ModelMemoryFacts }) {
             {facts.architecture}
           </span>
         )}
-        {facts.weights.quantMethod && (
-          <span className="ml-auto shrink-0 rounded-sm bg-slate-200 px-1.5 py-px text-[9px] font-medium text-slate-600">
-            {facts.weights.quantMethod}
-          </span>
-        )}
       </div>
 
       {/* A container query, not a breakpoint: this panel is a narrow column beside the results on a
           wide screen and full width when they stack, so what it can fit is its own width rather than
-          the viewport's. */}
-      <dl className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2.5 @md:grid-cols-4">
+          the viewport's.
+
+          `text-center` here rather than on `Fact`, which the detail panel next to the results also
+          uses and where the cells sit in a row that reads better left-aligned. */}
+      <dl className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2.5 text-center @md:grid-cols-4">
         <Fact label="parameters">
           {(facts.weights.paramCount / 1e9).toFixed(2)}B
         </Fact>
