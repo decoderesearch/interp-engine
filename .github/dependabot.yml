@@ -1,0 +1,74 @@
+# Who bumps the dependencies, so that nobody has to notice.
+#
+# Alerts were already on before this file existed, which is a strictly worse arrangement than it
+# sounds: GitHub told us about a critical advisory on every single push and then did nothing about
+# it, so the banner became furniture and the fix waited for someone to read it. Alerts are the
+# detector; this file and the "Dependabot security updates" repository setting are the response.
+# Turning one on without the other is how an advisory sits on `main` for weeks.
+#
+# **Four manifests, in three ecosystems.** The engine and the validator are separate uv projects
+# with separate locks, and the visualizer's app and its docs site are separate npm projects. Every
+# one of them has to be named here or it is simply not watched -- the validator's lock is where the
+# nltk advisory lived, and it is the furthest from anything anyone opens.
+#
+# **Why the two uv directories share one entry.** `group-by: dependency-name` puts a dependency's
+# bump in a single pull request across both locks rather than one per directory. That is not tidiness:
+# `validator/` keeps its ruff and pyright configuration verbatim identical to the root's, and CI has
+# a parity job that fails when they drift. A tool bumped in one lock and not the other reformats code
+# on one side of that boundary and not the other, so the two locks have to move together.
+#
+# **These land on `main`, and every push to `main` is a candidate release.** The commit subject picks
+# the bump (see AGENTS.md), and `chore(deps)` is not `feat:`, so these cut a patch rather than a
+# minor. Left at Dependabot's default subject they would follow no convention at all and still cut a
+# patch -- the prefix is here to make that a decision rather than a coincidence.
+
+version: 2
+
+updates:
+  # Python: the engine at the root and the validator beside it.
+  - package-ecosystem: "uv"
+    directories:
+      - "/"
+      - "/validator"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+    groups:
+      python:
+        group-by: "dependency-name"
+        patterns:
+          - "*"
+
+  # JavaScript: the visualizer app and the docs site it links to.
+  - package-ecosystem: "npm"
+    directories:
+      - "/visualizer-web"
+      - "/visualizer-web/docs-site"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+    groups:
+      javascript:
+        group-by: "dependency-name"
+        patterns:
+          - "*"
+
+  # The workflows themselves. `/` is correct here and does not mean the repository root: for Actions
+  # it is the spelling that makes Dependabot read `.github/workflows`.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      actions:
+        patterns:
+          - "*"
