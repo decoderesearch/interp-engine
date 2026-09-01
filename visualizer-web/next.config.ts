@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 import { DEMO_GIF_ORIGIN } from "./lib/assets";
 import { HUB_ORIGINS } from "./lib/hub";
@@ -19,7 +20,8 @@ import { HUB_ORIGINS } from "./lib/hub";
 // supplies their own token is sent straight to huggingface.co instead, because `lib/hub.ts` promises
 // that token is sent there and nowhere else and a proxy would retract it. The origins come from
 // `lib/hub.ts`, which explains why the CDN wildcards are needed as well as the apex: a redirect
-// chain is checked against the policy at every hop.
+// chain is checked against the policy at every hop. Sentry rides on the same `'self'` and asks
+// for nothing more, by way of the tunnel route at the foot of this file.
 //
 // `headers()` applies in development too, and React's dev build calls `eval` to rebuild callstacks
 // across environments. Without the extra source below, `next dev` logs an eval refusal on every
@@ -94,4 +96,19 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// `tunnelRoute` is what lets Sentry report from the browser at all: the CSP above allows
+// `connect-src 'self'`, and the plugin mounts `/monitoring` on this origin to forward events
+// to the ingest host server-side. Naming the ingest host in the policy instead would work and
+// then lose the reports of every reader running an ad blocker, since those lists carry it.
+//
+// `authToken` is the only secret here, it is only read at build time, and without it the
+// build still succeeds — it just uploads no source maps, so production stack traces stay
+// minified. See `.env.example`.
+export default withSentryConfig(nextConfig, {
+  org: "johnny-66",
+  project: "interp-engine-visualizer",
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  widenClientFileUpload: true,
+  tunnelRoute: "/monitoring",
+  silent: !process.env.CI,
+});

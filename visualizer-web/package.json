@@ -25,6 +25,7 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.39",
     "@ai-sdk/react": "^4.0.69",
+    "@sentry/nextjs": "^10.72.0",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.38.2",
     "ai": "^7.0.66",
