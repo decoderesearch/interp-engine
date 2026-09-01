@@ -183,7 +183,12 @@ def report_model(facts: mem.ModelMemoryFacts, args: argparse.Namespace) -> dict[
         f"  shape            {facts.n_layers} layers, d_model {facts.d_model}, "
         f"{facts.n_kv_heads} kv heads x {facts.head_dim}, vocab {facts.vocab_size:,}"
     )
-    if facts.layer_types and facts.full_attention_layers < facts.n_layers:
+    if facts.recurrent_layers:
+        print(
+            f"  attention        {facts.kv_caching_layers} of {facts.n_layers} layers cache tokens; the "
+            f"other {facts.recurrent_layers} are recurrent and hold a fixed state instead"
+        )
+    elif facts.layer_types and facts.full_attention_layers < facts.n_layers:
         print(
             f"  attention        {facts.full_attention_layers} of {facts.n_layers} layers cache the full "
             f"context; the rest cache a {facts.sliding_window}-token window"

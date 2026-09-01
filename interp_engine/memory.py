@@ -1252,8 +1252,10 @@ class ModelMemoryFacts:
     #: ``router_logits`` is as wide as the expert bank -- and because it is what says a layer's MLP is
     #: a fused kernel rather than three Linears, which decides whether ``mlp_act`` exists at all.
     n_experts: int = 0
-    #: Per-layer attention kinds, when the config states them. Sliding-window layers cache far less
-    #: KV than full-attention ones, and on a 5:1 trunk like gemma-3 that is most of the cache.
+    #: Per-layer attention kinds, when the config states them. Two distinctions live in this field and
+    #: they are not the same one: a sliding-window layer caches a window rather than the whole context
+    #: (and vLLM does not exploit that -- see :func:`kv_bytes_for_context`), while a recurrent layer
+    #: caches no tokens at all. On a 3:1 trunk like Qwen3-Next that second one is most of the cache.
     layer_types: tuple[str, ...] | None = None
     sliding_window: int | None = None
     #: Parallel residual streams. >1 multiplies every static tap buffer by this.
@@ -1279,6 +1281,40 @@ class ModelMemoryFacts:
         if not self.layer_types:
             return self.n_layers
         return sum(1 for kind in self.layer_types[: self.n_layers] if "sliding" not in kind and "linear" not in kind)
+
+    @property
+    def recurrent_layers(self) -> int:
+        """Layers that hold a fixed-size state per sequence rather than a per-token KV cache.
+
+        The state-space, gated-delta and convolutional mixers, plus the Nemotron-H blocks that are
+        only an MLP. What they have in common for sizing is that **nothing they hold grows with the
+        context**, so charging them per token is charging for a cache that is never allocated.
+
+        Classified against :data:`interp_engine.facts.NO_ATTENTION_LAYER_KINDS` rather than by
+        substring, and the difference is not cosmetic: ``"linear" in kind`` is true only for
+        ``linear_attention``, so Jamba's ``mamba``, RecurrentGemma's ``recurrent`` and LFM2's ``conv``
+        would every one of them be charged as attention layers. :attr:`full_attention_layers` still
+        uses the substring test, which is safe only because it errs toward charging more.
+
+        Counted as a subtraction from :attr:`n_layers` so that a ``layer_types`` shorter than the
+        trunk -- or absent -- yields zero recurrent layers rather than silently discounting the
+        layers it failed to describe.
+        """
+        if not self.layer_types:
+            return 0
+        from interp_engine.facts import NO_ATTENTION_LAYER_KINDS
+
+        return sum(1 for kind in self.layer_types[: self.n_layers] if str(kind).lower() in NO_ATTENTION_LAYER_KINDS)
+
+    @property
+    def kv_caching_layers(self) -> int:
+        """Layers that allocate a KV cache at all, whatever length of it they keep.
+
+        This rather than :attr:`n_layers` is what the cache arithmetic is per-layer *in*. Zero on a
+        trunk with no attention anywhere, which :func:`kv_bytes_per_token` turns into its "cannot size
+        this" answer rather than into free context.
+        """
+        return max(self.n_layers - self.recurrent_layers, 0)
 
     @property
     def trunk_dims_known(self) -> bool:
@@ -1341,16 +1377,22 @@ def kv_shards(facts: ModelMemoryFacts, num_gpus: int) -> int:
 
 
 def kv_bytes_per_token(facts: ModelMemoryFacts, *, kv_dtype: str = "auto", model_dtype: str = "bfloat16") -> float:
-    """KV bytes for one token of context, across every layer.
+    """KV bytes for one token of context, across every layer that caches tokens.
 
-    The flat, model-wide figure: every layer charged for the full context. This is the **pessimistic**
-    one, and it is what the fit floor uses, because a trunk whose windowing vLLM does not exploit
-    still has to hold it.
+    The flat figure: every *attention* layer charged for the full context. This is the pessimistic one
+    among the attention layers -- a trunk whose windowing vLLM does not exploit still has to hold it,
+    which is why sliding-window layers get no discount here -- but it is not pessimistic about layers
+    that have no cache to hold. See :attr:`ModelMemoryFacts.recurrent_layers`.
 
-    **Zero means unknown, not free.** When the config could not be read there is no honest number here,
-    and returning a nominal one is worse than returning nothing: see
-    :attr:`ModelMemoryFacts.trunk_dims_known`. Callers must treat 0 as "cannot size this" rather than
-    dividing by it or adding it to a total.
+    **The recurrent state pool is not priced anywhere.** A gated-delta or Mamba layer allocates a
+    fixed-size state per sequence, sized by ``max_num_seqs`` rather than by context, and no term in
+    this module accounts for it. So on a hybrid-linear trunk the capacity this feeds is an upper
+    bound by an unmeasured margin; :func:`estimate` warns when that is the case.
+
+    **Zero means unknown, not free.** When the config could not be read -- or when no layer caches
+    tokens at all -- there is no honest number here, and returning a nominal one is worse than
+    returning nothing: see :attr:`ModelMemoryFacts.trunk_dims_known`. Callers must treat 0 as "cannot
+    size this" rather than dividing by it or adding it to a total.
     """
     if not facts.trunk_dims_known:
         return 0.0
@@ -1364,7 +1406,7 @@ def kv_bytes_per_token(facts: ModelMemoryFacts, *, kv_dtype: str = "auto", model
         declared = dtype_bytes_or_none(facts.kv_quant_algo)
         model = dtype_bytes(model_dtype)
         width = min(declared, model) if declared is not None else model
-    return facts.n_layers * max(facts.kv_width, 1) * width
+    return facts.kv_caching_layers * max(facts.kv_width, 1) * width
 
 
 def kv_bytes_for_context(
@@ -1397,6 +1439,14 @@ def kv_bytes_for_context(
     The residual 8% is charged as :data:`CALIBRATION`'s ``hybrid_kv_overhead`` on a mixed trunk, which
     brings the same case to 0.98x -- conservative. A uniform trunk needs no such term: gpt2 came in at
     1.01x and Qwen3-4B at 1.00x against the flat figure.
+
+    **A recurrent layer is a different case and is discounted**, in :func:`kv_bytes_per_token` rather
+    than here. The gemma-3 result above is about layers that hold a real paged cache of a *shorter*
+    context; crediting the window failed because vLLM's allocator pages whole blocks across both
+    groups. A gated-delta or Mamba layer requests no blocks from that allocator at all, so there is no
+    group for it to be paged alongside, and the measurement says nothing about it. The overhead
+    multiplier is still applied to such a trunk -- it is the conservative direction and no
+    linear-attention trunk has been measured yet.
     """
     flat = kv_bytes_per_token(facts, kv_dtype=kv_dtype, model_dtype=model_dtype) * max_model_len
     if facts.layer_types and facts.full_attention_layers < facts.n_layers:
@@ -2048,6 +2098,23 @@ def estimate(
             f"sizes without a token but not config.json -- pass one. Every figure that depends on "
             f"the cache is omitted rather than guessed."
         )
+    elif facts.recurrent_layers:
+        # Charging these layers per token was a 4x over-estimate on a 3:1 trunk, so they are no longer
+        # charged -- but what replaces it is nothing rather than the right number. The state pool is
+        # real memory this module does not price, and the direction of that omission is optimistic.
+        warnings.append(
+            f"{facts.recurrent_layers} of {facts.n_layers} layers are recurrent and cache no tokens, so "
+            f"only {facts.kv_caching_layers} are charged for the KV cache. The fixed-size state those "
+            f"layers hold is sized by max_num_seqs rather than by context and is NOT priced here, so "
+            f"the capacity below is an upper bound by an unmeasured margin"
+        )
+    if facts.trunk_dims_known and not facts.kv_caching_layers:
+        # Every layer recurrent: the cache is genuinely zero, and zero is also this module's word for
+        # "unknown". Neither reading may be allowed to come out as room to spare.
+        warnings.append(
+            f"every layer of {facts.model_id} is recurrent, so there is no KV cache to size and the "
+            f"state pool that replaces it is not priced here. No fit is claimed"
+        )
     context = int(_cal("cuda_context_gib") * GIB)
     overshoot = int(_cal("vllm_overshoot_gib") * GIB)
     frag = int(_cal("frag_fraction") * gpu.total_bytes)
@@ -2128,7 +2195,9 @@ def estimate(
     kv_floor = int(
         kv_bytes_per_token(facts, kv_dtype=spec.kv_cache_dtype, model_dtype=spec.dtype) * spec.max_model_len / shards
     )
-    kv_note = f"one sequence of {spec.max_model_len} tokens, every layer at full context"
+    kv_note = f"one sequence of {spec.max_model_len} tokens, every caching layer at full context"
+    if facts.recurrent_layers:
+        kv_note += f" ({facts.kv_caching_layers} of {facts.n_layers}; the rest are recurrent)"
     if tp > 1:
         kv_note += f", sharded {shards} ways" if shards > 1 else ", replicated on every rank"
     terms.append(MemoryTerm("kv_cache_floor", kv_floor, "pool", kv_note))
@@ -2144,8 +2213,10 @@ def estimate(
     # An unsizable model is never reported as fitting. `kv_floor` is 0 when the dims are unknown, so
     # the arithmetic above would otherwise weigh the weights against the pool and find room to spare --
     # a confident yes built on the one term nobody could measure. A refusal is not a failure verdict
-    # here; the warning above says which it is.
-    fits = pool_headroom >= 0 and outside_headroom >= 0 and facts.trunk_dims_known
+    # here; the warning above says which it is. An all-recurrent trunk reaches the same zero by a
+    # different road -- there really is no cache -- and is refused for the same reason: what it holds
+    # instead is a state pool nothing here prices.
+    fits = pool_headroom >= 0 and outside_headroom >= 0 and facts.trunk_dims_known and bool(facts.kv_caching_layers)
 
     kv_room = max(pool_available - context - reserved_inside - per_card_weights - buffers - graphs, 0)
     per_token = (

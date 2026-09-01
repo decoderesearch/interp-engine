@@ -73,6 +73,10 @@ const MODELS = [
     id: "deepseek-ai/DeepSeek-V4-Flash",
     why: "mixed precision: fp4 routed experts under an fp8 scheme, MLA, and ue8m0 scale tensors. The two sides reach its parameter count from opposite metadata -- headers here, the Hub's aggregate there -- and drifted 1.84x apart unnoticed while it was absent from this list",
   },
+  {
+    id: "Qwen/Qwen3.6-27B",
+    why: "hybrid LINEAR attention, which is a different discount from gemma-3's hybrid window: 48 of its 64 layers cache no tokens at all. Both sides classify the block kinds against their own copy of the vocabulary, so a spelling added to one and not the other moves the KV floor 4x",
+  },
 ];
 
 interface PyTerm {

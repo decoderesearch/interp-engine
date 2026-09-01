@@ -1288,3 +1288,40 @@ export function fullAttentionLayers(facts: ModelMemoryFacts): number {
     .filter((kind) => !kind.includes("sliding") && !kind.includes("linear"))
     .length;
 }
+
+/**
+ * `layer_types` values denoting a block with no softmax attention: state-space, recurrent and
+ * convolutional mixers, plus the Nemotron-H blocks that are only an MLP.
+ *
+ * Mirrors `interp_engine.facts.NO_ATTENTION_LAYER_KINDS`. A substring test for `"linear"` is not the
+ * same set and is not enough — it is true only of `linear_attention`, so Jamba's `mamba`,
+ * RecurrentGemma's `recurrent` and LFM2's `conv` all read as ordinary attention layers.
+ */
+const NO_ATTENTION_LAYER_KINDS = new Set([
+  "linear_attention",
+  "mamba",
+  "mamba2",
+  "recurrent",
+  "conv",
+  "short_conv",
+  "moe",
+  "mlp",
+]);
+
+/**
+ * Layers holding a fixed-size state per sequence rather than a per-token KV cache.
+ *
+ * Counted as a subtraction from `nLayers` in {@link kvCachingLayers} so that a `layerTypes` shorter
+ * than the trunk yields no discount for the layers it failed to describe.
+ */
+export function recurrentLayers(facts: ModelMemoryFacts): number {
+  if (!facts.layerTypes) return 0;
+  return facts.layerTypes
+    .slice(0, facts.nLayers)
+    .filter((kind) => NO_ATTENTION_LAYER_KINDS.has(kind.toLowerCase())).length;
+}
+
+/** Layers that allocate a KV cache at all, whatever length of it they keep. */
+export function kvCachingLayers(facts: ModelMemoryFacts): number {
+  return Math.max(facts.nLayers - recurrentLayers(facts), 0);
+}

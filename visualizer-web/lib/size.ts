@@ -37,6 +37,8 @@ import {
   dtypeBytesOrNull,
   fullAttentionLayers,
   kvCacheWidth,
+  kvCachingLayers,
+  recurrentLayers,
   type ModelMemoryFacts,
 } from "@/lib/hub";
 
@@ -485,6 +487,17 @@ export function kvShards(facts: ModelMemoryFacts, numGpus: number): number {
   return Math.min(tp, facts.nKvHeads);
 }
 
+/**
+ * KV bytes for one token of context, across every layer that caches tokens.
+ *
+ * Recurrent layers are excluded, because they allocate no cache to hold: what they keep is a
+ * fixed-size state per sequence, sized by `max_num_seqs` rather than by context. **That state pool
+ * is not priced anywhere in this module**, so on a hybrid-linear trunk the capacity this feeds is an
+ * upper bound by an unmeasured margin. `estimate` warns when that is the case.
+ *
+ * Zero means unknown, not free — see `trunkDimsKnown`, and the all-recurrent trunk that reaches the
+ * same zero by having no cache at all.
+ */
 export function kvBytesPerToken(
   facts: ModelMemoryFacts,
   kvDtype = "auto",
@@ -503,7 +516,7 @@ export function kvBytesPerToken(
     const model = dtypeBytes(modelDtype);
     width = declared === null ? model : Math.min(declared, model);
   }
-  return facts.nLayers * Math.max(kvCacheWidth(facts), 1) * width;
+  return kvCachingLayers(facts) * Math.max(kvCacheWidth(facts), 1) * width;
 }
 
 /**
@@ -513,6 +526,11 @@ export function kvBytesPerToken(
  * gemma-3-1b the windowed arithmetic came out 4.2x optimistic against what vLLM really built, because
  * the hybrid allocator pages whole blocks across both layer groups and reports capacity governed by
  * the full-attention group. The residual 8% is charged as `hybrid_kv_overhead` on a mixed trunk.
+ *
+ * A recurrent layer is a different case and *is* discounted, in {@link kvBytesPerToken} rather than
+ * here: it requests no blocks from that allocator, so there is no group for it to be paged alongside
+ * and the gemma-3 measurement says nothing about it. The multiplier still applies to such a trunk,
+ * which is the conservative direction while no linear-attention trunk has been measured.
  */
 export function kvBytesForContext(
   facts: ModelMemoryFacts,
@@ -862,6 +880,20 @@ export function estimate(
     warnings.push(
       `cannot size the KV cache for ${facts.modelId}: its config gave no layer or head dimensions, so only the weights below are real. Every figure that depends on the cache is omitted rather than guessed.`,
     );
+  } else if (recurrentLayers(facts)) {
+    // Charging these layers per token was a 4x over-estimate on a 3:1 trunk, so they are no longer
+    // charged -- but what replaces it is nothing rather than the right number. The state pool is real
+    // memory this module does not price, and the direction of that omission is optimistic.
+    warnings.push(
+      `${recurrentLayers(facts)} of ${facts.nLayers} layers are recurrent and cache no tokens, so only ${kvCachingLayers(facts)} are charged for the KV cache. The fixed-size state those layers hold is sized by max_num_seqs rather than by context and is NOT priced here, so the capacity below is an upper bound by an unmeasured margin`,
+    );
+  }
+  if (facts.trunkDimsKnown && !kvCachingLayers(facts)) {
+    // Every layer recurrent: the cache is genuinely zero, and zero is also this module's word for
+    // "unknown". Neither reading may be allowed to come out as room to spare.
+    warnings.push(
+      `every layer of ${facts.modelId} is recurrent, so there is no KV cache to size and the state pool that replaces it is not priced here. No fit is claimed`,
+    );
   }
   const context = Math.trunc(CALIBRATION.cuda_context_gib * GIB);
   const overshoot = Math.trunc(CALIBRATION.vllm_overshoot_gib * GIB);
@@ -963,7 +995,10 @@ export function estimate(
     bytes: kvFloor,
     side: "pool",
     note:
-      `one sequence of ${num(spec.maxModelLen)} tokens, every layer at full context` +
+      `one sequence of ${num(spec.maxModelLen)} tokens, every caching layer at full context` +
+      (recurrentLayers(facts)
+        ? ` (${kvCachingLayers(facts)} of ${facts.nLayers}; the rest are recurrent)`
+        : "") +
       (tp > 1
         ? shards > 1
           ? `, sharded ${shards} ways`
@@ -981,9 +1016,14 @@ export function estimate(
   const headroom = Math.min(poolHeadroom, outsideHeadroom);
   // An unsizable model is never reported as fitting. `kvFloor` is 0 when the dims are unknown, so the
   // arithmetic above would otherwise weigh the weights against the pool and find room to spare -- a
-  // confident yes built on the one term nobody could measure.
+  // confident yes built on the one term nobody could measure. An all-recurrent trunk reaches the same
+  // zero by a different road -- there really is no cache -- and is refused for the same reason: what
+  // it holds instead is a state pool nothing here prices.
   const fits =
-    poolHeadroom >= 0 && outsideHeadroom >= 0 && facts.trunkDimsKnown;
+    poolHeadroom >= 0 &&
+    outsideHeadroom >= 0 &&
+    facts.trunkDimsKnown &&
+    kvCachingLayers(facts) > 0;
 
   const kvRoom = Math.max(
     poolAvailable -

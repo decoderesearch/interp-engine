@@ -367,6 +367,67 @@ def test_uniform_trunk_pays_no_hybrid_overhead():
     assert mem.kv_bytes_for_context(uniform, 4096, model_dtype="bfloat16") == flat
 
 
+def test_recurrent_layers_cache_no_tokens_and_are_not_charged():
+    """The gemma-3 result is about layers that cache a *shorter* context, not about layers with no cache.
+
+    Qwen3.6-27B's shape: three gated-delta layers to every softmax one. Charging all 64 quoted a KV
+    floor four times the real one and a quarter of the real capacity.
+    """
+    hybrid = facts(
+        n_layers=64,
+        n_kv_heads=4,
+        head_dim=256,
+        layer_types=tuple(["linear_attention"] * 3 + ["full_attention"]) * 16,
+    )
+    assert hybrid.recurrent_layers == 48
+    assert hybrid.kv_caching_layers == 16
+    per_token = mem.kv_bytes_per_token(hybrid, model_dtype="bfloat16")
+    assert per_token == 16 * (4 * 512) * 2
+    # A sliding trunk of the same shape keeps every layer: it holds a real cache, only a shorter one.
+    sliding = facts(
+        n_layers=64,
+        n_kv_heads=4,
+        head_dim=256,
+        layer_types=tuple(["sliding_attention"] * 3 + ["full_attention"]) * 16,
+        sliding_window=512,
+    )
+    assert mem.kv_bytes_per_token(sliding, model_dtype="bfloat16") == 4 * per_token
+
+
+@pytest.mark.parametrize("kind", ["mamba", "mamba2", "recurrent", "conv", "short_conv", "mlp", "moe"])
+def test_non_attention_blocks_are_discounted_without_the_word_linear(kind: str):
+    """Jamba, RecurrentGemma, LFM2 and Nemotron-H: every one charged a full cache under `"linear" in kind`."""
+    trunk = facts(n_layers=4, n_kv_heads=4, head_dim=128, layer_types=(kind, kind, kind, "full_attention"))
+    assert trunk.kv_caching_layers == 1
+
+
+def test_a_layer_types_shorter_than_the_trunk_discounts_nothing_it_did_not_describe():
+    """Undercounting the caching layers is the optimistic direction, so a partial table gets no credit."""
+    trunk = facts(n_layers=64, layer_types=("linear_attention", "full_attention"))
+    assert trunk.recurrent_layers == 1
+    assert trunk.kv_caching_layers == 63
+
+
+def test_an_all_recurrent_trunk_is_refused_rather_than_called_free():
+    """Zero KV bytes is this module's word for "unknown", and a pure Mamba trunk reaches it honestly.
+
+    Either way it must not read as room to spare -- the state pool that replaces the cache is real
+    memory nothing here prices.
+    """
+    mamba = facts(n_layers=8, layer_types=("mamba",) * 8)
+    assert mem.kv_bytes_per_token(mamba, model_dtype="bfloat16") == 0
+    est = mem.estimate(mamba, H100, mem.WorkloadSpec(backend="vllm", dtype="bfloat16"))
+    assert not est.fits
+    assert any("recurrent" in warning for warning in est.warnings)
+
+
+def test_a_hybrid_linear_trunk_says_its_state_pool_is_unpriced():
+    """The discount trades a 4x over-charge for an omission, and the omission is optimistic."""
+    hybrid = facts(n_layers=64, n_kv_heads=4, head_dim=256, layer_types=tuple(["mamba"] * 3 + ["full_attention"]) * 16)
+    est = mem.estimate(hybrid, H100, mem.WorkloadSpec(backend="vllm", dtype="bfloat16"))
+    assert any("NOT priced" in warning for warning in est.warnings)
+
+
 def test_gqa_is_not_approximated_by_d_model():
     """`2 x d_model` overstates a GQA trunk 8x, which is the difference between fitting and refusing."""
     gqa = mem.kv_cache_width(n_kv_heads=8, head_dim=128)

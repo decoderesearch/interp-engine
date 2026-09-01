@@ -117,7 +117,7 @@ We verify correctness in two main ways:
 
 [docs](https://interp-engine.org/docs/gpu-sizer) | [API](https://interp-engine.org/docs/gpu-sizer-api)
 
-Never OOM again - `interp-engine` includes gpu-sizer, an intuitive UI which tells you what GPU(s) and configs you need to get the best performance out of your selected model. For example, [interp-engine.org/sizer/Qwen/Qwen3.6-27B](https://interp-engine.org/sizer/Qwen/Qwen3.6-27B) shows that you can run `Qwen3.6-27B` with interp-engine's vllm-static backend for max speed while keeping it in a single 80GB A100, and have ~40k tokens for the KV Cache.
+Never OOM again - `interp-engine` includes gpu-sizer, an intuitive UI which tells you what GPU(s) and configs you need to get the best performance out of your selected model. For example, [interp-engine.org/sizer/Qwen/Qwen3.6-27B](https://interp-engine.org/sizer/Qwen/Qwen3.6-27B) shows that you can run `Qwen3.6-27B` with interp-engine's vllm-static backend for max speed while keeping it in a single 80GB A100, and have ~160k tokens for the KV Cache.
 
 ## Why use an Interpretability Engine instead of building from scratch?
 

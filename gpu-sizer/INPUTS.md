@@ -155,7 +155,7 @@ The cache has to hold at least one full-length sequence, and that floor is linea
 `max_model_len`:
 
 ```
-kv_floor = max_model_len x n_layers x n_kv_heads x (head_dim + v_head_dim) x bytes_per_element
+kv_floor = max_model_len x kv_caching_layers x n_kv_heads x (head_dim + v_head_dim) x bytes_per_element
 ```
 
 gemma-3-12b advertises a 131,072-token context. At 48 layers that is a **48 GiB** floor — more than an
@@ -175,7 +175,22 @@ what vLLM actually built                 1,399,779 tokens
 ```
 
 The windowed arithmetic is **4.2x optimistic**, and 4.2x optimistic on cache capacity is a pod that
-accepts a workload it cannot hold. Charge every layer for the full context.
+accepts a workload it cannot hold. Charge every attention layer for the full context.
+
+**Recurrent layers are the other case, and they do get a discount.** A gated-delta or Mamba block
+keeps a fixed-size state per sequence and requests no blocks from the paged allocator at all, so
+`kv_caching_layers` counts only the layers that cache tokens. Qwen3.6-27B runs three linear layers to
+every softmax one: charging all 64 quoted a floor four times the real one.
+
+Note what this trades. The state pool those layers do allocate is sized by `max_num_seqs` rather than
+by context, and **no term here prices it** — so a capacity figure on a hybrid-linear trunk is an upper
+bound by an unmeasured margin, and `estimate` says so in a warning. The distinction from the sliding
+case is mechanical: a sliding layer holds a real paged cache that vLLM's allocator must page whole
+blocks of alongside the full-attention group, which is why crediting its window failed. A recurrent
+layer is not in that allocator, so the gemma-3 measurement says nothing about it.
+
+Classify the block, do not pattern-match it. `"linear" in kind` is true only of `linear_attention`,
+so Jamba's `mamba`, RecurrentGemma's `recurrent` and LFM2's `conv` all read as attention layers.
 
 **`max_model_len` must exceed your longest prompt, not equal it.** vLLM needs room for at least one
 output token, so a prompt of exactly `max_model_len` is refused with a validation error, not served.
