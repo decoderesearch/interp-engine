@@ -1,0 +1,114 @@
+{
+  "model_id": "Qwen/Qwen3-4B",
+  "backend": "eager",
+  "outcome": "pass",
+  "spec": {
+    "backend": "eager",
+    "dtype": "bfloat16",
+    "kv_cache_dtype": "auto",
+    "max_model_len": 2048,
+    "max_num_batched_tokens": 0,
+    "max_num_seqs": 0,
+    "gpu_memory_utilization": 0.0,
+    "num_gpus": 1,
+    "static_sites": 0,
+    "enforce_eager": null,
+    "batch_size": 1,
+    "seq_len": 2048,
+    "requires_grad": false,
+    "attn_implementation": "sdpa",
+    "n_capture_points": 0
+  },
+  "gpu": {
+    "name": "NVIDIA A40",
+    "total_bytes": 47768928256,
+    "total_gib": 44.49,
+    "compute_capability": [
+      8,
+      6
+    ],
+    "ecc_enabled": true,
+    "provenance": "measured on this host (ECC enabled)"
+  },
+  "estimate": {
+    "fits": true,
+    "total_bytes": 11187413606,
+    "pool_bytes": 0,
+    "outside_bytes": 0,
+    "headroom_bytes": 36581514650,
+    "kv_capacity_tokens": 0,
+    "terms": [
+      {
+        "name": "weights",
+        "bytes": 8044936192,
+        "side": "eager"
+      },
+      {
+        "name": "logits",
+        "bytes": 1866989568,
+        "side": "eager"
+      },
+      {
+        "name": "hidden_states",
+        "bytes": 10485760,
+        "side": "eager"
+      },
+      {
+        "name": "mlp_intermediate",
+        "bytes": 83886080,
+        "side": "eager"
+      },
+      {
+        "name": "workspace",
+        "bytes": 536870912,
+        "side": "eager"
+      },
+      {
+        "name": "cuda_context",
+        "bytes": 644245094,
+        "side": "eager"
+      }
+    ],
+    "warnings": [],
+    "weights_source": "safetensors-metadata"
+  },
+  "measured": {
+    "baseline_bytes": 0,
+    "post_load_bytes": 8433696768,
+    "post_warmup_bytes": 8496611328,
+    "peak_bytes": 9362735104,
+    "pool_claimed_bytes": 0,
+    "outside_measured_bytes": 9362735104,
+    "torch_peak_bytes": 8769492992,
+    "kv_cache_tokens": 0,
+    "samples": 74
+  },
+  "stress": {
+    "max_concurrency_passed": 2,
+    "first_failing_concurrency": 0,
+    "prompt_tokens": 2032,
+    "requests_ok": 2,
+    "requests_failed": 0,
+    "latencies_ms": [
+      389.4954330753535,
+      247.06925707869232
+    ],
+    "failure_kind": "",
+    "failure_detail": ""
+  },
+  "cannot_verify": [
+    "fp8",
+    "nvfp4"
+  ],
+  "expected": "pass",
+  "error": "",
+  "versions": {
+    "torch": "2.13.0+cu130",
+    "transformers": "5.14.1",
+    "vllm": "0.27.1",
+    "interp_engine": "1.3.4",
+    "driver": "580.159.04"
+  },
+  "duration_s": 20.9,
+  "recorded_at": "2026-08-24T21:52:00Z"
+}

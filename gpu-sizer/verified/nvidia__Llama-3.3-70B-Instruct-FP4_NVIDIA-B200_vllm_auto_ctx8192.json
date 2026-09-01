@@ -1,0 +1,123 @@
+{
+  "model_id": "nvidia/Llama-3.3-70B-Instruct-FP4",
+  "backend": "vllm",
+  "outcome": "pass",
+  "spec": {
+    "backend": "vllm",
+    "dtype": "auto",
+    "kv_cache_dtype": "auto",
+    "max_model_len": 8192,
+    "max_num_batched_tokens": 2048,
+    "max_num_seqs": 256,
+    "gpu_memory_utilization": 0.9,
+    "num_gpus": 1,
+    "static_sites": 0,
+    "enforce_eager": null,
+    "batch_size": 1,
+    "seq_len": 0,
+    "requires_grad": false,
+    "attn_implementation": "",
+    "n_capture_points": 0
+  },
+  "gpu": {
+    "name": "NVIDIA B200",
+    "total_bytes": 191728975872,
+    "total_gib": 178.56,
+    "compute_capability": [
+      10,
+      0
+    ],
+    "ecc_enabled": true,
+    "provenance": "measured on this host (ECC enabled)"
+  },
+  "estimate": {
+    "fits": true,
+    "total_bytes": 53008872134,
+    "pool_bytes": 44695468006,
+    "outside_bytes": 8313404128,
+    "headroom_bytes": 10859493460,
+    "kv_capacity_tokens": 788591,
+    "terms": [
+      {
+        "name": "vllm_overshoot",
+        "bytes": 644245094,
+        "side": "outside"
+      },
+      {
+        "name": "fragmentation",
+        "bytes": 7669159034,
+        "side": "outside"
+      },
+      {
+        "name": "cuda_context",
+        "bytes": 644245094,
+        "side": "pool"
+      },
+      {
+        "name": "weights",
+        "bytes": 42709045632,
+        "side": "pool"
+      },
+      {
+        "name": "kv_cache_floor",
+        "bytes": 1342177280,
+        "side": "pool"
+      }
+    ],
+    "warnings": [
+      "quantized checkpoint (nvfp4): 39.8 GiB served natively, but ~139.4 GiB if the kernels are missing and transformers dequantizes silently -- install the `quant` extra and pre-cache its Hub kernels"
+    ],
+    "weights_source": "safetensors-metadata"
+  },
+  "measured": {
+    "baseline_bytes": 0,
+    "post_load_bytes": 174313177088,
+    "post_reserve_bytes": 0,
+    "post_warmup_bytes": 174317371392,
+    "peak_bytes": 175019917312,
+    "per_device_peak_bytes": [
+      175019917312
+    ],
+    "pool_claimed_bytes": 172556078284,
+    "outside_measured_bytes": 2463839028,
+    "torch_peak_bytes": 0,
+    "kv_cache_tokens": 784896,
+    "samples": 404
+  },
+  "stress": {
+    "max_concurrency_passed": 4,
+    "first_failing_concurrency": 0,
+    "prompt_tokens": 8176,
+    "requests_ok": 4,
+    "requests_failed": 0,
+    "latencies_ms": [
+      995.9562551230192,
+      1609.805931802839,
+      2211.3173129037023,
+      2617.5227407366037
+    ],
+    "failure_kind": "",
+    "failure_detail": ""
+  },
+  "reservations": {
+    "per_rank_bytes": 0,
+    "host_bytes": 0,
+    "before_engine": false,
+    "note": "--reserve-gib / --host-reserve-gib, held for real by the harness process; a per-rank share above rank 0 carries this process's extra CUDA context with it"
+  },
+  "engine_env": {},
+  "engine_env_note": "",
+  "cannot_verify": [],
+  "expected": "pass",
+  "why": "",
+  "error": "",
+  "versions": {
+    "torch": "2.13.0+cu130",
+    "transformers": "5.16.1",
+    "vllm": "0.28.0",
+    "interp_engine": "1.3.6",
+    "driver": "580.126.20"
+  },
+  "duration_s": 108.6,
+  "recorded_at": "2026-08-29T06:34:50Z"
+}

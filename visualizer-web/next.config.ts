@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 import { DEMO_GIF_ORIGIN } from "./lib/assets";
+import { HUB_ORIGINS } from "./lib/hub";
 
 // `script-src` and `style-src` carry `'unsafe-inline'` because every page here is prerendered at
 // build time. The nonce alternative wants middleware to mint one per request, which makes each
@@ -12,6 +13,13 @@ import { DEMO_GIF_ORIGIN } from "./lib/assets";
 // the Fast claim, both on Neuronpedia's asset bucket rather than in this
 // repository. The origin is imported rather than typed out because a CSP that
 // does not name it fails silently — see `lib/assets.ts`.
+//
+// `connect-src` is the third, and it names both halves of how the GPU finder reaches the Hub. Most
+// lookups go through `/api/hub` on this project's token — that is the `'self'` — but a reader who
+// supplies their own token is sent straight to huggingface.co instead, because `lib/hub.ts` promises
+// that token is sent there and nowhere else and a proxy would retract it. The origins come from
+// `lib/hub.ts`, which explains why the CDN wildcards are needed as well as the apex: a redirect
+// chain is checked against the policy at every hop.
 //
 // `headers()` applies in development too, and React's dev build calls `eval` to rebuild callstacks
 // across environments. Without the extra source below, `next dev` logs an eval refusal on every
@@ -26,7 +34,7 @@ const csp = [
   `img-src 'self' data: ${DEMO_GIF_ORIGIN}`,
   `media-src 'self' ${DEMO_GIF_ORIGIN}`,
   "font-src 'self'",
-  "connect-src 'self'",
+  `connect-src 'self' ${HUB_ORIGINS.join(" ")}`,
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -52,6 +60,13 @@ const nextConfig: NextConfig = {
       afterFiles: [
         { source: "/docs", destination: "/docs/index.html" },
         { source: "/docs/:page", destination: "/docs/:page.html" },
+        // The GPU sizer's model lives in the path so the URL *is* the repo id --
+        // see `lib/sizer-link.ts`. A rewrite rather than a route: this app is one
+        // prerendered page, and a dynamic segment carrying a string would make it
+        // server-rendered to learn something the client reads off `location`
+        // anyway. Every `/sizer/...` serves the same HTML `/` does.
+        { source: "/sizer", destination: "/" },
+        { source: "/sizer/:model*", destination: "/" },
       ],
       fallback: [],
     };

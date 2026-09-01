@@ -28,6 +28,7 @@ import { useCallback, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { AskRizPanel } from "@/components/ask/AskRizPanel";
+import { markAskDismissed, useAskDismissed } from "@/lib/askDismissed";
 import { useFirstVisit, useJustVisited } from "@/lib/firstVisit";
 import type { VisualizerState } from "@/lib/state";
 import { useHydrated } from "@/lib/useHydrated";
@@ -39,9 +40,14 @@ const PANEL_ID = "ask-riz-panel";
 export function AskRizLauncher({ state }: { state: VisualizerState }) {
   // Open on arrival. The panel is the one part of this page nobody thinks to
   // look for -- a diagram invites clicking, a chat box does not announce that
-  // it knows the docs -- so it introduces itself once and closes for good with
-  // Escape or either button. Nothing is sent until the reader asks something,
-  // so an ignored panel costs nothing but the space it sits in.
+  // it knows the docs -- so it introduces itself. Nothing is sent until the
+  // reader asks something, so an ignored panel costs nothing but the space it
+  // sits in.
+  //
+  // Once, though. Closing it -- Escape, the X, or either button -- is recorded
+  // in `localStorage`, and after that the frog waits in the corner instead of
+  // opening. An offer repeated on every load is a dialog, and the second one
+  // teaches nobody anything except where the X is.
   //
   // Except on a first visit, where the welcome tour is the introduction and two
   // of them at once is neither. The frog waits behind it and opens as the tour
@@ -61,13 +67,26 @@ export function AskRizLauncher({ state }: { state: VisualizerState }) {
   // and afterwards waits in the corner where its label names it.
   const first = useFirstVisit();
   const justVisited = useJustVisited();
+  const dismissed = useAskDismissed();
   const narrow = useMediaQuery(NARROW);
   // `null` while that is still deciding. Any press outranks it: `open` is what
   // the reader last asked for, or the arrival default if they have not asked.
   const [override, setOverride] = useState<boolean | null>(null);
-  const open = override ?? (narrow ? justVisited : !first);
-  const close = useCallback(() => setOverride(false), []);
-  const toggle = useCallback(() => setOverride(!open), [open]);
+  const open = override ?? (!dismissed && (narrow ? justVisited : !first));
+  const close = useCallback(() => {
+    setOverride(false);
+    markAskDismissed();
+  }, []);
+  // Closing by press is closing, so it records the same way Escape and the X
+  // do. Opening it again does not undo that: having asked once for it to go
+  // away is the answer to "should this open by itself", whatever happens after.
+  const toggle = useCallback(() => {
+    if (open) {
+      close();
+      return;
+    }
+    setOverride(true);
+  }, [open, close]);
   const hydrated = useHydrated();
 
   return (
@@ -76,8 +95,8 @@ export function AskRizLauncher({ state }: { state: VisualizerState }) {
         {...buttonProps(open, toggle)}
         className={`hidden shrink-0 cursor-pointer items-center gap-x-2 rounded-full border p-1 transition-colors sm:flex sm:pr-4 sm:pl-2 ${
           open
-            ? "border-emerald-500 bg-emerald-100 hover:bg-emerald-200"
-            : "border-emerald-400 bg-emerald-50 hover:bg-emerald-100"
+            ? "border-emerald-700 bg-emerald-100 hover:bg-emerald-200"
+            : "border-emerald-600 bg-emerald-50 hover:bg-emerald-100"
         }`}
       >
         <Face className="h-6 w-6" />
@@ -99,8 +118,8 @@ export function AskRizLauncher({ state }: { state: VisualizerState }) {
             // is the price of the corner and the reason it is only here.
             className={`fixed right-4 bottom-4 z-50 flex h-12 cursor-pointer items-center gap-x-2 rounded-full border pr-1.5 pl-3.5 shadow-lg shadow-slate-900/20 transition-colors sm:hidden ${
               open
-                ? "border-emerald-500 bg-emerald-100"
-                : "border-emerald-400 bg-emerald-50"
+                ? "border-emerald-700 bg-emerald-100"
+                : "border-emerald-600 bg-emerald-50"
             }`}
           >
             {/* Left of the frog rather than right, so the pill grows inward

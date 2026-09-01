@@ -29,6 +29,7 @@ This repo contains:
 
 1. [`validator/`](validator/), which compares/validates it against TransformerLens, and nnsight/nnterp on real architectures.
 2. [`visualizer-web/`](visualizer-web/), a "cheat sheet" hosted at [interp-engine.org](https://interp-engine.org) of each 'point' (eg `resid_post.16`), standardized across architectures.
+3. [`gpu-sizer/`](gpu-sizer/), scripts that help determine what GPU/config you need to fit an interp-engine model (and what performance you'll get), to avoid OOMing while working.
 
 ## Installation
 

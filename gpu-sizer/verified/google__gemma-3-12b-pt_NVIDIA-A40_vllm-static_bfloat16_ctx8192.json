@@ -1,0 +1,117 @@
+{
+  "model_id": "google/gemma-3-12b-pt",
+  "backend": "vllm-static",
+  "outcome": "crash",
+  "spec": {
+    "backend": "vllm-static",
+    "dtype": "bfloat16",
+    "kv_cache_dtype": "auto",
+    "max_model_len": 8192,
+    "max_num_batched_tokens": 16384,
+    "max_num_seqs": 256,
+    "gpu_memory_utilization": 0.9,
+    "num_gpus": 1,
+    "static_sites": 0,
+    "enforce_eager": null,
+    "batch_size": 1,
+    "seq_len": 0,
+    "requires_grad": false,
+    "attn_implementation": "",
+    "n_capture_points": 0
+  },
+  "gpu": {
+    "name": "NVIDIA A40",
+    "total_bytes": 47768928256,
+    "total_gib": 44.49,
+    "compute_capability": [
+      8,
+      6
+    ],
+    "ecc_enabled": true,
+    "provenance": "measured on this host (ECC enabled)"
+  },
+  "estimate": {
+    "fits": false,
+    "total_bytes": 46095943862,
+    "pool_bytes": 43540941638,
+    "outside_bytes": 2555002224,
+    "headroom_bytes": -548906208,
+    "kv_capacity_tokens": 6178,
+    "terms": [
+      {
+        "name": "vllm_overshoot",
+        "bytes": 644245094,
+        "side": "outside"
+      },
+      {
+        "name": "fragmentation",
+        "bytes": 1910757130,
+        "side": "outside"
+      },
+      {
+        "name": "cuda_context",
+        "bytes": 644245094,
+        "side": "pool"
+      },
+      {
+        "name": "weights",
+        "bytes": 24374650080,
+        "side": "pool"
+      },
+      {
+        "name": "static_buffers",
+        "bytes": 12079595520,
+        "side": "pool"
+      },
+      {
+        "name": "graph_pool",
+        "bytes": 3221225472,
+        "side": "pool"
+      },
+      {
+        "name": "kv_cache_floor",
+        "bytes": 3221225472,
+        "side": "pool"
+      }
+    ],
+    "warnings": [],
+    "weights_source": "safetensors-metadata"
+  },
+  "measured": {
+    "baseline_bytes": 0,
+    "post_load_bytes": 0,
+    "post_warmup_bytes": 0,
+    "peak_bytes": 47157608448,
+    "pool_claimed_bytes": 42992035430,
+    "outside_measured_bytes": 4165573018,
+    "torch_peak_bytes": 0,
+    "kv_cache_tokens": 0,
+    "samples": 344
+  },
+  "stress": {
+    "max_concurrency_passed": 0,
+    "first_failing_concurrency": 0,
+    "prompt_tokens": 8176,
+    "requests_ok": 0,
+    "requests_failed": 0,
+    "latencies_ms": [],
+    "failure_kind": "",
+    "failure_detail": ""
+  },
+  "cannot_verify": [
+    "fp8",
+    "nvfp4"
+  ],
+  "expected": "fail",
+  "why": "static buffers at the widest capture size, which the ladder should refuse rather than OOM",
+  "error": "RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}",
+  "versions": {
+    "torch": "2.13.0+cu130",
+    "transformers": "5.14.1",
+    "vllm": "0.27.1",
+    "interp_engine": "1.3.4",
+    "driver": "580.159.04"
+  },
+  "duration_s": 98.5,
+  "recorded_at": "2026-08-24T22:28:20Z"
+}

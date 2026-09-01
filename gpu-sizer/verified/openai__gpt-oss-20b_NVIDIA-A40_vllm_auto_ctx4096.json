@@ -1,0 +1,117 @@
+{
+  "model_id": "openai/gpt-oss-20b",
+  "backend": "vllm",
+  "outcome": "pass",
+  "spec": {
+    "backend": "vllm",
+    "dtype": "auto",
+    "kv_cache_dtype": "auto",
+    "max_model_len": 4096,
+    "max_num_batched_tokens": 2048,
+    "max_num_seqs": 256,
+    "gpu_memory_utilization": 0.9,
+    "num_gpus": 1,
+    "static_sites": 0,
+    "enforce_eager": null,
+    "batch_size": 1,
+    "seq_len": 0,
+    "requires_grad": false,
+    "attn_implementation": "",
+    "n_capture_points": 0
+  },
+  "gpu": {
+    "name": "NVIDIA A40",
+    "total_bytes": 47768928256,
+    "total_gib": 44.49,
+    "compute_capability": [
+      8,
+      6
+    ],
+    "ecc_enabled": true,
+    "provenance": "measured on this host (ECC enabled)"
+  },
+  "estimate": {
+    "fits": true,
+    "total_bytes": 17161838678,
+    "pool_bytes": 14606836454,
+    "outside_bytes": 2555002224,
+    "headroom_bytes": 2221890602,
+    "kv_capacity_tokens": 528722,
+    "terms": [
+      {
+        "name": "vllm_overshoot",
+        "bytes": 644245094,
+        "side": "outside"
+      },
+      {
+        "name": "fragmentation",
+        "bytes": 1910757130,
+        "side": "outside"
+      },
+      {
+        "name": "cuda_context",
+        "bytes": 644245094,
+        "side": "pool"
+      },
+      {
+        "name": "weights",
+        "bytes": 13761264768,
+        "side": "pool"
+      },
+      {
+        "name": "kv_cache_floor",
+        "bytes": 201326592,
+        "side": "pool"
+      }
+    ],
+    "warnings": [
+      "quantized checkpoint (mxfp4): 12.8 GiB served natively, but ~41.2 GiB if the kernels are missing and transformers dequantizes silently -- install the `quant` extra and pre-cache its Hub kernels"
+    ],
+    "weights_source": "safetensors-metadata"
+  },
+  "measured": {
+    "baseline_bytes": 0,
+    "post_load_bytes": 43116396544,
+    "post_warmup_bytes": 43120590848,
+    "peak_bytes": 43122688000,
+    "pool_claimed_bytes": 42992035430,
+    "outside_measured_bytes": 130652570,
+    "torch_peak_bytes": 0,
+    "kv_cache_tokens": 544919,
+    "samples": 282
+  },
+  "stress": {
+    "max_concurrency_passed": 8,
+    "first_failing_concurrency": 0,
+    "prompt_tokens": 4080,
+    "requests_ok": 8,
+    "requests_failed": 0,
+    "latencies_ms": [
+      1803.693843074143,
+      2461.62241906859,
+      2567.962651140988,
+      3365.7485898584127,
+      4045.825227163732,
+      4099.045746028423,
+      4796.8472968786955,
+      5053.637145087123
+    ],
+    "failure_kind": "",
+    "failure_detail": ""
+  },
+  "cannot_verify": [
+    "fp8",
+    "nvfp4"
+  ],
+  "expected": "pass",
+  "error": "",
+  "versions": {
+    "torch": "2.13.0+cu130",
+    "transformers": "5.14.1",
+    "vllm": "0.27.1",
+    "interp_engine": "1.3.4",
+    "driver": "580.159.04"
+  },
+  "duration_s": 80.3,
+  "recorded_at": "2026-08-24T21:53:45Z"
+}

@@ -740,7 +740,7 @@ requires-dist = [
     { name = "torch", specifier = ">=1.10" },
     { name = "transformer-lens", marker = "extra == 'parity'", specifier = ">=3.0" },
     { name = "transformers", specifier = ">=4.57.1" },
-    { name = "vllm", marker = "sys_platform == 'linux' and extra == 'vllm'", specifier = ">=0.27.1" },
+    { name = "vllm", marker = "sys_platform == 'linux' and extra == 'vllm'", specifier = ">=0.28.0" },
 ]
 provides-extras = ["dev", "vllm", "quant", "awq", "parity"]
 

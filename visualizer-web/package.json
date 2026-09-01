@@ -16,6 +16,10 @@
     "knowledge": "node scripts/build-knowledge.mjs",
     "knowledge:check": "node scripts/build-knowledge.mjs --check",
     "links:check": "tsx scripts/check-doc-links.ts",
+    "hub:check": "tsx scripts/check-hub.ts",
+    "models": "tsx scripts/build-model-cache.ts",
+    "models:check": "tsx scripts/build-model-cache.ts --check",
+    "size:check": "tsx scripts/check-size.ts",
     "eval": "tsx scripts/model-eval.ts"
   },
   "dependencies": {

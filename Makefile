@@ -17,7 +17,8 @@ UV = uv
 .PHONY: help \
 	install test check check-format check-type bench-report \
 	validator-install validator-test validator-check \
-	viz-install viz-dev viz-build viz-check viz-knowledge \
+	viz-install viz-dev viz-build viz-check viz-knowledge viz-gpus viz-gpus-check \
+	size size-local size-check \
 	hooks config-parity release-plan check-ci
 
 help: ## Show available commands
@@ -46,6 +47,43 @@ check: check-format check-type ## Engine: lint, format and type checks
 # a committed copy has drifted from those cells.
 bench-report: ## Benchmarks: re-render the report and both published tables from benchmarks/results/
 	$(UV) run python -m benchmarks.report_bench
+
+# ----------------------------------------------------------------- gpu sizer --
+#
+# `size` is arithmetic over a config and a few KB of safetensors headers: no GPU, no weights, seconds.
+# `verify` is the opposite -- it loads the model on this box and tries to OOM it -- which is why the two
+# are separate targets and only the first is safe to run anywhere.
+#
+# Pass a model with MODEL=..., e.g. `make size MODEL=google/gemma-3-12b-pt`.
+
+MODEL ?= Qwen/Qwen3-4B
+
+size: ## GPU Sizer: which GPUs and settings will run MODEL (no GPU needed)
+	$(UV) run python gpu-sizer/fit.py $(MODEL) --detail --snippet
+
+size-local: ## GPU Sizer: what the card in this box can run, for MODEL
+	$(UV) run python gpu-sizer/fit.py $(MODEL) --local --detail --snippet
+
+# The browser sizer reprices on every keystroke, so it cannot call this package -- it holds a port
+# of the same arithmetic. This is what keeps the port honest: the same matrix through both, compared
+# to the byte. Needs the Python environment and a few KB off the Hub, which is why `viz-check`
+# leaves it out.
+size-check: ## GPU Sizer: check visualizer-web/lib/size.ts still agrees with interp_engine.memory
+	cd visualizer-web && npm run size:check
+
+# Needs a free CUDA device: it measures from outside the process, so anything else on the card is
+# charged to the run and the harness refuses rather than record someone else's memory.
+verify: ## GPU Sizer: run the standard set on this GPU and re-render VERIFIED.md
+	$(UV) run python gpu-sizer/verify.py --standard
+
+verify-failures: ## GPU Sizer: run the configurations that are SUPPOSED to fail, and check that they do
+	$(UV) run python gpu-sizer/verify.py --expect-failures
+
+verify-pending: ## GPU Sizer: run specs queued for hardware this box may now have (FP8/NVFP4)
+	$(UV) run python gpu-sizer/verify.py --run-pending
+
+verify-report: ## GPU Sizer: re-render VERIFIED.md from the records already on disk
+	$(UV) run python gpu-sizer/verify.py --report
 
 # ------------------------------------------------------------------ harness --
 #
@@ -84,11 +122,30 @@ viz-build: ## Visualizer: production build
 viz-knowledge: ## Visualizer: rebuild the chatbot's docs bundle from docs/ and interp_engine/
 	cd visualizer-web && npm run knowledge
 
-viz-check: ## Visualizer: eslint + tsc + the docs bundle and the doc's point links are current
+viz-gpus: ## Visualizer: rebuild the sizer's GPU catalog and calibration from interp_engine.memory
+	$(UV) run python gpu-sizer/publish.py
+
+viz-gpus-check: ## Visualizer: fail if the generated GPU catalog has drifted from the engine
+	$(UV) run python gpu-sizer/publish.py --check
+
+# Needs the network and HF_TOKEN, and its answer depends on repos other people own -- so it is not
+# in `viz-check`. A static check that breaks when a third party edits a config is one people learn
+# to ignore. Run `viz-models-check` on a schedule instead.
+viz-models: ## Visualizer: re-resolve the sizer's cached models from the Hub
+	cd visualizer-web && npm run models
+
+viz-models-check: ## Visualizer: report which cached models the Hub has moved under
+	cd visualizer-web && npm run models:check
+
+# `size:check` needs a GPU-less repricing of the same matrix through both implementations, so it
+# shells out to gpu-sizer/fit.py -- which needs the Python environment and a few KB off the Hub,
+# and is therefore not part of `viz-check`. `make size-check` runs it.
+viz-check: ## Visualizer: eslint + tsc + the docs bundle, point links and GPU catalog are current
 	cd visualizer-web && npm run lint
 	cd visualizer-web && npm run typecheck
 	cd visualizer-web && npm run knowledge:check
 	cd visualizer-web && npm run links:check
+	$(MAKE) viz-gpus-check
 
 # ---------------------------------------------------------------- repo-wide --
 

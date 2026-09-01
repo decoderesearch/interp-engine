@@ -89,18 +89,24 @@ def resolve_trust_remote_code(hf_model_id: str, requested: bool | None) -> bool:
     return type(cfg) not in MODEL_FOR_CAUSAL_LM_MAPPING
 
 
-def _checkpoint_is_quantized(hf_model_id: str, *, trust_remote_code: bool) -> bool:
-    """Whether the checkpoint carries its own ``quantization_config``, from the config alone.
+def _release_failed_attempt(exc: Exception) -> Exception:
+    """Keep a failed load's error, drop what it is still holding on the device.
 
-    Config-only because the answer decides *how* to load, so it has to be known before the weights
-    are read. Unreadable means "no": that lands on the plain load path, which is the one that reports
-    a load failure with transformers' own message rather than one of ours about placement.
+    Each candidate class below loads the *whole* checkpoint, and now that placement happens at load
+    time that means onto the card. An exception keeps its ``__traceback__``, whose frames still
+    reference the half-built model, so carrying one into the next attempt would leave the previous
+    attempt's weights on the device -- and the next class would then fail for want of memory rather
+    than on its own merits, which is the more useful error. Host RAM absorbed this quietly because it
+    is several times the size; VRAM does not.
+
+    The traceback is what has to go, and the type and message are what is worth keeping, so this
+    returns the error stripped rather than dropping it: the ``raise ... from`` at the end of the
+    caller still names why the last candidate refused.
     """
-    try:
-        cfg = AutoConfig.from_pretrained(hf_model_id, trust_remote_code=trust_remote_code)
-    except Exception:  # noqa: BLE001 - not a fact about quantization; let the real load report it
-        return False
-    return facts.is_quantized(cfg)
+    exc.__traceback__ = None
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    return exc
 
 
 def _load_hf_model(hf_model_id: str, load_kwargs: dict[str, Any], *, trust_remote_code: bool) -> nn.Module:
@@ -151,7 +157,7 @@ def _load_hf_model(hf_model_id: str, load_kwargs: dict[str, Any], *, trust_remot
             try:
                 return model_cls.from_pretrained(hf_model_id, **load_kwargs)
             except Exception as e:  # noqa: BLE001 - fall through to the auto classes
-                last_err = e
+                last_err = _release_failed_attempt(e)
     # Fallback: the multimodal auto classes (these also yield a *ForConditionalGeneration).
     for auto_name in ("AutoModelForImageTextToText", "AutoModelForVision2Seq"):
         auto_cls = getattr(transformers, auto_name, None)
@@ -159,7 +165,7 @@ def _load_hf_model(hf_model_id: str, load_kwargs: dict[str, Any], *, trust_remot
             try:
                 return auto_cls.from_pretrained(hf_model_id, **load_kwargs)
             except Exception as e:  # noqa: BLE001
-                last_err = e
+                last_err = _release_failed_attempt(e)
     raise RuntimeError(f"Could not load {hf_model_id!r} as a causal LM or a multimodal text stack") from last_err
 
 
@@ -251,30 +257,30 @@ class EagerModel:
                 load_kwargs["quantization_config"] = quantization_config
             if attn_implementation is not None:
                 load_kwargs["attn_implementation"] = attn_implementation
-            # Multi-GPU sharding: with a device_map (e.g. "auto"/"balanced"), accelerate
-            # places the layers across the visible GPUs itself. In that case we must NOT
-            # do a manual .to(device) afterward (it would fight the accelerate placement /
-            # try to pull the whole sharded model onto one GPU). The forward-hook capture /
-            # steering layer is device-agnostic (accelerate moves activations between GPUs;
-            # hooks fire on whichever device each module lives on).
+            # Wherever the weights belong, transformers is told before it reads them, never afterwards.
             #
-            # A checkpoint that ships quantized is placed at load time even when the caller named a
-            # plain `device`, because "load, then move" is not a slower route to the same model here --
-            # it is a different and much larger one. A quantizer with no kernels for the initial device
-            # dequantizes to `dtype` to have something runnable, and CPU is such a device for every FP8
-            # scheme, so the default route materializes bf16 weights at twice the checkpoint's size
-            # before anything reaches the GPU: DeepSeek-V4-Flash loads as ~285 GiB of bf16 on the way
-            # to a card that holds its 156 GiB of FP8 comfortably, and dies moving it. Handing
-            # transformers the destination up front keeps the weights in the dtype they ship in, which
-            # is also what its own warning on this path asks for.
-            placement = device_map
-            if (
-                placement is None
-                and device is not None
-                and _checkpoint_is_quantized(hf_model_id, trust_remote_code=trust_remote)
-            ):
-                placement = device
-                logger.info("%s is a quantized checkpoint: loading directly onto %s", hf_model_id, device)
+            # "Load, then `.to(device)`" reaches the same model, but it is not the same route there:
+            # `from_pretrained` builds the whole thing in host RAM first, so the weights have to fit
+            # *there* before they are ever asked to fit on the card. A model too big for the card is
+            # then killed by the host OOM killer at whatever fraction of the weights exhausts host RAM,
+            # while the card sits empty -- so a card-sized overrun surfaces as an uncatchable SIGKILL
+            # with no traceback instead of the CUDA OOM it is. float32 gemma-3-12b (45.4 GiB) did
+            # exactly that on a 44.4 GiB A40 and again on a 31.3 GiB 5090, both times reporting a peak
+            # of 0 bytes on the device. Handing transformers the destination up front streams the
+            # shards onto it instead: peak host RAM falls to roughly one shard, the load skips a full
+            # device copy, and the failure lands on the device the caller actually named.
+            #
+            # For a checkpoint that ships quantized the old route was worse still, because it changed
+            # the weights rather than merely where they were built: a quantizer with no kernels for the
+            # device it loads onto dequantizes to `dtype` to have something runnable, and CPU is such a
+            # device for every FP8 scheme. DeepSeek-V4-Flash therefore reached ~285 GiB of bf16 on the
+            # way to a card that holds its 156 GiB of FP8 comfortably, and died moving it.
+            #
+            # A caller's own `device_map` always wins: multi-GPU arrives here as "auto"/"balanced" and
+            # accelerate shards the layers itself, which a single named device would fight. Capture and
+            # steering are device-agnostic either way -- accelerate moves activations between GPUs, and
+            # hooks fire on whichever device each module lives on.
+            placement = device_map if device_map is not None else device
             if placement is not None:
                 load_kwargs["device_map"] = placement
             logger.info(
@@ -284,9 +290,6 @@ class EagerModel:
                 f", device_map={placement}" if placement is not None else "",
             )
             hf_model = _load_hf_model(hf_model_id, load_kwargs, trust_remote_code=trust_remote)
-            # Quantized / device_map loads place weights on-device themselves; only move otherwise.
-            if quantization_config is None and placement is None and device is not None:
-                hf_model = hf_model.to(device)  # type: ignore[assignment]
 
         self.hf_model: nn.Module = hf_model  # type: ignore[assignment]
         self.hf_model.eval()

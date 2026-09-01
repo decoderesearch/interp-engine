@@ -99,13 +99,20 @@ const GRID_ROWS = Math.ceil(ALL_POINTS.length / GRID_COLUMNS);
 export function PointGrid() {
   return (
     <div>
-      <div className="text-xs font-bold text-slate-700">Supported Points</div>
-      <div className="thin-scrollbar mt-2 overflow-x-auto overscroll-contain pb-2">
+      <div className="text-center text-xs font-bold text-slate-700">
+        Supported Points
+      </div>
+      <div className="thin-scrollbar mt-4 overflow-x-auto overscroll-contain pb-2">
         {/* `w-max` is what makes the row overflow rather than wrap: a grid with
             `grid-flow-col` inside a block that is only as wide as its parent still
-            shrinks its columns to fit, and the names are monospace and unbreakable. */}
+            shrinks its columns to fit, and the names are monospace and unbreakable.
+        
+            Once there is room for all five columns, the slack goes *between* them rather than
+            piling up on the right. `justify-between` over five equal fractions because the names
+            are unbreakable: a column narrower than the longest name it holds would spill it, and
+            the columns are uneven by nature -- `q` sits in the same one as `attn_out_post`. */}
         <div
-          className="grid w-max grid-flow-col gap-x-6 gap-y-2.5"
+          className="grid w-max grid-flow-col gap-x-6 gap-y-3.5 sm:w-full sm:justify-between"
           style={{ gridTemplateRows: `repeat(${GRID_ROWS}, min-content)` }}
         >
           {ALL_POINTS.map((spec) => (
@@ -132,9 +139,7 @@ function Heading() {
       <span className="text-xs font-semibold text-slate-700">
         {ALL_POINTS.length} standardized points
       </span>
-      <span className="shrink-0 text-[9px] font-medium tracking-wide text-slate-400 uppercase">
-        one name per tensor
-      </span>
+      <span className="shrink-0 text-[9px] font-medium tracking-wide text-slate-400 uppercase"></span>
     </div>
   );
 }
@@ -153,8 +158,11 @@ function SupportLegend() {
 }
 
 function Served({ value }: { value: VllmSupport }) {
-  const { icon: Icon, className, label } =
-    value === "none" ? NOT_SERVED : SERVED;
+  const {
+    icon: Icon,
+    className,
+    label,
+  } = value === "none" ? NOT_SERVED : SERVED;
   return (
     <span className="flex shrink-0 justify-center">
       <Icon className={cn("h-3 w-3", className)} aria-hidden />

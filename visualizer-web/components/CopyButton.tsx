@@ -29,11 +29,14 @@ export const SNIPPET_ACTION_CLASS =
 export function CopyButton({
   text,
   className,
+  iconClassName,
   label = "Copy",
 }: {
   text: string;
   /** Overrides the type scale. The hook card's 9px is the default. */
   className?: string;
+  /** Overrides the glyph, which does not scale with the label on its own. */
+  iconClassName?: string;
   label?: string;
 }) {
   const [copied, setCopied] = useState(false);
@@ -58,9 +61,9 @@ export function CopyButton({
       className={cn(SNIPPET_ACTION_CLASS, className)}
     >
       {copied ? (
-        <Check className="h-2.5 w-2.5" />
+        <Check className={cn("h-2.5 w-2.5", iconClassName)} />
       ) : (
-        <Copy className="h-2.5 w-2.5" />
+        <Copy className={cn("h-2.5 w-2.5", iconClassName)} />
       )}
       {copied ? "Copied" : label}
     </button>

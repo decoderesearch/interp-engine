@@ -1,0 +1,117 @@
+{
+  "model_id": "google/gemma-3-12b-pt",
+  "backend": "eager",
+  "outcome": "oom",
+  "spec": {
+    "backend": "eager",
+    "dtype": "bfloat16",
+    "kv_cache_dtype": "auto",
+    "max_model_len": 32768,
+    "max_num_batched_tokens": 0,
+    "max_num_seqs": 0,
+    "gpu_memory_utilization": 0.9,
+    "num_gpus": 1,
+    "static_sites": 0,
+    "enforce_eager": null,
+    "batch_size": 1,
+    "seq_len": 32752,
+    "requires_grad": false,
+    "attn_implementation": "eager",
+    "n_capture_points": 0
+  },
+  "gpu": {
+    "name": "NVIDIA A40",
+    "total_bytes": 47768928256,
+    "total_gib": 44.49,
+    "compute_capability": [
+      8,
+      6
+    ],
+    "ecc_enabled": true,
+    "provenance": "measured on this host (ECC enabled)"
+  },
+  "estimate": {
+    "fits": false,
+    "total_bytes": 216651371334,
+    "pool_bytes": 0,
+    "outside_bytes": 0,
+    "headroom_bytes": -168882443078,
+    "kv_capacity_tokens": 0,
+    "terms": [
+      {
+        "name": "weights",
+        "bytes": 24374650080,
+        "side": "eager"
+      },
+      {
+        "name": "logits",
+        "bytes": 51527018496,
+        "side": "eager"
+      },
+      {
+        "name": "attention",
+        "bytes": 137304768512,
+        "side": "eager"
+      },
+      {
+        "name": "hidden_states",
+        "bytes": 251535360,
+        "side": "eager"
+      },
+      {
+        "name": "mlp_intermediate",
+        "bytes": 2012282880,
+        "side": "eager"
+      },
+      {
+        "name": "workspace",
+        "bytes": 536870912,
+        "side": "eager"
+      },
+      {
+        "name": "cuda_context",
+        "bytes": 644245094,
+        "side": "eager"
+      }
+    ],
+    "warnings": [],
+    "weights_source": "safetensors-metadata"
+  },
+  "measured": {
+    "baseline_bytes": 0,
+    "post_load_bytes": 25074597888,
+    "post_warmup_bytes": 31026315264,
+    "peak_bytes": 37714132992,
+    "pool_claimed_bytes": 0,
+    "outside_measured_bytes": 37714132992,
+    "torch_peak_bytes": 36903605760,
+    "kv_cache_tokens": 0,
+    "samples": 139
+  },
+  "stress": {
+    "max_concurrency_passed": 0,
+    "first_failing_concurrency": 2,
+    "prompt_tokens": 32752,
+    "requests_ok": 0,
+    "requests_failed": 2,
+    "latencies_ms": [],
+    "failure_kind": "oom",
+    "failure_detail": "OutOfMemoryError: CUDA out of memory. Tried to allocate 31.97 GiB. GPU 0 has a total capacity of 44.42 GiB of which 14.53 GiB is free. Including non-PyTorch memory, this process has 29.88 GiB memory in use. Of the allocated memory 28.34 GiB is allocated by PyTorch, and 1.23 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+  },
+  "cannot_verify": [
+    "fp8",
+    "nvfp4"
+  ],
+  "expected": "fail",
+  "why": "the quadratic term alone: 16 heads x 32768^2 of attention beside 22.7 GiB of weights",
+  "error": "",
+  "versions": {
+    "torch": "2.13.0+cu130",
+    "transformers": "5.14.1",
+    "vllm": "0.27.1",
+    "interp_engine": "1.3.4",
+    "driver": "580.159.04"
+  },
+  "duration_s": 40.5,
+  "recorded_at": "2026-08-24T22:26:39Z"
+}

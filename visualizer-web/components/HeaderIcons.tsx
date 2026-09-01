@@ -7,8 +7,8 @@
  * opens it by itself, and a Radix popover that unmounted this tree on close
  * would take the dialog with it. So the hamburger on a phone is just a class
  * on this row: hidden until opened, then a labelled list under the button.
- * From `sm` up the same items sit in the header as glyphs and the hamburger
- * is not shown.
+ * From `sm` up the tour and the docs are labelled pills and the three outbound
+ * links are glyphs, and the hamburger is not shown.
  *
  * Ask Riz is not in here. On a phone it is already the floating button, and
  * that is the placement that stays.
@@ -30,6 +30,23 @@ const ICON =
 
 /** Icon in the header; labelled row in the phone menu. */
 const ITEM = `${ICON} max-sm:h-auto max-sm:w-full max-sm:justify-start max-sm:gap-x-2.5 max-sm:px-2.5 max-sm:py-1.5 max-sm:text-[12px] max-sm:font-medium max-sm:text-slate-700`;
+
+/**
+ * The two items that name themselves, as `AskRizLauncher` does: a labelled pill
+ * rather than a bare glyph, because a question mark and a book are guesses and
+ * "Tutorial" and "Docs" are not.
+ *
+ * The `max-sm:` half undoes the pill entirely — inside the hamburger these are
+ * rows in a list beside three glyph links, and a pill there would read as the
+ * only button in a menu. Colour is carried by {@link SKY} and {@link SLATE} and
+ * is likewise dropped on a phone, so the menu stays one column of slate rows.
+ */
+const PILL =
+  "flex h-8 shrink-0 cursor-pointer items-center gap-x-1.5 rounded-full border px-3 text-[11px] font-bold whitespace-nowrap transition-colors " +
+  "max-sm:h-auto max-sm:w-full max-sm:justify-start max-sm:gap-x-2.5 max-sm:rounded-md max-sm:border-0 max-sm:bg-transparent max-sm:px-2.5 max-sm:py-1.5 max-sm:text-[12px] max-sm:font-medium max-sm:text-slate-700 max-sm:hover:bg-slate-100";
+
+const SKY = "border-sky-600 bg-sky-50 text-sky-700 hover:bg-sky-100";
+const SLATE = "border-slate-400 bg-slate-50 text-slate-700 hover:bg-slate-100";
 
 function Label({ children }: { children: string }) {
   return <span className="sm:hidden">{children}</span>;
@@ -77,21 +94,26 @@ export function HeaderIcons({ repoUrl }: { repoUrl: string }) {
         }}
         className={
           open
-            ? "absolute top-full right-0 z-40 mt-1 flex min-w-[11rem] flex-col rounded-md border border-slate-200 bg-white p-1 shadow-lg sm:static sm:mt-0 sm:min-w-0 sm:flex-row sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none"
-            : "hidden sm:flex sm:items-center"
+            ? "absolute top-full right-0 z-40 mt-1 flex min-w-[11rem] flex-col rounded-md border border-slate-200 bg-white p-1 shadow-lg sm:static sm:mt-0 sm:min-w-0 sm:flex-row sm:items-center sm:gap-x-1.5 sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none"
+            : "hidden sm:flex sm:items-center sm:gap-x-1.5"
         }
       >
-        <Welcome repoUrl={repoUrl} className={ITEM}>
-          <Label>Tutorial</Label>
+        <Welcome repoUrl={repoUrl} className={`${PILL} ${SKY}`}>
+          <span>Tutorial</span>
         </Welcome>
 
         {/* A plain anchor, and it has to be: `/docs` is a separate Docusaurus
             build served out of `public/docs`, so there is no route for the
             client router to navigate to. A `Link` here would prefetch an RSC
             payload that does not exist. */}
-        <a href="/docs" aria-label="Docs" title="Docs" className={ITEM}>
-          <BookText className="h-[18px] w-[18px] shrink-0" />
-          <Label>Docs</Label>
+        <a
+          href="/docs"
+          aria-label="Docs"
+          title="Docs"
+          className={`${PILL} ${SLATE}`}
+        >
+          <BookText className="h-[18px] w-[18px] shrink-0 sm:h-4 sm:w-4" />
+          <span>Docs</span>
         </a>
 
         <a
