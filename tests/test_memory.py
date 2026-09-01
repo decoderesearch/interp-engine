@@ -412,6 +412,29 @@ def test_a_point_this_trunk_refuses_falls_back_rather_than_raising():
     )
 
 
+def test_naming_a_point_twice_prices_it_once():
+    """A tap is per `(point, layer)`, so a repeat is the same buffer and not a second one.
+
+    Both consumers of the resolved tuple sum over it, so a repeat that survived resolution charged
+    the model twice for memory the engine allocates once -- and quietly, since nothing downstream
+    could tell a doubled figure from an honest one. Reached through `estimate` as well as through the
+    resolver, because the sum is where the double landed.
+    """
+    model = facts(n_layers=48, intermediate_size=14336)
+    once = mem.WorkloadSpec(backend="vllm-static", dtype="bfloat16", static_points=("mlp_act",))
+    twice = mem.WorkloadSpec(backend="vllm-static", dtype="bfloat16", static_points=("mlp_act", "mlp_act"))
+    assert twice.resolved_static_points(model) == ("mlp_act",)
+    assert twice.resolved_static_sites(model) == once.resolved_static_sites(model)
+    assert twice.static_elements(model) == once.static_elements(model)
+    assert (
+        mem.estimate(model, H100, twice).term("static_buffers").bytes
+        == mem.estimate(model, H100, once).term("static_buffers").bytes
+    )
+    # Order is the forward order and survives de-duplication, because `snippet` prints it.
+    mixed = mem.WorkloadSpec(backend="vllm-static", static_points=("mlp_act", "attn", "mlp_act", "attn"))
+    assert mixed.resolved_static_points(model) == ("mlp_act", "attn")
+
+
 def test_a_sparse_trunk_trades_the_mlp_activation_for_the_router():
     """`mlp_act` is the down_proj's input, and a fused MoE kernel has no down_proj to hook."""
     assert "mlp_act" in mem.offered_static_points(facts())

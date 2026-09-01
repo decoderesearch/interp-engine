@@ -133,6 +133,20 @@ const SLIDES: Slide[] = [
         What GPU do you need to run interp-engine on a model? Use the GPU sizer
         to choose a model, set the performance you want, and get exact GPU
         configs that will fit without OOMing - copy the code instantly.
+        There&apos;s also a{" "}
+        {/* A new tab, so the tour is still here to come back to: this is the one
+            slide whose prose sends the reader somewhere, and a same-tab
+            navigation out of a first-visit dialog closes it for good. */}
+        <a
+          href="/docs/gpu-sizer-api"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="GPU sizer API documentation (opens in a new tab)"
+          className="text-sky-700 underline decoration-sky-700/30 underline-offset-2 hover:decoration-sky-700"
+        >
+          GPU sizer API
+        </a>
+        .
       </>
     ),
     body: () => <SizerDemo />,

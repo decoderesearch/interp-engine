@@ -962,6 +962,26 @@ interface ShardIndex {
 }
 
 /**
+ * A Hub repo id, and nothing else.
+ *
+ * The strictest thing in this file, because {@link resolveModel} interpolates this into a URL that
+ * may carry an `Authorization` header. Without the anchors, `../../` or a `?` turns a model lookup
+ * into "make an authenticated request to any path on huggingface.co and show me the answer", which
+ * is a much larger thing to have built than a sizer.
+ *
+ * Lives here rather than in the route that first needed it because there are now two — `/api/hub`
+ * and `/api/sizer` — and a security check kept in two places is one that eventually differs.
+ */
+const REPO_ID = /^[A-Za-z0-9][\w.-]*(\/[A-Za-z0-9][\w.-]*)?$/;
+
+/** Longer than any real id, short enough that the regex cannot be made to work hard. */
+const MAX_REPO_ID = 200;
+
+export function isRepoId(value: string): boolean {
+  return value.length > 0 && value.length <= MAX_REPO_ID && REPO_ID.test(value);
+}
+
+/**
  * Resolve a model id to the facts a fit needs, without downloading weights.
  *
  * Makes three requests at most: the repo metadata, `config.json`, and the shard index. The first is

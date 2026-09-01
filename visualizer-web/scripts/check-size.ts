@@ -311,9 +311,14 @@ async function main(): Promise<void> {
     // The named-point arithmetic, which the loop above never reaches: with no set given, both sides
     // take the `"auto"` branch, and the per-point widths could be wrong on both sides in different
     // ways without a single check failing.
-    const points = STATIC_POINTS.filter((point) =>
+    const offered = STATIC_POINTS.filter((point) =>
       offeredStaticPoints(facts).includes(point),
     );
+    // The first point twice, because de-duplication is a rule both sides have to apply and neither
+    // one has to: a tap is per `(point, layer)`, so a repeat that survives resolution charges twice
+    // for one buffer. Free to check here -- the same CLI call, one argument longer -- and it pins the
+    // `static points` comparison below to the resolved set rather than to whatever was passed in.
+    const points = offered.length ? [offered[0], ...offered] : offered;
     const staticOurs = fitAcross(facts, {
       backend: "vllm-static",
       dtype,

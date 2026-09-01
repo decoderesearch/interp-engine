@@ -1618,11 +1618,17 @@ class WorkloadSpec:
         A named point this trunk refuses is dropped rather than refused, because the caller who
         chose it was looking at a different model a moment ago: switching from Qwen3 to DeepSeek-V4
         should not error, it should fall back to the stack that trunk does carry.
+
+        Repeats are dropped too, and that one is a correctness fix rather than tidying. A tap is per
+        ``(point, layer)``, so declaring ``mlp_act`` twice declares the same buffers once -- but
+        :meth:`resolved_static_sites` and :meth:`static_elements` both sum over this tuple, so a
+        repeat charged the model twice for memory the engine allocates once. ``dict.fromkeys`` rather
+        than ``set``, because the order is the forward order and is what ``snippet`` prints.
         """
         if self.backend != "vllm-static":
             return ()
         offered = offered_static_points(facts)
-        chosen = tuple(point for point in self.static_points if point in offered)
+        chosen = tuple(dict.fromkeys(point for point in self.static_points if point in offered))
         return chosen or (default_static_point(facts),)
 
     def resolved_static_sites(self, facts: ModelMemoryFacts) -> int:

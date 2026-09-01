@@ -77,7 +77,10 @@ const config: Config = {
     prism: {
       theme: themes.github,
       darkTheme: themes.dracula,
-      additionalLanguages: ["bash", "python"],
+      // `json` is here for the sizer API page's response bodies. Prism ships none of
+      // these three in core, and an unlisted tag renders as unhighlighted plain text
+      // rather than failing, so a missing entry is easy to not notice.
+      additionalLanguages: ["bash", "python", "json"],
     },
     colorMode: { defaultMode: "light", respectPrefersColorScheme: true },
   } satisfies Preset.ThemeConfig,

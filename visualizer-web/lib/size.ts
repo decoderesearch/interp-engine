@@ -316,6 +316,12 @@ export function staticPointElements(
  * A named point this trunk refuses is dropped rather than refused, because the caller who chose it
  * was looking at a different model a moment ago: switching from Qwen3 to DeepSeek-V4 should not
  * error, it should fall back to the stack that trunk does carry.
+ *
+ * Repeats are dropped too, and that one is a correctness fix rather than tidying. A tap is per
+ * `(point, layer)`, so declaring `mlp_act` twice declares the same buffers once — but
+ * `resolvedStaticSites` and `staticElements` both sum over this list, so a repeat charged the model
+ * twice for memory the engine allocates once. `Set` keeps first insertion order, so the points stay
+ * in the forward order `snippet` prints them in.
  */
 export function resolvedStaticPoints(
   spec: WorkloadSpec,
@@ -323,7 +329,9 @@ export function resolvedStaticPoints(
 ): string[] {
   if (spec.backend !== "vllm-static") return [];
   const offered = new Set(offeredStaticPoints(facts));
-  const chosen = spec.staticPoints.filter((point) => offered.has(point));
+  const chosen = [
+    ...new Set(spec.staticPoints.filter((point) => offered.has(point))),
+  ];
   return chosen.length ? chosen : [defaultStaticPoint(facts)];
 }
 

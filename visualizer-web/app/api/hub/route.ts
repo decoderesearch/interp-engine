@@ -18,7 +18,7 @@
  * break lookups for everyone at once rather than arriving as a bill.
  */
 
-import { HubError, resolveModel } from "@/lib/hub";
+import { HubError, isRepoId, resolveModel } from "@/lib/hub";
 import { checkHubLimit, clientKey, configured, exempt } from "@/lib/ratelimit";
 
 /** `lib/hub.ts` is isomorphic, but it reads six URLs per model and wants a real Node fetch. */
@@ -26,19 +26,6 @@ export const runtime = "nodejs";
 
 /** Six sequential-ish Hub reads on a cold repo, and the Hub is occasionally slow. */
 export const maxDuration = 30;
-
-/**
- * A Hub repo id, and nothing else.
- *
- * The strictest thing in this file, because `resolveModel` interpolates this into a URL that
- * carries our `Authorization` header. Without the anchors, `../../` or a `?` turns a model lookup
- * into "make an authenticated request to any path on huggingface.co and show me the answer", which
- * is a much larger thing to have built than a sizer.
- */
-const REPO_ID = /^[A-Za-z0-9][\w.-]*(\/[A-Za-z0-9][\w.-]*)?$/;
-
-/** Longer than any real id, short enough that the regex cannot be made to work hard. */
-const MAX_ID = 200;
 
 export async function GET(request: Request) {
   const token = process.env.HF_TOKEN;
@@ -54,7 +41,7 @@ export async function GET(request: Request) {
 
   const model = new URL(request.url).searchParams.get("model")?.trim() ?? "";
   // Shape before allowance: a request that was never well-formed should not spend a lookup.
-  if (!model || model.length > MAX_ID || !REPO_ID.test(model)) {
+  if (!isRepoId(model)) {
     return problem(400, "not a Hugging Face model id");
   }
 
