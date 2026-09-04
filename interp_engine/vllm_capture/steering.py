@@ -11,7 +11,7 @@ from typing import Any
 
 import torch
 
-from interp_engine.vllm_capture._tree import _attn_out_proj, _get_layers, _worker_model
+from interp_engine.vllm_capture._tree import _attn_out_proj, _get_layers, _worker_model, absent_point_reason
 
 # --- worker-side steering (additive write-hooks) -----------------------------
 
@@ -153,7 +153,14 @@ def worker_install_steering(worker: object, specs: list[dict]) -> None:
 
             handles.append(layer.register_forward_pre_hook(_mk_pre(modify)))
         elif point == "z":
-            # z == input to o_proj (not fused; the arg IS the full tensor).
+            # z == input to o_proj, where one is called. Asked per layer because a family can fuse
+            # the projection away (DeepSeek-V4, every platform), and there the pre-hook below would
+            # install on a module the kernel never calls -- a steer that silently does nothing,
+            # which is the one outcome worse than refusing to steer.
+            if (reason := absent_point_reason(model, "z", layer)) is not None:
+                raise ValueError(f"vLLM cannot steer 'z' on layer {int(s['layer'])}: {reason}")
+
+            # The arg IS the full tensor, so the delta needs no slicing.
             def _mk_z(mod):
                 def _pre(_m, args):
                     return (args[0] + mod(args[0]), *args[1:])

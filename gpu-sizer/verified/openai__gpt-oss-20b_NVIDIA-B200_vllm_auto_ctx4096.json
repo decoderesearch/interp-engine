@@ -12,6 +12,7 @@
     "gpu_memory_utilization": 0.9,
     "num_gpus": 1,
     "static_sites": 0,
+    "static_points": [],
     "enforce_eager": null,
     "batch_size": 1,
     "seq_len": 0,
@@ -64,21 +65,23 @@
         "side": "pool"
       }
     ],
-    "warnings": [
-      "quantized checkpoint (mxfp4): 12.8 GiB served natively, but ~41.2 GiB if the kernels are missing and transformers dequantizes silently -- install the `quant` extra and pre-cache its Hub kernels"
-    ],
+    "warnings": [],
     "weights_source": "safetensors-metadata"
   },
   "measured": {
     "baseline_bytes": 0,
-    "post_load_bytes": 173583368192,
-    "post_warmup_bytes": 173583368192,
-    "peak_bytes": 173585465344,
+    "post_load_bytes": 173423984640,
+    "post_reserve_bytes": 0,
+    "post_warmup_bytes": 173423984640,
+    "peak_bytes": 173423984640,
+    "per_device_peak_bytes": [
+      173423984640
+    ],
     "pool_claimed_bytes": 172556078284,
-    "outside_measured_bytes": 1029387060,
+    "outside_measured_bytes": 867906356,
     "torch_peak_bytes": 0,
-    "kv_cache_tokens": 3167549,
-    "samples": 151
+    "kv_cache_tokens": 3174144,
+    "samples": 343
   },
   "stress": {
     "max_concurrency_passed": 4,
@@ -87,10 +90,10 @@
     "requests_ok": 4,
     "requests_failed": 0,
     "latencies_ms": [
-      671.8620820902288,
-      1131.680010817945,
-      1340.3982906602323,
-      1391.8304708786309
+      974.8666629893705,
+      1784.8143719602376,
+      1918.6913040466607,
+      2214.428566978313
     ],
     "failure_kind": "",
     "failure_detail": ""
@@ -98,7 +101,8 @@
   "reservations": {
     "per_rank_bytes": 0,
     "host_bytes": 0,
-    "note": "--reserve-gib / --host-reserve-gib"
+    "before_engine": false,
+    "note": "--reserve-gib / --host-reserve-gib, held for real by the harness process; a per-rank share above rank 0 carries this process's extra CUDA context with it"
   },
   "engine_env": {},
   "engine_env_note": "",
@@ -108,11 +112,11 @@
   "error": "",
   "versions": {
     "torch": "2.13.0+cu130",
-    "transformers": "5.14.1",
-    "vllm": "0.27.1",
-    "interp_engine": "1.3.4",
-    "driver": "580.126.09"
+    "transformers": "5.16.1",
+    "vllm": "0.28.0",
+    "interp_engine": "1.6.0",
+    "driver": "580.167.08"
   },
-  "duration_s": 46.4,
-  "recorded_at": "2026-08-26T01:18:39Z"
+  "duration_s": 96.0,
+  "recorded_at": "2026-09-03T03:53:02Z"
 }

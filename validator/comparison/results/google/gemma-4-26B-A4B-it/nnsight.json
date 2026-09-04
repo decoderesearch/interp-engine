@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-08-29",
+  "captured_at": "2026-09-03",
   "device": "cuda",
   "dtype": "bfloat16",
   "engine": "nnsight",
@@ -151,52 +151,32 @@
       "worst_token": 5
     },
     "mlp_out.0": {
-      "cos": 1.0000000000000002,
-      "cos_worst_token": 0.9999999999999998,
+      "expected": "experts beside the dense MLP: every layer here keeps `layer.mlp` and hangs the router and experts on the *block*, then sums the two branches in its own forward -- so the module this point taps is the dense half of a two-branch feed-forward. The unusual thing about this gap is that it is not a disagreement: both engines built the same tree and returned the same half, and the cell was green at cos 0.9999 for four layers before anyone read what the tensor was. So it is refused on both (`EagerModel._require_whole_feed_forward` and `vllm_capture._tree._split_feed_forward_reason`) rather than compared. `mlp_out_post` is the post-feedforward norm's output, downstream of the sum, and is scored on both engines -- it is also the row that keeps the residual decomposition checkable here, since resid_post == resid_mid + mlp_out_post holds for it and not for the raw point",
       "layer": 0,
-      "max_abs_diff": 0.0,
+      "missing": "reference",
       "point": "mlp_out",
-      "rel_diff": 0.0,
-      "rel_worst_token": 0.0,
-      "status": "PASS",
-      "tier": "raw_hf",
-      "worst_token": 3
+      "status": "N/A"
     },
     "mlp_out.15": {
-      "cos": 0.9999999999999999,
-      "cos_worst_token": 0.9999999999999998,
+      "expected": "experts beside the dense MLP: every layer here keeps `layer.mlp` and hangs the router and experts on the *block*, then sums the two branches in its own forward -- so the module this point taps is the dense half of a two-branch feed-forward. The unusual thing about this gap is that it is not a disagreement: both engines built the same tree and returned the same half, and the cell was green at cos 0.9999 for four layers before anyone read what the tensor was. So it is refused on both (`EagerModel._require_whole_feed_forward` and `vllm_capture._tree._split_feed_forward_reason`) rather than compared. `mlp_out_post` is the post-feedforward norm's output, downstream of the sum, and is scored on both engines -- it is also the row that keeps the residual decomposition checkable here, since resid_post == resid_mid + mlp_out_post holds for it and not for the raw point",
       "layer": 15,
-      "max_abs_diff": 0.0,
+      "missing": "reference",
       "point": "mlp_out",
-      "rel_diff": 0.0,
-      "rel_worst_token": 0.0,
-      "status": "PASS",
-      "tier": "raw_hf",
-      "worst_token": 1
+      "status": "N/A"
     },
     "mlp_out.22": {
-      "cos": 1.0,
-      "cos_worst_token": 0.9999999999999999,
+      "expected": "experts beside the dense MLP: every layer here keeps `layer.mlp` and hangs the router and experts on the *block*, then sums the two branches in its own forward -- so the module this point taps is the dense half of a two-branch feed-forward. The unusual thing about this gap is that it is not a disagreement: both engines built the same tree and returned the same half, and the cell was green at cos 0.9999 for four layers before anyone read what the tensor was. So it is refused on both (`EagerModel._require_whole_feed_forward` and `vllm_capture._tree._split_feed_forward_reason`) rather than compared. `mlp_out_post` is the post-feedforward norm's output, downstream of the sum, and is scored on both engines -- it is also the row that keeps the residual decomposition checkable here, since resid_post == resid_mid + mlp_out_post holds for it and not for the raw point",
       "layer": 22,
-      "max_abs_diff": 0.0,
+      "missing": "reference",
       "point": "mlp_out",
-      "rel_diff": 0.0,
-      "rel_worst_token": 0.0,
-      "status": "PASS",
-      "tier": "raw_hf",
-      "worst_token": 0
+      "status": "N/A"
     },
     "mlp_out.29": {
-      "cos": 0.9999999999999998,
-      "cos_worst_token": 0.9999999999999998,
+      "expected": "experts beside the dense MLP: every layer here keeps `layer.mlp` and hangs the router and experts on the *block*, then sums the two branches in its own forward -- so the module this point taps is the dense half of a two-branch feed-forward. The unusual thing about this gap is that it is not a disagreement: both engines built the same tree and returned the same half, and the cell was green at cos 0.9999 for four layers before anyone read what the tensor was. So it is refused on both (`EagerModel._require_whole_feed_forward` and `vllm_capture._tree._split_feed_forward_reason`) rather than compared. `mlp_out_post` is the post-feedforward norm's output, downstream of the sum, and is scored on both engines -- it is also the row that keeps the residual decomposition checkable here, since resid_post == resid_mid + mlp_out_post holds for it and not for the raw point",
       "layer": 29,
-      "max_abs_diff": 0.0,
+      "missing": "reference",
       "point": "mlp_out",
-      "rel_diff": 0.0,
-      "rel_worst_token": 0.0,
-      "status": "PASS",
-      "tier": "raw_hf",
-      "worst_token": 3
+      "status": "N/A"
     },
     "mlp_pre.0": {
       "cos": 1.0,
@@ -394,7 +374,7 @@
   "reason": "",
   "reference": "eager",
   "run": {
-    "date_utc": "2026-08-29T06:53:58+00:00",
+    "date_utc": "2026-09-03T22:47:15+00:00",
     "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
     "eager_only": false,
     "gpu": {
@@ -427,7 +407,7 @@
       "version": "1.3.0"
     },
     "torch": {
-      "version": "2.13.0"
+      "version": "2.14.0"
     },
     "transformers": {
       "version": "5.16.1"

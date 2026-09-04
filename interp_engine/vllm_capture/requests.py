@@ -261,6 +261,12 @@ def _mk_value_hook(demux: _Demux, site: Address):
     its attention actually consumes -- the span is ``None`` and the only adjustment is the rank
     (``_hooks.flat_value``), because a norm over ``head_dim`` is handed the per-head view.
 
+    The narrowed slice goes through ``flat_value`` too, and not only for symmetry: where vLLM leaves a
+    batch axis on the hidden state it hands the projection, the slice is ``[1, tokens, width]``, whose
+    first axis is one rather than the token count. :func:`_process_point` reads that as a trunk with
+    one row and returns the tensor untouched rather than steering rows it cannot line up -- so on those
+    families this point was quietly serving nothing at all.
+
     Either way the adjustment happens *before* steering and is undone after it, so a steer on this
     point writes the value in the shape a capture of it reports, leaves the queries and keys of the same
     matrix alone, and hands the module back its own shape. Writing into a copy of the packed tensor is
@@ -280,12 +286,12 @@ def _mk_value_hook(demux: _Demux, site: Address):
             new = steered.view(full.shape)
         else:
             start, stop = span
-            sliced = value_columns(full, module).contiguous()
+            sliced = flat_value(value_columns(full, module), module).contiguous()
             steered = _process_point(demux, site, sliced)
             if steered is sliced:
                 return output
             new = full.clone()
-            new[..., start:stop] = steered
+            new[..., start:stop] = steered.reshape(new[..., start:stop].shape)
         return (new, *output[1:]) if isinstance(output, tuple) else new
 
     return _hook

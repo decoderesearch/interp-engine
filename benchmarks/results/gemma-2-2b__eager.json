@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "started_at": "2026-08-19T13:20:43+00:00",
+  "started_at": "2026-09-04T07:46:51+00:00",
   "command": "python -m benchmarks.run_bench --model gemma-2-2b --variant eager",
   "python": "python",
   "model": {
@@ -11,6 +11,8 @@
     "dtype": "bfloat16",
     "min_gpu_gib": 0.0,
     "capture_point": "resid_post",
+    "per_variant_vllm_kwargs": {},
+    "static_capture_point": null,
     "extra_eager_kwargs": {},
     "extra_vllm_kwargs": {},
     "gpu_memory_utilization": null,
@@ -26,15 +28,15 @@
   },
   "env": {
     "gpu_name": "NVIDIA B200",
-    "gpu_total_gib": 178.3511962890625,
-    "driver_version": "580.105.08",
+    "gpu_total_gib": 178.35107421875,
+    "driver_version": "580.126.20",
     "cuda_version": "13.0",
-    "torch_version": "2.11.0+cu130",
-    "vllm_version": "0.26.0",
-    "transformers_version": "5.14.1",
-    "interp_engine_version": "1.2.0",
-    "python_version": "3.12.3",
-    "platform": "linux 6.8.0-90-generic",
+    "torch_version": "2.13.0+cu130",
+    "vllm_version": "0.28.0",
+    "transformers_version": "5.16.1",
+    "interp_engine_version": "1.6.0",
+    "python_version": "3.13.8",
+    "platform": "linux 6.8.0-100-generic",
     "extra": {
       "VLLM_DEEP_GEMM_WARMUP": "skip"
     }
@@ -44,10 +46,10 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "ttft_ms": 34.21241696923971,
-        "prefill_tok_s": 14965.326783557495,
-        "decode_tok_s": 30.862214985299847,
-        "total_s": 4.149276745971292
+        "ttft_ms": 14.954454265534878,
+        "prefill_tok_s": 34237.2908371516,
+        "decode_tok_s": 75.37105987258832,
+        "total_s": 1.6999513246119022
       },
       "detail": {
         "prompt_tokens": 512,
@@ -59,9 +61,9 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "total_s": 34.00293119857088,
-        "aggregate_tok_s": 30.115050788416678,
-        "per_request_s": 4.25036639982136
+        "total_s": 13.70151492394507,
+        "aggregate_tok_s": 74.73626133198125,
+        "per_request_s": 1.7126893654931337
       },
       "detail": {
         "concurrency": 8,
@@ -74,8 +76,8 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 34.92658119648695,
-        "prompt_tok_s": 14659.321996608673,
+        "latency_ms": 14.557797461748123,
+        "prompt_tok_s": 35170.15546790814,
         "transported_mib": 2.25
       },
       "detail": {
@@ -91,8 +93,8 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 112.31709131971002,
-        "prompt_tok_s": 4558.522607593128,
+        "latency_ms": 32.24589303135872,
+        "prompt_tok_s": 15877.991020502566,
         "transported_mib": 58.5
       },
       "detail": {
@@ -108,7 +110,7 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 1131.8353088572621,
+        "latency_ms": 460.02103108912706,
         "transported_mib": 0.69873046875
       },
       "detail": {
@@ -126,7 +128,7 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 1149.889768101275,
+        "latency_ms": 454.1502185165882,
         "transported_mib": 0.69873046875
       },
       "detail": {
@@ -144,8 +146,8 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 3.3443006686866283,
-        "rows_per_s": 153096.2825184831,
+        "latency_ms": 2.253805287182331,
+        "rows_per_s": 227171.35455835835,
         "result_mib": 0.048828125
       },
       "detail": {
@@ -157,9 +159,9 @@
     }
   },
   "load": {
-    "construct_s": 25.945634693838656,
-    "warmup_s": 3.5694800317287445e-05,
-    "ready_s": 25.945670388638973,
+    "construct_s": 11.787899201735854,
+    "warmup_s": 7.908791303634644e-06,
+    "ready_s": 11.787907110527158,
     "n_layers": 26,
     "d_model": 2304,
     "device": "cuda:0",
@@ -167,5 +169,5 @@
     "resolved_dtype": "bfloat16",
     "grad_through_forward": false
   },
-  "finished_at": "2026-08-19T13:22:46+00:00"
+  "finished_at": "2026-09-04T07:47:41+00:00"
 }

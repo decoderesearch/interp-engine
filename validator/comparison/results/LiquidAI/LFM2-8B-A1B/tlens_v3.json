@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-08-12",
+  "captured_at": "2026-09-03",
   "device": "cuda",
   "dtype": "bfloat16",
   "engine": "tlens_v3",
@@ -7,158 +7,324 @@
   "known_bug": null,
   "points": {
     "attn_out.18": {
-      "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 18,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "attn_out",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 0
     },
     "attn_out.2": {
-      "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 2,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "attn_out",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 10
     },
     "attn_out_post.18": {
-      "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 18,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "attn_out_post",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 0
     },
     "attn_out_post.2": {
-      "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 2,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "attn_out_post",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 10
     },
     "mlp_act.0": {
-      "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 0,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
+      "point": "mlp_act",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 2
+    },
+    "mlp_act.12": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 12,
+      "missing": "reference",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.18": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 18,
+      "missing": "reference",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.2": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 2,
+      "missing": "reference",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.23": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 23,
+      "missing": "reference",
       "point": "mlp_act",
       "status": "N/A"
     },
     "mlp_out.0": {
-      "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 0,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_out",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 0
     },
     "mlp_out.12": {
-      "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 12,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_out",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 2
     },
     "mlp_out.18": {
-      "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
+      "cos": 0.9999999999999998,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 18,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_out",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 3
     },
     "mlp_out.2": {
-      "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 2,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_out",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 1
     },
     "mlp_out.23": {
-      "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 23,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_out",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 0
     },
     "mlp_out_post.0": {
-      "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 0,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_out_post",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 0
     },
     "mlp_out_post.12": {
-      "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 12,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_out_post",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 2
     },
     "mlp_out_post.18": {
-      "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
+      "cos": 0.9999999999999998,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 18,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_out_post",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 3
     },
     "mlp_out_post.2": {
-      "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 2,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_out_post",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 1
     },
     "mlp_out_post.23": {
-      "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 23,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_out_post",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 0
     },
     "mlp_pre.0": {
-      "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 0,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
+      "point": "mlp_pre",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 0
+    },
+    "mlp_pre.12": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 12,
+      "missing": "reference",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "mlp_pre.18": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 18,
+      "missing": "reference",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "mlp_pre.2": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 2,
+      "missing": "reference",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "mlp_pre.23": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 23,
+      "missing": "reference",
       "point": "mlp_pre",
       "status": "N/A"
     },
     "mlp_pre_linear.0": {
-      "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 0,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_pre_linear",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 3
     },
     "resid_mid.0": {
-      "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 0,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "resid_mid",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 4
     },
     "resid_mid.12": {
-      "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 12,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "resid_mid",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 3
     },
     "resid_mid.18": {
-      "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 18,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "resid_mid",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 10
     },
     "resid_mid.2": {
-      "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 2,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "resid_mid",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 12
     },
     "resid_mid.23": {
-      "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 23,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "resid_mid",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 6
     },
     "resid_post.0": {
       "cos": 0.9999999999999999,
@@ -224,7 +390,7 @@
   "reason": "",
   "reference": "eager",
   "run": {
-    "date_utc": "2026-08-12T03:31:40+00:00",
+    "date_utc": "2026-09-03T22:47:15+00:00",
     "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
     "eager_only": false,
     "gpu": {
@@ -251,13 +417,13 @@
   "verdict": "\u2705",
   "versions": {
     "torch": {
-      "version": "2.13.0"
+      "version": "2.14.0"
     },
     "transformer_lens": {
-      "version": "3.7.0"
+      "version": "3.8.1"
     },
     "transformers": {
-      "version": "5.15.0"
+      "version": "5.16.1"
     }
   }
 }

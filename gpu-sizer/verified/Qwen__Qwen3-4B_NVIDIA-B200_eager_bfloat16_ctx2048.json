@@ -12,6 +12,7 @@
     "gpu_memory_utilization": 0.0,
     "num_gpus": 1,
     "static_sites": 0,
+    "static_points": [],
     "enforce_eager": null,
     "batch_size": 1,
     "seq_len": 2032,
@@ -74,14 +75,18 @@
   },
   "measured": {
     "baseline_bytes": 0,
-    "post_load_bytes": 8858370048,
-    "post_warmup_bytes": 9216983040,
-    "peak_bytes": 9835642880,
+    "post_load_bytes": 8803844096,
+    "post_reserve_bytes": 0,
+    "post_warmup_bytes": 9162457088,
+    "peak_bytes": 9781116928,
+    "per_device_peak_bytes": [
+      9781116928
+    ],
     "pool_claimed_bytes": 0,
-    "outside_measured_bytes": 9835642880,
-    "torch_peak_bytes": 8794691584,
+    "outside_measured_bytes": 9781116928,
+    "torch_peak_bytes": 8737937408,
     "kv_cache_tokens": 0,
-    "samples": 75
+    "samples": 61
   },
   "stress": {
     "max_concurrency_passed": 2,
@@ -90,8 +95,8 @@
     "requests_ok": 2,
     "requests_failed": 0,
     "latencies_ms": [
-      79.66612605378032,
-      44.26202084869146
+      197.69827695563436,
+      38.82786992471665
     ],
     "failure_kind": "",
     "failure_detail": ""
@@ -99,7 +104,8 @@
   "reservations": {
     "per_rank_bytes": 0,
     "host_bytes": 0,
-    "note": "--reserve-gib / --host-reserve-gib"
+    "before_engine": false,
+    "note": "--reserve-gib / --host-reserve-gib, held for real by the harness process; a per-rank share above rank 0 carries this process's extra CUDA context with it"
   },
   "engine_env": {},
   "engine_env_note": "",
@@ -109,11 +115,11 @@
   "error": "",
   "versions": {
     "torch": "2.13.0+cu130",
-    "transformers": "5.14.1",
-    "vllm": "0.27.1",
-    "interp_engine": "1.3.4",
-    "driver": "580.126.09"
+    "transformers": "5.16.1",
+    "vllm": "0.28.0",
+    "interp_engine": "1.6.0",
+    "driver": "580.167.08"
   },
-  "duration_s": 22.6,
-  "recorded_at": "2026-08-26T01:17:52Z"
+  "duration_s": 18.0,
+  "recorded_at": "2026-09-03T03:51:25Z"
 }

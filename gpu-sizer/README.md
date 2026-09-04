@@ -52,8 +52,13 @@ model = load_model(
 )
 ```
 
-7.5 GiB of weights, a 3 GiB graph pool, 2.8 GiB of tap buffers, and a cache that built 209,424 tokens
-— 25 concurrent 8k sequences. 4–11x faster decode than `backend="vllm"`.
+7.5 GiB of weights, a 3 GiB graph pool, 1.4 GiB of tap buffers, and a cache that built at least
+209,424 tokens — 25 concurrent 8k sequences. 4–11x faster decode than `backend="vllm"`.
+
+"At least" because the run on record predates 1.6.0, which shrank a static write delta from
+`max_num_batched_tokens` rows to one: the same command allocates 1.4 GiB of buffers today rather than
+the 2.8 GiB it was measured with, and the cache gets that back. The A40 row in
+[VERIFIED.md](VERIFIED.md) is marked `†` until someone re-runs it on that card.
 
 ### The same model, cheapest on memory (measured)
 
@@ -151,8 +156,8 @@ In rough order of how often each is the cause:
 2. **`max_model_len`.** The KV floor is linear in it. Halve it.
 3. **Prompt length on eager.** The logits and the attention matrix grow with the prompt, not the model,
    and the attention term is quadratic. `attn_implementation="sdpa"` removes it.
-4. **`max_num_batched_tokens` under `vllm-static`.** Tap buffers are that many rows tall. It defaults
-   to 8192.
+4. **`max_num_batched_tokens` under `vllm-static`.** Read tap buffers are that many rows tall, and it
+   defaults to 8192. Write deltas are one row, so dropping the writes will not help.
 5. **Something else on the card.** `nvidia-smi`. Utilization is a fraction of the whole card, so
    another process does not just take its own memory — it takes it from vLLM's pool.
 6. **`gpu_memory_utilization` too high.** Above 0.9 the margin is thinner than vLLM's own warmup

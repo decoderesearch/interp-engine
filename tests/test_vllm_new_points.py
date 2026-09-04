@@ -319,6 +319,34 @@ def test_the_value_norms_per_head_output_is_flattened_to_the_points_own_rank():
     assert flat_value(already_flat) is already_flat
 
 
+def test_a_batch_axis_on_the_packed_projection_does_not_eat_the_token_axis():
+    """The same rank as the per-head view above, arrived at the other way, and read the other way.
+
+    vLLM does not always flatten the batch away before the qkv projection: GPT-BigCode, OLMo-2,
+    Starcoder2 and SmolLM3 hand ``QKVParallelLinear`` a ``[1, tokens, d_model]`` hidden state, so the
+    narrowed value is ``[1, tokens, width]``. By shape alone that is the per-head view -- leading axis
+    tokens, trailing pair heads and head_dim -- and reading it that way folded the token axis into the
+    width and returned ``[1, tokens * width]``: the eager numbers exactly, in a shape no caller could
+    use. The four families' cells went from unscored straight to a shape mismatch the first sweep that
+    asked for this point. A packed projection states its own width, so which axis is which stops being
+    a guess.
+    """
+    packed = _QKVLinear(D_MODEL, heads=N_HEADS, kv_heads=N_HEADS, head_size=HEAD_DIM)
+    width = N_HEADS * HEAD_DIM
+    batched = torch.arange(TOKENS * width, dtype=torch.float32).reshape(1, TOKENS, width)
+
+    assert torch.equal(flat_value(batched, packed), batched[0])
+    # What most families hand over, which the module must not change the answer for.
+    assert torch.equal(flat_value(batched[0], packed), batched[0])
+
+
+def test_a_value_norm_is_still_read_per_head_because_it_states_no_width():
+    """The norm branch is unchanged by the module being passed: it has no geometry to state, so the
+    trailing pair is heads and head_dim exactly as before."""
+    per_head = torch.arange(TOKENS * 2 * HEAD_DIM, dtype=torch.float32).reshape(TOKENS, 2, HEAD_DIM)
+    assert flat_value(per_head, _FusedNorm(HEAD_DIM)).shape == (TOKENS, 2 * HEAD_DIM)
+
+
 def test_a_half_stated_geometry_is_refused_rather_than_sliced():
     """The one case that must not fall back to either branch: every wrong offset into a packed matrix
     returns another projection's heads at exactly the right width."""

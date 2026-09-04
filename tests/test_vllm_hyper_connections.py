@@ -1538,8 +1538,12 @@ def test_the_auto_static_set_can_write_the_stack_it_reads(monkeypatch):
         assert static is not None
         site = static.writes["resid_streams.0"]
         assert site is static.reads["resid_streams.0"], "one buffer serves both halves at one address"
-        assert site.delta is not None and tuple(site.delta.shape[1:]) == (HC_MULT, D_MODEL)
+        assert site.delta is not None and tuple(site.delta.shape) == (1, HC_MULT, D_MODEL)
+        assert site.buf is not None and site.buf.shape[0] == 16, "the read half is still per token"
+        # `delta_set` beside the poke, because the mHC recorder asks the flag rather than the
+        # tensor: reading the tensor is a device sync in the middle of the forward.
         site.delta[:, 2, :] = 0.5
+        site.delta_set = True
 
         worker_register_static_capture(worker, "r0", ["resid_streams.0"])
         with torch.no_grad():

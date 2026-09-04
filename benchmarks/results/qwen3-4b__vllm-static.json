@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "started_at": "2026-08-19T18:48:18+00:00",
+  "started_at": "2026-09-04T07:52:53+00:00",
   "command": "python -m benchmarks.run_bench --model qwen3-4b --variant vllm-static",
   "python": "python",
   "model": {
@@ -11,6 +11,8 @@
     "dtype": "bfloat16",
     "min_gpu_gib": 0.0,
     "capture_point": "resid_post",
+    "per_variant_vllm_kwargs": {},
+    "static_capture_point": null,
     "extra_eager_kwargs": {},
     "extra_vllm_kwargs": {},
     "gpu_memory_utilization": null,
@@ -30,15 +32,15 @@
   },
   "env": {
     "gpu_name": "NVIDIA B200",
-    "gpu_total_gib": 178.3511962890625,
-    "driver_version": "580.105.08",
+    "gpu_total_gib": 178.35107421875,
+    "driver_version": "580.126.20",
     "cuda_version": "13.0",
-    "torch_version": "2.11.0+cu130",
-    "vllm_version": "0.26.0",
-    "transformers_version": "5.14.1",
-    "interp_engine_version": "1.2.0",
-    "python_version": "3.12.3",
-    "platform": "linux 6.8.0-90-generic",
+    "torch_version": "2.13.0+cu130",
+    "vllm_version": "0.28.0",
+    "transformers_version": "5.16.1",
+    "interp_engine_version": "1.6.0",
+    "python_version": "3.13.8",
+    "platform": "linux 6.8.0-100-generic",
     "extra": {
       "VLLM_DEEP_GEMM_WARMUP": "skip"
     }
@@ -48,10 +50,10 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "ttft_ms": 56.01830314844847,
-        "prefill_tok_s": 9139.86985009525,
-        "decode_tok_s": 295.8838724573658,
-        "total_s": 0.4852407509461045
+        "ttft_ms": 12.618678621947765,
+        "prefill_tok_s": 40574.771363894986,
+        "decode_tok_s": 313.0364141118171,
+        "total_s": 0.4183222781866789
       },
       "detail": {
         "prompt_tokens": 512,
@@ -63,14 +65,14 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "total_s": 0.5877019555773586,
-        "aggregate_tok_s": 1017.5225627971998,
-        "per_request_s": 0.07346274444716983
+        "total_s": 0.4615085916593671,
+        "aggregate_tok_s": 2218.8102637876777,
+        "per_request_s": 0.057688573957420886
       },
       "detail": {
         "concurrency": 8,
         "prompt_tokens": 512,
-        "generated_tokens_total": 598,
+        "generated_tokens_total": 1024,
         "repeats": 2
       }
     },
@@ -78,8 +80,8 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 82.03469309955835,
-        "prompt_tok_s": 6241.261844895675,
+        "latency_ms": 11.744515039026737,
+        "prompt_tok_s": 43594.818372545524,
         "transported_mib": 2.5
       },
       "detail": {
@@ -95,8 +97,8 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 599.7047498822212,
-        "prompt_tok_s": 853.7534513451061,
+        "latency_ms": 123.34066070616245,
+        "prompt_tok_s": 4151.104729524276,
         "transported_mib": 90.0
       },
       "detail": {
@@ -112,7 +114,7 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 158.59233308583498,
+        "latency_ms": 107.2921920567751,
         "transported_mib": 0.7763671875
       },
       "detail": {
@@ -122,7 +124,7 @@
         "rows": 159,
         "width": 2560,
         "steered": false,
-        "completion_head": " me that I may be said to be in a low state of animal spirit",
+        "completion_head": " me that I may be said to be in a state of maniacal despair\u2014",
         "repeats": 3
       }
     },
@@ -130,7 +132,7 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 157.3949591256678,
+        "latency_ms": 107.4604308232665,
         "transported_mib": 0.7763671875
       },
       "detail": {
@@ -148,8 +150,8 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 198.5520077869296,
-        "rows_per_s": 2578.6694665381483,
+        "latency_ms": 5.794373340904713,
+        "rows_per_s": 88361.5828454813,
         "result_mib": 0.05859375
       },
       "detail": {
@@ -157,15 +159,15 @@
         "top_n": 10,
         "path": "worker-side top-k (decode_residuals_topk)",
         "repeats": 3,
-        "topk_id_overlap_vs_full": 0.9822,
+        "topk_id_overlap_vs_full": 0.9803,
         "topk_worst_shortfall_frac_of_range": 0.0
       }
     }
   },
   "load": {
-    "construct_s": 1.1461504781618714,
-    "warmup_s": 58.07497355295345,
-    "ready_s": 59.22112403111532,
+    "construct_s": 1.0064964378252625,
+    "warmup_s": 34.180885415524244,
+    "ready_s": 35.18738185334951,
     "n_layers": 36,
     "d_model": 2560,
     "device": "cuda (vllm worker)",
@@ -173,5 +175,5 @@
     "resolved_dtype": "bfloat16",
     "grad_through_forward": false
   },
-  "finished_at": "2026-08-19T18:49:32+00:00"
+  "finished_at": "2026-09-04T07:53:37+00:00"
 }

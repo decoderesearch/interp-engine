@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "started_at": "2026-08-19T19:27:24+00:00",
+  "started_at": "2026-09-04T07:18:04+00:00",
   "command": "python -m benchmarks.run_bench --model deepseek-v4-flash-0731 --variant vllm-static",
   "python": "python",
   "model": {
@@ -30,9 +30,7 @@
     "extra_eager_kwargs": {
       "device_map": "cuda"
     },
-    "extra_vllm_kwargs": {
-      "kv_cache_dtype": "fp8"
-    },
+    "extra_vllm_kwargs": {},
     "gpu_memory_utilization": 0.95,
     "native_dtype": "bfloat16"
   },
@@ -45,20 +43,20 @@
       "static_writes": "[('resid_streams', 21)]",
       "max_model_len": "2048",
       "gpu_memory_utilization": "0.95",
-      "extra_vllm_kwargs": "{'kv_cache_dtype': 'fp8', 'max_num_batched_tokens': 1024, 'compilation_config': {'cudagraph_capture_sizes': [1, 2, 4, 8, 16, 32]}, 'enable_prefix_caching': False}"
+      "extra_vllm_kwargs": "{'max_num_batched_tokens': 1024, 'compilation_config': {'cudagraph_capture_sizes': [1, 2, 4, 8, 16, 32]}, 'enable_prefix_caching': False}"
     }
   },
   "env": {
     "gpu_name": "NVIDIA B200",
-    "gpu_total_gib": 178.3511962890625,
-    "driver_version": "580.105.08",
+    "gpu_total_gib": 178.35107421875,
+    "driver_version": "580.126.20",
     "cuda_version": "13.0",
-    "torch_version": "2.11.0+cu130",
-    "vllm_version": "0.26.0",
-    "transformers_version": "5.14.1",
-    "interp_engine_version": "1.2.0",
-    "python_version": "3.12.3",
-    "platform": "linux 6.8.0-90-generic",
+    "torch_version": "2.13.0+cu130",
+    "vllm_version": "0.28.0",
+    "transformers_version": "5.16.1",
+    "interp_engine_version": "1.6.0",
+    "python_version": "3.13.8",
+    "platform": "linux 6.8.0-100-generic",
     "extra": {
       "VLLM_DEEP_GEMM_WARMUP": "skip"
     }
@@ -68,10 +66,10 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "ttft_ms": 318.4659071266651,
-        "prefill_tok_s": 1607.707414019547,
-        "decode_tok_s": 118.92239360242137,
-        "total_s": 1.3863892490044236
+        "ttft_ms": 75.92793833464384,
+        "prefill_tok_s": 6743.235905384625,
+        "decode_tok_s": 131.86411564042513,
+        "total_s": 1.0390406046062708
       },
       "detail": {
         "prompt_tokens": 512,
@@ -83,14 +81,14 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "total_s": 2.5435977161396295,
-        "aggregate_tok_s": 402.1862393997538,
-        "per_request_s": 0.3179497145174537
+        "total_s": 1.6222849520854652,
+        "aggregate_tok_s": 631.2084684528675,
+        "per_request_s": 0.20278561901068315
       },
       "detail": {
         "concurrency": 8,
         "prompt_tokens": 512,
-        "generated_tokens_total": 1023,
+        "generated_tokens_total": 1024,
         "repeats": 2
       }
     },
@@ -98,8 +96,8 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 484.4155637547374,
-        "prompt_tok_s": 1056.943744811694,
+        "latency_ms": 131.99533242732286,
+        "prompt_tok_s": 3878.9250391252217,
         "transported_mib": 32.0
       },
       "detail": {
@@ -115,8 +113,8 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 5581.670379731804,
-        "prompt_tok_s": 91.728813270518,
+        "latency_ms": 2049.1460720077157,
+        "prompt_tok_s": 249.86017687765508,
         "transported_mib": 1376.0
       },
       "detail": {
@@ -132,7 +130,7 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 604.7434308566153,
+        "latency_ms": 336.8926215916872,
         "transported_mib": 9.9375
       },
       "detail": {
@@ -150,7 +148,7 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 631.2098908238113,
+        "latency_ms": 324.6788289397955,
         "transported_mib": 9.9375
       },
       "detail": {
@@ -168,8 +166,8 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 97.82497305423021,
-        "rows_per_s": 5233.837373164089,
+        "latency_ms": 24.669302627444267,
+        "rows_per_s": 20754.538858768017,
         "result_mib": 0.05859375
       },
       "detail": {
@@ -177,15 +175,15 @@
         "top_n": 10,
         "path": "worker-side top-k (decode_residuals_topk)",
         "repeats": 3,
-        "topk_id_overlap_vs_full": 0.9848,
+        "topk_id_overlap_vs_full": 0.9846,
         "topk_worst_shortfall_frac_of_range": 0.0
       }
     }
   },
   "load": {
-    "construct_s": 1.8341202763840556,
-    "warmup_s": 1073.8554912502877,
-    "ready_s": 1075.6896115266718,
+    "construct_s": 1.3641586303710938,
+    "warmup_s": 126.34760607592762,
+    "ready_s": 127.71176470629871,
     "n_layers": 43,
     "d_model": 4096,
     "device": "cuda (vllm worker)",
@@ -193,5 +191,5 @@
     "resolved_dtype": "bfloat16",
     "grad_through_forward": false
   },
-  "finished_at": "2026-08-19T19:46:07+00:00"
+  "finished_at": "2026-09-04T07:20:35+00:00"
 }

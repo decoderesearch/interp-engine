@@ -26,7 +26,13 @@ from interp_engine.facts import is_linear_attention_layer, unclassified_layer_ki
 from interp_engine.hooks import hidden_arg_index, hidden_from_call
 from interp_engine.points import steer_refusal_reason
 from interp_engine.vllm_capture._demux import _ensure_patched, _get_demux, _resolve_rid
-from interp_engine.vllm_capture._hooks import layer_return_tensor, position_mask, returns_full_residual
+from interp_engine.vllm_capture._hooks import (
+    flat_value,
+    layer_return_tensor,
+    position_mask,
+    returns_full_residual,
+    value_columns,
+)
 from interp_engine.vllm_capture._payload import attn_payload_key, decode_capture_payload, encode_tensor_payload
 from interp_engine.vllm_capture._tree import (
     _INPUT_POINTS,
@@ -264,9 +270,9 @@ def resolve_static_points(
     the write meant restating every layer of a set ``auto`` had just built.
 
     An explicit list is left alone, since a caller who named the points named what they wanted. So
-    is ``static_writes=[]``, which is how to ask for the reads WITHOUT the write buffers: those
-    buffers are per layer and per token, and they are what steps ``max_num_batched_tokens`` down
-    when the ladder in :func:`fit_max_num_batched_tokens` cannot fit them.
+    is ``static_writes=[]``, which is how to ask for the reads without the write sites. That is a
+    capability switch and no longer a memory one: a write delta is one row whatever the batch size
+    (:func:`_alloc_site`), so it costs kilobytes and never steps ``max_num_batched_tokens`` down.
     """
     # `None` and `[]` mean different things here and nowhere else in this signature: the first is
     # "say nothing about writes", which auto fills in, and the second is "no writes", which it must
@@ -483,7 +489,9 @@ def static_read_width(
     """Client-side width used to size static *read* buffers.
 
     ``resid_streams`` is ``n_streams * d_model`` elements per token. ``attn`` expands to three
-    q/k/v buffers counted separately in ``n_sites``. Writes still allocate ``max_n`` rows.
+    q/k/v buffers counted separately in ``n_sites``. Reads are the only per-token buffers: a write
+    delta is one row (:func:`_alloc_site`), so the writes are not sized here and are not counted in
+    ``n_sites`` either.
     """
     width = max(int(d_model), 1)
     if any(a.name == "resid_streams" for a in reads):
@@ -608,6 +616,32 @@ class _Site:
     module: torch.nn.Module | None = None
     modify: Callable[[torch.Tensor], torch.Tensor] | None = None
     lens_scope: dict[str, Any] | None = None
+    #: ``(max_n, *width)``: the per-token shape this site serves. A read ``buf`` is allocated at
+    #: exactly this shape because every row differs. A write ``delta`` is one constant vector per
+    #: token, so it is allocated ``(1, *width)`` and broadcast at add time. The row cap therefore
+    #: cannot be read off whichever tensor happens to exist and is carried here instead. Left
+    #: unset, it is taken from a buffer passed to the constructor, so a hand-built site still caps
+    #: at that buffer's height.
+    shape: tuple[int, ...] = ()
+    #: Whether :attr:`delta` currently holds a write. Asked on the mHC path in place of asking the
+    #: tensor: ``(delta != 0).any().item()`` is a device-to-host sync *inside the forward*, run once
+    #: per stacked site per step, and each one drains the pipeline to fetch a single bool. Anything
+    #: that writes ``delta`` owns this flag -- :func:`worker_set_static_delta` and
+    #: :func:`worker_clear_static_delta` are the two that do.
+    delta_set: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.shape:
+            given = self.buf if self.buf is not None else self.delta
+            if given is not None:
+                self.shape = tuple(given.shape)
+
+    @property
+    def rows(self) -> int:
+        """Rows this site can serve. ``0`` when it holds no buffer at all, which means "no-op"."""
+        if self.buf is None and self.delta is None:
+            return 0
+        return int(self.shape[0]) if self.shape else 0
 
 
 @dataclass
@@ -716,6 +750,12 @@ def _buffer_shape(
         q_w, k_w, v_w = qkv_widths
         width = {"q": q_w, "k": k_w, "v": v_w}[name]
         return (max_n, width)
+    if name == "value" and qkv_widths is not None:
+        # The value alone, not the fused `[q | k | v]` the projection hands back -- `_run_post`
+        # narrows the live tensor to match. `d_model` is only coincidentally right here (MHA with
+        # `n_heads * head_dim == d_model`, which is gpt2 and why this survived): Gemma-3-1B projects
+        # one KV head of 256 against a 1152 `d_model`.
+        return (max_n, qkv_widths[2])
     if name in QK_NORM_POINTS:
         return _qk_norm_buffer_shape(name, layer, max_n)
     return (max_n, d_model)
@@ -829,11 +869,15 @@ def _alloc_site(
     need_buf: bool,
     need_delta: bool,
 ) -> _Site:
-    site = _Site(address=address, module=module)
+    site = _Site(address=address, module=module, shape=tuple(shape))
     if need_buf:
         site.buf = torch.zeros(*shape, device=device, dtype=dtype)
     if need_delta:
-        site.delta = torch.zeros(*shape, device=device, dtype=dtype)
+        # One row, not `max_n`. A static write is the same constant vector on every token, so a
+        # full-height delta stored `max_num_batched_tokens` copies of it and added them row by row;
+        # one row broadcast over the live rows is the same arithmetic for a fraction of the VRAM.
+        # An op that is not a constant never reaches this buffer at all -- it attaches a `modify`.
+        site.delta = torch.zeros(1, *shape[1:], device=device, dtype=dtype)
     return site
 
 
@@ -951,14 +995,22 @@ def worker_install_static(worker: object) -> None:
         if site is None:
             is_mhc = address.name in MHC_KERNEL_POINTS
             module = None if is_mhc else resolve_capture_module(model, layer, address.name)
-            shape = _buffer_shape(address.name, layer, max_n, d_model)
+            shape = _buffer_shape(
+                address.name,
+                layer,
+                max_n,
+                d_model,
+                qkv_widths=_attn_qkv_widths(layer, d_model) if address.name == "value" else None,
+            )
             # QK-norm keeps its per-head shape from `_buffer_shape`; the override below is a flat
-            # width, which is the wrong rank for it.
+            # width, which is the wrong rank for it. `value` keeps its width for the same reason:
+            # `_activation_width` would answer `d_model` for the fused projection.
             if (
                 module is not None
                 and address.name not in LAYER_RETURN_INDEX
                 and address.name not in MHC_KERNEL_POINTS
                 and address.name not in QK_NORM_POINTS
+                and address.name != "value"
             ):
                 width = _activation_width(module, address.name, d_model)
                 shape = (max_n, width)
@@ -972,17 +1024,18 @@ def worker_install_static(worker: object) -> None:
                 need_delta=kind == "write",
             )
             sites[key] = site
+        # Cross-seeding: a point asked for as both a read and a write is one site with both
+        # buffers. Both come off `site.shape`, which is the shape `_alloc_site` was given --
+        # re-deriving it here from the other buffer would read a write delta's single row as the
+        # read height, and re-deriving it from `_buffer_shape` would miss the `_activation_width`
+        # override above.
         if kind == "read":
             if site.buf is None:
-                shape = (
-                    site.delta.shape if site.delta is not None else _buffer_shape(address.name, layer, max_n, d_model)
-                )
-                site.buf = torch.zeros(*shape, device=device, dtype=dtype)
+                site.buf = torch.zeros(*site.shape, device=device, dtype=dtype)
             state.reads[key] = site
         else:
             if site.delta is None:
-                shape = site.buf.shape if site.buf is not None else _buffer_shape(address.name, layer, max_n, d_model)
-                site.delta = torch.zeros(*shape, device=device, dtype=dtype)
+                site.delta = torch.zeros(1, *site.shape[1:], device=device, dtype=dtype)
             state.writes[key] = site
         if address.name in MHC_KERNEL_POINTS:
             mhc_sites.append(site)
@@ -1049,8 +1102,7 @@ def _static_mhc_recorder(worker: object, site: _Site):
         static = _state(worker)
         reqs = _write_reqs_for(static, site) if static is not None else []
         live = tensor
-        has_delta = site.delta is not None and bool((site.delta != 0).any().item())
-        if reqs or site.modify is not None or has_delta:
+        if reqs or site.modify is not None or site.delta_set:
             live = tensor.clone()
             _apply_write(live, None, site, n, fused=False, worker=worker)
         if site.buf is not None:
@@ -1087,13 +1139,38 @@ def _linear_out_width(module: torch.nn.Module) -> int | None:
     return None
 
 
+def _router_out_width(module: torch.nn.Module) -> int | None:
+    """Expert count a router projects to, whether it *is* the projection or merely holds one.
+
+    On most families the router is a bare ``ReplicatedLinear`` and states its own output size. Gemma-4
+    wraps it: ``Gemma4Router`` normalizes and rescales its input, then delegates to a ``GateLinear``
+    child, so the width is one level down and the wrapper reports nothing. Falling through to
+    ``d_model`` there is not a near miss -- the buffer came out 2816 wide against 128 live -- and it
+    fails at the first forward rather than at install, taking the engine core with it.
+
+    A descendant qualifies on two counts, not one: it reports a linear output width *and* carries a
+    2-D weight. The width alone would accept the wrapper's own ``RMSNorm``, which is a sibling of the
+    projection and answers about the hidden size it normalizes over.
+    """
+    found = _linear_out_width(module)
+    if found is not None:
+        return found
+    for child in module.modules():
+        if child is module:
+            continue
+        weight = getattr(child, "weight", None)
+        if getattr(weight, "ndim", 0) == 2 and (found := _linear_out_width(child)) is not None:
+            return found
+    return None
+
+
 def _activation_width(module: torch.nn.Module, name: str, d_model: int) -> int:
     if name in {"z", "mlp_act"}:
         found = _linear_in_width(module)
         if found is not None:
             return found
     if name == "router_logits":
-        found = _linear_out_width(module)
+        found = _router_out_width(module)
         if found is not None:
             return found
     return int(d_model)
@@ -1289,10 +1366,12 @@ def _run_post(
             continue
         if not isinstance(hidden, torch.Tensor):
             continue
-        live = _row_view(hidden, site)
+        live = _row_view(_value_view(hidden, site), site)
         resid = _row_view(residual, site)
         if live is None:
             continue
+        if site.address.name == "value":
+            live = flat_value(live)
         n = _rows(live, site)
         if n == 0:
             continue
@@ -1336,19 +1415,33 @@ def _row_view(live: torch.Tensor | None, site: _Site) -> torch.Tensor | None:
     """
     if live is None:
         return None
-    cap = site.buf if site.buf is not None else site.delta
-    if cap is None:
+    if not site.shape:
         return live
-    while live.ndim > cap.ndim and live.shape[0] == 1 and tuple(live.shape[2:]) == tuple(cap.shape[1:]):
+    ndim, trailing = len(site.shape), tuple(site.shape[1:])
+    while live.ndim > ndim and live.shape[0] == 1 and tuple(live.shape[2:]) == trailing:
         live = live[0]
     return live
 
 
+def _value_view(hidden: torch.Tensor, site: _Site) -> torch.Tensor:
+    """``hidden`` narrowed to the value columns, for the one point whose module packs three tensors.
+
+    vLLM fuses q, k and v into a single ``QKVParallelLinear`` on every family that has a fused
+    implementation, so the value point's module hands back ``[q | k | v]`` and a copy of the whole
+    thing is queries and keys under the value's name. The hooked path has cut this out since
+    :func:`~interp_engine.vllm_capture._tree.value_span` was written; static resolved the same module
+    and never called it, which took the engine core down at the first forward rather than returning a
+    wrong tensor -- the buffer is the value's width, so the copy is refused instead of fitting.
+
+    Before :func:`_row_view` rather than after, because that squeezes a leading batch axis only when
+    the trailing dims already match the buffer, which they do not until the narrowing has happened.
+    A view, so a static write through it still lands in the fused tensor the model goes on to use.
+    """
+    return value_columns(hidden, site.module) if site.address.name == "value" else hidden
+
+
 def _rows(tensor: torch.Tensor, site: _Site) -> int:
-    cap = site.buf if site.buf is not None else site.delta
-    if cap is None:
-        return 0
-    return min(int(tensor.shape[0]), int(cap.shape[0]))
+    return min(int(tensor.shape[0]), site.rows)
 
 
 def _require_matching_width(live: torch.Tensor, cap: torch.Tensor, site: _Site) -> None:
@@ -1366,6 +1459,8 @@ def _add_rows(live: torch.Tensor, delta: torch.Tensor, n: int) -> None:
         raise RuntimeError(
             f"static add_ trailing {tuple(delta.shape[1:])} does not match activation trailing {tuple(live.shape[1:])}"
         )
+    # A constant write's `delta` is one row: the slice keeps that row and it broadcasts over all
+    # `n`. A full-height delta slices to `n` rows and adds elementwise, as it always did.
     live[:n].add_(delta[:n])
 
 
@@ -1640,6 +1735,7 @@ def worker_set_static_delta(
             vec = torch.tensor(spec["vector"], dtype=torch.float32, device=site.delta.device)
             vec = (vec * float(spec["coeff"])).to(dtype=site.delta.dtype)
             site.delta.copy_(vec.reshape(1, -1).expand_as(site.delta))
+            site.delta_set = True
             continue
         device, dtype = site.delta.device, site.delta.dtype
         if op in _LENS_OPS:
@@ -1733,6 +1829,7 @@ def worker_clear_static_delta(worker: object) -> None:
         site.lens_scope = None
         if site.delta is not None:
             site.delta.zero_()
+        site.delta_set = False
 
 
 def worker_register_static_capture(worker: object, req_id: str, points: list[str]) -> None:

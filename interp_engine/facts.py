@@ -192,7 +192,9 @@ FACTORED_PROJECTION_ATTRS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = 
     "kv": (("kv_a_proj_with_mqa", "kv_a_proj"), ("kv_b_proj",)),
     # DeepSeek-V4 only: the output projection is factored too, so `ATTN_OUT_PROJ_ATTRS` finds
     # nothing and `z` would otherwise fail with an AttributeError that reads as a bug report.
-    "o": (("o_a_proj",), ("o_b_proj",)),
+    # vLLM spells the same pair `wo_a`/`wo_b` (`DeepseekV4Attention`, shared by every backend:
+    # FlashMLA, FlashInfer, ROCm, XPU), and the halves match HF's dimension for dimension.
+    "o": (("o_a_proj", "wo_a"), ("o_b_proj", "wo_b")),
 }
 
 
@@ -1114,13 +1116,28 @@ _N_SHARED_EXPERTS_FIELDS: tuple[str, ...] = ("n_shared_experts", "num_shared_exp
 
 
 def n_experts(cfg: Any) -> int:
-    """How many routed experts each sparse layer has; 0 on a dense model."""
-    return _first_int(cfg, _N_EXPERTS_FIELDS) or 0
+    """How many routed experts each sparse layer has; 0 on a dense model.
+
+    Read through :func:`text_config`, because "dense" is what a nested config otherwise looks like.
+    Gemma-4 and Qwen3.6 put the text fields one level down, so a plain ``getattr`` for
+    ``num_experts`` on the outer config finds nothing and returns the same 0 a genuinely dense
+    checkpoint does -- and 0 is a value callers branch on rather than check. It silently cost
+    `vllm-static` its ``router_logits`` tap on both families (``n_experts <= 0`` skips the read) and
+    switched off :func:`assert_routing_shapes`' width check on them, the check whose whole purpose is
+    catching a router tuple read in the wrong order on exactly these newest MoE trunks.
+
+    Idempotent, so the callers that already unwrapped are unharmed: ``text_config`` returns a
+    text-only config unchanged.
+    """
+    return _first_int(text_config(cfg), _N_EXPERTS_FIELDS) or 0
 
 
 def experts_per_token(cfg: Any) -> int:
-    """The top-k: how many experts fire per token; 0 on a dense model."""
-    return _first_int(cfg, _EXPERTS_PER_TOKEN_FIELDS) or 0
+    """The top-k: how many experts fire per token; 0 on a dense model.
+
+    Through :func:`text_config` for the reason in :func:`n_experts`.
+    """
+    return _first_int(text_config(cfg), _EXPERTS_PER_TOKEN_FIELDS) or 0
 
 
 #: The router submodule of a sparse block. ``gate`` on Mixtral/Qwen3-MoE/Qwen3-Next/Qwen3.5-MoE/

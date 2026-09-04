@@ -1220,6 +1220,35 @@ def reserved_cell(r: Record) -> str:
 KV_RATIO_FLAG_FLOOR = 0.995
 
 
+#: The release that shrank a static write delta from ``max_num_batched_tokens`` rows to one. A
+#: ``vllm-static`` row recorded before it measured about twice the buffer bytes the same command
+#: allocates today, and built a correspondingly smaller KV cache. The run still happened and the
+#: pass or failure still stands -- but its `KV predicted` came from arithmetic that has since
+#: changed, so reading its ratio as a check on today's estimator compares two different engines.
+STATIC_SHRINK_VERSION = (1, 6, 0)
+
+
+def _version_tuple(text: str) -> tuple[int, ...]:
+    parts: list[int] = []
+    for chunk in str(text).split("."):
+        digits = "".join(c for c in chunk if c.isdigit())
+        if not digits:
+            break
+        parts.append(int(digits))
+    return tuple(parts)
+
+
+def predates_static_shrink(r: Record) -> bool:
+    """Whether this record's static buffers were the old full-height ones.
+
+    An unreadable or missing version counts as old, which is the safe direction: a row that cannot
+    say when it ran is exactly the one not to present as current.
+    """
+    if r.backend != "vllm-static":
+        return False
+    return _version_tuple(r.versions.get("interp_engine", "")) < STATIC_SHRINK_VERSION
+
+
 def kv_ratio_cell(built: int, predicted: int) -> str:
     """The report's `KV ratio` cell, marker included, or ``-`` where one of the two is missing.
 
@@ -1280,6 +1309,7 @@ def render_report() -> str:
             "| model | GPU | backend | dtype | ctx | util | outside reserved | KV built | KV predicted | KV ratio | outside GiB | of reserved | conc |",
             "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
+        stale = False
         for r in sorted(pool_runs, key=lambda r: (r.model_id, r.backend)):
             spec, est, meas = r.spec, r.estimate, r.measured
             built = meas.get("kv_cache_tokens") or 0
@@ -1287,14 +1317,26 @@ def render_report() -> str:
             outside = meas.get("outside_measured_bytes", 0) / mem.GIB
             reserved = est.get("outside_bytes", 0) / mem.GIB
             share = f"{outside / reserved:.2f}x" if reserved else "-"
+            old = predates_static_shrink(r)
+            stale = stale or old
             lines.append(
-                f"| `{r.model_id}` | {gpu_cell(r)} | `{r.backend}` | {spec.get('dtype')} | "
+                f"| `{r.model_id}` | {gpu_cell(r)} | `{r.backend}`{' †' if old else ''} | {spec.get('dtype')} | "
                 f"{spec.get('max_model_len') or '-'} | {spec.get('gpu_memory_utilization') or '-'} | "
                 f"{reserved_cell(r)} | "
                 f"{built:,} | {predicted:,} | {kv_ratio_cell(built, predicted)} | {outside:.2f} | {share} | "
                 f"{r.stress.get('max_concurrency_passed', 0)} |"
             )
         lines.append("")
+        if stale:
+            major, minor, patch = STATIC_SHRINK_VERSION
+            lines += [
+                f"† Recorded before interp-engine {major}.{minor}.{patch}, which shrank a static write "
+                "delta from `max_num_batched_tokens` rows to one. These runs happened and their "
+                "pass/fail still stands, but they allocated about twice the static buffers the same "
+                "command allocates today, so their `KV predicted` came from arithmetic that has since "
+                "changed. Re-run on the card to replace them; the cache should come out larger.",
+                "",
+            ]
 
     tuned = [r for r in records if r.engine_env]
     if tuned:

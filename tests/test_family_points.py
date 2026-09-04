@@ -423,6 +423,87 @@ def test_z_on_v4_is_the_input_to_the_first_half_of_the_pair(dsv4, dsv4_tokens):
     assert torch.equal(cache.get("z", 1), recorded["seen"])
 
 
+def test_vllm_spells_the_same_output_pair_differently_and_is_still_a_pair():
+    """vLLM's `DeepseekV4Attention` calls the halves `wo_a`/`wo_b`, and every backend it has
+    (FlashMLA, FlashInfer, ROCm, XPU) inherits them from that base -- so this is one vocabulary
+    entry rather than a per-backend case."""
+
+    class VllmMLA(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.wo_a = torch.nn.Linear(8, 4, bias=False)
+            self.wo_b = torch.nn.Linear(4, 8, bias=False)
+
+    pair = factored_projection(VllmMLA(), "o")
+    assert pair is not None and (pair.down_attr, pair.up_attr) == ("wo_a", "wo_b")
+
+
+def _vllm_fused_mla_layer(with_o_proj_method: bool = True) -> torch.nn.Module:
+    """A stand-in for vLLM's `DeepseekV4FlashMLAAttention`: the factored pair, and the platform
+    method that consumes it instead of calling it."""
+
+    class VllmMLA(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.wo_a = torch.nn.Linear(8, 4, bias=False)
+            self.wo_b = torch.nn.Linear(4, 8, bias=False)
+
+        if with_o_proj_method:
+
+            def _o_proj(self, o, positions):  # pragma: no cover - never called, only detected
+                raise AssertionError("the marker is its presence, not its behaviour")
+
+    class VllmMLALayer(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.self_attn = VllmMLA()
+
+    return VllmMLALayer()
+
+
+def test_the_vllm_tree_refuses_z_on_a_fused_factored_output_projection():
+    """The bug this closes, and it is not the one it looked like. Resolving `z` to `wo_a` made the
+    lookup succeed and the capture wrong: nothing calls `wo_a`, so `vllm-static` scored a
+    full-looking `(13, 4096)` of exact zeros against a real `(13, 8, 4096)` eager reference."""
+    from interp_engine.vllm_capture._tree import absent_point_reason
+
+    reason = absent_point_reason(None, "z", _vllm_fused_mla_layer())
+    assert reason is not None
+    assert "wo_a" in reason and "_o_proj" in reason
+    assert "attn_out" in reason, "a refusal should name the point that is served instead"
+
+
+def test_z_is_not_resolvable_where_it_is_refused():
+    """The refusal and the lookup have to agree, or the point comes back by the other door."""
+    from interp_engine.vllm_capture._tree import _attn_out_proj
+
+    with pytest.raises(RuntimeError, match="attention output projection"):
+        _attn_out_proj(_vllm_fused_mla_layer())
+
+
+def test_factoring_alone_is_not_the_marker():
+    """Eager factors the same projection and serves `z` through it, so the pair cannot be what
+    triggers the refusal -- the fused platform method beside it is."""
+    from interp_engine.vllm_capture._tree import absent_point_reason
+
+    assert absent_point_reason(None, "z", _vllm_fused_mla_layer(with_o_proj_method=False)) is None
+
+
+def test_an_ordinary_output_projection_is_neither_refused_nor_unresolvable():
+    """The refusal must not spread to the families that hold a plain `o_proj` and call it."""
+    from interp_engine.vllm_capture._tree import _attn_out_proj, absent_point_reason
+
+    class VllmLayer(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.self_attn = torch.nn.Module()
+            self.self_attn.o_proj = torch.nn.Linear(8, 8, bias=False)
+
+    layer = VllmLayer()
+    assert absent_point_reason(None, "z", layer) is None
+    assert _attn_out_proj(layer) is layer.self_attn.o_proj
+
+
 def test_the_latent_refusal_for_value_names_this_models_own_spelling():
     """The refusal replaced a paragraph describing the pattern with the attribute to go capture."""
     model = eager_on_meta("DeepseekV3ForCausalLM")

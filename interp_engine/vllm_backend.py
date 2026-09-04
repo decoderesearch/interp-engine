@@ -1100,7 +1100,11 @@ class VLLMModel:
         # off, and it is that combination a linear-attention trunk cannot survive.
         if reads or writes:
             self._pin_decode_only_graphs_on_hybrid_trunk()
-        n_bufs = sum(3 if a.name == "attn" else 1 for a in reads) + len(writes)
+        # Reads only. A write allocates a `[1, width]` delta (see `static._alloc_site`), so it does
+        # not scale with `max_num_batched_tokens` and has no business in a budget whose whole job is
+        # to decide how large that may be. Counting writes here kept stepping the batch down for
+        # buffers that are now a few kilobytes.
+        n_bufs = sum(3 if a.name == "attn" else 1 for a in reads)
         if not n_bufs or not torch.cuda.is_available():
             return
         max_n = int(self._engine_kwargs.get("max_num_batched_tokens") or 8192)

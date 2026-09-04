@@ -6,6 +6,7 @@ without downloading weights or needing CUDA/vLLM.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 from unittest.mock import patch
 
@@ -373,3 +374,162 @@ def test_an_explicit_device_map_is_not_second_guessed():
     """A caller placing the model itself (multi-GPU, or an offload map for a checkpoint bigger than
     the card) has said more than we know here."""
     assert _placement(quantized=True, device=None, device_map="auto")["device_map"] == "auto"
+
+
+# --- a Hub kernel with no build for this GPU ----------------------------------
+#
+# `kernels` 0.16.1 refuses a prebuilt kernel whose declared architectures miss the current device.
+# transformers' `lazy_load_kernel` does not catch that refusal, so it escapes rather than reaching
+# the Triton fallback. The weights load fine -- measured on a B200, DeepSeek-V4-Flash-0731 loads in
+# 22s and then dies on the first forward -- so a caller who is not warned at load meets a bare
+# RuntimeError about CUDA capabilities partway through a capture, saying nothing about the model
+# they asked for or what to do next. Hence a probe at load: the same call the forward makes.
+
+_ARCH_REFUSAL = (
+    "Kernel 'deep-gemm' variant 'torch214-cxx11-cu130-x86_64-linux' does not support the current "
+    "device: CUDA capability 10.0 of the current device is not supported by the architectures of "
+    "the build: 9.0a."
+)
+
+
+class _StopAtTokenizer(Exception):
+    """Raised from the patched tokenizer, one step past the probe: reaching it means the probe passed."""
+
+
+class _StubModel:
+    """Just enough of a loaded model for `__init__` to reach the probe."""
+
+    def __init__(self, config: Any) -> None:
+        self.config = config
+
+    def eval(self) -> None: ...
+
+    def requires_grad_(self, _: bool) -> None: ...
+
+
+def _load_probing(refusal: str | None, *, quant: str | None, probe: Any = None) -> pytest.ExceptionInfo[Exception]:
+    """Load a checkpoint of scheme `quant` while the Hub says `refusal`; return what was raised."""
+    config = LlamaConfig()
+    if quant is not None:
+        config.quantization_config = {"quant_method": quant}
+
+    with (
+        patch.object(model, "_load_hf_model", lambda *a, **k: _StubModel(config)),
+        patch.object(model, "_hub_kernel_arch_refusal", probe or (lambda: refusal)),
+        patch.object(model.AutoConfig, "from_pretrained", return_value=config),
+        patch.object(model.AutoTokenizer, "from_pretrained", side_effect=_StopAtTokenizer),
+        pytest.raises(Exception) as caught,  # noqa: PT011 - the type under test is the assertion
+    ):
+        model.EagerModel("some-org/some-model", trust_remote_code=False, device="cuda")
+    return caught
+
+
+@pytest.fixture
+def on_a_gpu(monkeypatch):
+    monkeypatch.setattr(model.torch.cuda, "is_available", lambda: True)
+
+
+def test_a_kernel_built_for_another_gpu_says_which_model_and_what_to_do(on_a_gpu):
+    caught = _load_probing(_ARCH_REFUSAL, quant="fp8")
+    assert caught.type is model.HubKernelUnsupported
+    message = str(caught.value)
+    assert "some-org/some-model" in message
+    assert "TRANSFORMERS_DISABLE_DEEPGEMM_LINEAR=1" in message
+    assert "grouped_mm" in message
+    assert model.TRANSFORMERS_DEEPGEMM_NOTE in message
+    assert _ARCH_REFUSAL in message, "the original refusal is evidence, not noise"
+
+
+def test_a_gpu_the_kernel_does_target_is_not_warned_about(on_a_gpu):
+    assert _load_probing(None, quant="fp8").type is _StopAtTokenizer
+
+
+def test_an_unquantized_checkpoint_never_asks_the_hub(on_a_gpu):
+    """Only FP8 reaches for DeepGEMM, and answering the probe pulls a kernel off the Hub."""
+    asked = False
+
+    def probe() -> str:
+        nonlocal asked
+        asked = True
+        return _ARCH_REFUSAL
+
+    assert _load_probing(None, quant=None, probe=probe).type is _StopAtTokenizer
+    assert not asked
+
+
+def test_a_caller_who_already_turned_deepgemm_off_is_not_warned_about_it(on_a_gpu, monkeypatch):
+    """The refusal only arrives if something still reaches for the kernel, and nothing here does."""
+    monkeypatch.setenv(model.DISABLE_DEEPGEMM_LINEAR, "1")
+    config = LlamaConfig()
+    config.quantization_config = {"quant_method": "fp8"}
+    config._experts_implementation = "grouped_mm"
+
+    with (
+        patch.object(model, "_load_hf_model", lambda *a, **k: _StubModel(config)),
+        patch.object(model, "_hub_kernel_arch_refusal", lambda: _ARCH_REFUSAL),
+        patch.object(model.AutoConfig, "from_pretrained", return_value=config),
+        patch.object(model.AutoTokenizer, "from_pretrained", side_effect=_StopAtTokenizer),
+        pytest.raises(_StopAtTokenizer),
+    ):
+        model.EagerModel("some-org/some-model", trust_remote_code=False, device="cuda")
+
+
+def test_half_a_workaround_is_still_warned_about(on_a_gpu, monkeypatch):
+    """The linear path is off but the experts are still on DeepGEMM, so the forward still dies."""
+    monkeypatch.setenv(model.DISABLE_DEEPGEMM_LINEAR, "1")
+    config = LlamaConfig()
+    config.quantization_config = {"quant_method": "fp8"}
+    config._experts_implementation = "deepgemm"
+
+    with (
+        patch.object(model, "_load_hf_model", lambda *a, **k: _StubModel(config)),
+        patch.object(model, "_hub_kernel_arch_refusal", lambda: _ARCH_REFUSAL),
+        patch.object(model.AutoConfig, "from_pretrained", return_value=config),
+        pytest.raises(model.HubKernelUnsupported),
+    ):
+        model.EagerModel("some-org/some-model", trust_remote_code=False, device="cuda")
+
+
+# --- the workaround the harnesses opt into -------------------------------------
+
+
+def _fallback_for(config: Any, *, refusal: str | None = _ARCH_REFUSAL) -> dict[str, Any]:
+    with (
+        patch.object(model.AutoConfig, "from_pretrained", return_value=config),
+        patch.object(model, "_hub_kernel_arch_refusal", lambda: refusal),
+    ):
+        return model.deepgemm_fallback_kwargs("some-org/some-model")
+
+
+def _fp8_moe_config() -> Any:
+    config = LlamaConfig()
+    config.quantization_config = {"quant_method": "fp8"}
+    config.num_local_experts = 8
+    return config
+
+
+def test_an_fp8_moe_on_an_unserved_gpu_gets_both_halves(on_a_gpu, monkeypatch):
+    monkeypatch.delenv(model.DISABLE_DEEPGEMM_LINEAR, raising=False)
+    assert _fallback_for(_fp8_moe_config()) == {"experts_implementation": "grouped_mm"}
+    assert os.environ[model.DISABLE_DEEPGEMM_LINEAR] == "1", "the linear half has no kwarg to carry it"
+
+
+def test_a_dense_fp8_checkpoint_is_not_told_about_experts_it_does_not_have(on_a_gpu, monkeypatch):
+    """`experts_implementation` on a dense trunk is a kwarg transformers has nowhere to put."""
+    monkeypatch.delenv(model.DISABLE_DEEPGEMM_LINEAR, raising=False)
+    config = LlamaConfig()
+    config.quantization_config = {"quant_method": "fp8"}
+    assert _fallback_for(config) == {}
+    assert os.environ[model.DISABLE_DEEPGEMM_LINEAR] == "1", "the linear path is its whole exposure"
+
+
+def test_a_gpu_the_kernel_does_target_is_left_alone(on_a_gpu, monkeypatch):
+    monkeypatch.delenv(model.DISABLE_DEEPGEMM_LINEAR, raising=False)
+    assert _fallback_for(_fp8_moe_config(), refusal=None) == {}
+    assert model.DISABLE_DEEPGEMM_LINEAR not in os.environ
+
+
+def test_an_unquantized_checkpoint_is_left_alone(on_a_gpu, monkeypatch):
+    monkeypatch.delenv(model.DISABLE_DEEPGEMM_LINEAR, raising=False)
+    assert _fallback_for(LlamaConfig()) == {}
+    assert model.DISABLE_DEEPGEMM_LINEAR not in os.environ

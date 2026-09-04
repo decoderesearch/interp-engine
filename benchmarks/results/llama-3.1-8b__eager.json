@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "started_at": "2026-08-19T13:36:38+00:00",
+  "started_at": "2026-09-04T07:53:45+00:00",
   "command": "python -m benchmarks.run_bench --model llama-3.1-8b --variant eager",
   "python": "python",
   "model": {
@@ -11,6 +11,8 @@
     "dtype": "bfloat16",
     "min_gpu_gib": 0.0,
     "capture_point": "resid_post",
+    "per_variant_vllm_kwargs": {},
+    "static_capture_point": null,
     "extra_eager_kwargs": {},
     "extra_vllm_kwargs": {},
     "gpu_memory_utilization": null,
@@ -26,15 +28,15 @@
   },
   "env": {
     "gpu_name": "NVIDIA B200",
-    "gpu_total_gib": 178.3511962890625,
-    "driver_version": "580.105.08",
+    "gpu_total_gib": 178.35107421875,
+    "driver_version": "580.126.20",
     "cuda_version": "13.0",
-    "torch_version": "2.11.0+cu130",
-    "vllm_version": "0.26.0",
-    "transformers_version": "5.14.1",
-    "interp_engine_version": "1.2.0",
-    "python_version": "3.12.3",
-    "platform": "linux 6.8.0-90-generic",
+    "torch_version": "2.13.0+cu130",
+    "vllm_version": "0.28.0",
+    "transformers_version": "5.16.1",
+    "interp_engine_version": "1.6.0",
+    "python_version": "3.13.8",
+    "platform": "linux 6.8.0-100-generic",
     "extra": {
       "VLLM_DEEP_GEMM_WARMUP": "skip"
     }
@@ -44,10 +46,10 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "ttft_ms": 31.663841102272272,
-        "prefill_tok_s": 16169.863862892416,
-        "decode_tok_s": 32.600782647339,
-        "total_s": 3.927275838330388
+        "ttft_ms": 17.7618358284235,
+        "prefill_tok_s": 28825.84913777147,
+        "decode_tok_s": 84.06705968606977,
+        "total_s": 1.5284605622291565
       },
       "detail": {
         "prompt_tokens": 512,
@@ -59,9 +61,9 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "total_s": 31.801113231573254,
-        "aggregate_tok_s": 32.20013062257635,
-        "per_request_s": 3.9751391539466567
+        "total_s": 12.622614024206996,
+        "aggregate_tok_s": 81.1242424141486,
+        "per_request_s": 1.5778267530258745
       },
       "detail": {
         "concurrency": 8,
@@ -74,8 +76,8 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 32.67546510323882,
-        "prompt_tok_s": 15669.249033864558,
+        "latency_ms": 18.40895228087902,
+        "prompt_tok_s": 27812.55511927223,
         "transported_mib": 4.0
       },
       "detail": {
@@ -91,8 +93,8 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 157.82041708007455,
-        "prompt_tok_s": 3244.1936821154304,
+        "latency_ms": 38.64251170307398,
+        "prompt_tok_s": 13249.65633533782,
         "transported_mib": 128.0
       },
       "detail": {
@@ -108,7 +110,7 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 992.3309083096683,
+        "latency_ms": 410.5905182659626,
         "transported_mib": 1.2421875
       },
       "detail": {
@@ -126,7 +128,7 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 1146.154941059649,
+        "latency_ms": 409.5878042280674,
         "transported_mib": 1.2421875
       },
       "detail": {
@@ -144,8 +146,8 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 2.8498750180006027,
-        "rows_per_s": 179657.00136534608,
+        "latency_ms": 5.338005721569061,
+        "rows_per_s": 95915.97062760397,
         "result_mib": 0.048828125
       },
       "detail": {
@@ -157,9 +159,9 @@
     }
   },
   "load": {
-    "construct_s": 12.456346776802093,
-    "warmup_s": 2.990197390317917e-05,
-    "ready_s": 12.456376678775996,
+    "construct_s": 4.4311385760083795,
+    "warmup_s": 8.930452167987823e-06,
+    "ready_s": 4.4311475064605474,
     "n_layers": 32,
     "d_model": 4096,
     "device": "cuda:0",
@@ -167,5 +169,5 @@
     "resolved_dtype": "bfloat16",
     "grad_through_forward": false
   },
-  "finished_at": "2026-08-19T13:38:33+00:00"
+  "finished_at": "2026-09-04T07:54:29+00:00"
 }

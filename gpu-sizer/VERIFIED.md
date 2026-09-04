@@ -26,18 +26,27 @@ fires on every row is a marker everyone learns to skip.
 | model | GPU | backend | dtype | ctx | util | outside reserved | KV built | KV predicted | KV ratio | outside GiB | of reserved | conc |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `Qwen/Qwen3-4B` | NVIDIA A40 | `vllm` | bfloat16 | 8192 | 0.9 | - | 233,040 | 232,631 | 1.00 | 0.67 | 0.28x | 8 |
-| `Qwen/Qwen3-4B` | NVIDIA B200 | `vllm` | bfloat16 | 8192 | 0.9 | - | 1,109,600 | 1,111,293 | 1.00 | 1.77 | 0.23x | 4 |
-| `Qwen/Qwen3-4B` | NVIDIA A40 | `vllm-static` | bfloat16 | 8192 | 0.9 | - | 209,424 | 190,305 | 1.10 | 1.92 | 0.81x | 8 |
-| `Qwen/Qwen3-4B` | NVIDIA B200 | `vllm-static` | bfloat16 | 8192 | 0.9 | - | 1,085,840 | 1,068,968 | 1.02 | 2.70 | 0.35x | 4 |
-| `RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8` | NVIDIA B200 | `vllm` | auto | 8192 | 0.9 | - | 1,239,264 | 1,242,299 | 1.00 | 1.82 | 0.24x | 4 |
+| `Qwen/Qwen3-4B` | NVIDIA B200 | `vllm` | bfloat16 | 8192 | 0.9 | - | 1,109,600 | 1,111,293 | 1.00 | 1.68 | 0.22x | 4 |
+| `Qwen/Qwen3-4B` | NVIDIA GeForce RTX 5090 | `vllm` | bfloat16 | 8192 | 0.9 | - | 145,888 | 146,480 | 1.00 | 0.94 | 0.51x | 4 |
+| `Qwen/Qwen3-4B` | NVIDIA A40 | `vllm-static` † | bfloat16 | 8192 | 0.9 | - | 209,424 | 190,305 | 1.10 | 1.92 | 0.81x | 8 |
+| `Qwen/Qwen3-4B` | NVIDIA B200 | `vllm-static` | bfloat16 | 8192 | 0.9 | - | 1,096,080 | 1,079,206 | 1.02 | 2.70 | 0.35x | 4 |
+| `Qwen/Qwen3-4B` | NVIDIA GeForce RTX 5090 | `vllm-static` | bfloat16 | 8192 | 0.9 | - | 132,368 | 114,394 | 1.16 | 1.81 | 0.98x | 4 |
+| `Qwen/Qwen3-8B` | NVIDIA GeForce RTX 5090 | `vllm-static` | bfloat16 | 8192 | 0.9 | - | 68,528 | 51,713 | 1.33 | 1.96 | 1.05x | 4 |
+| `RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8` | NVIDIA B200 | `vllm` | auto | 8192 | 0.9 | - | 1,239,520 | 1,242,299 | 1.00 | 1.83 | 0.24x | 4 |
 | `google/gemma-3-12b-pt` | NVIDIA A40 | `vllm` | bfloat16 | 8192 | 0.9 | - | 60,714 | 41,552 | 1.46 | 0.37 | 0.16x | 8 |
+| `google/gemma-3-12b-pt` | NVIDIA B200 | `vllm` | bfloat16 | 8192 | 0.9 | - | 537,580 | 341,096 | 1.58 | 0.59 | 0.08x | 4 |
+| `google/gemma-3-12b-pt` | NVIDIA B200 | `vllm-static` | bfloat16 | 8192 | 0.9 | - | 353,467 | 326,666 | 1.08 | 0.00 | 0.00x | 4 |
 | `google/gemma-3-1b-pt` | NVIDIA A40 | `vllm` | bfloat16 | 4096 | 0.9 | - | 1,399,779 | 1,377,704 | 1.02 | 0.98 | 0.41x | 8 |
-| `google/gemma-3-1b-pt` | NVIDIA B200 | `vllm` | bfloat16 | 4096 | 0.9 | - | 5,892,717 | 5,801,739 | 1.02 | 2.07 | 0.27x | 4 |
-| `nvidia/Llama-3.3-70B-Instruct-FP4` | NVIDIA B200 | `vllm` | auto | 8192 | 0.9 | - | 784,896 | 788,591 | 1.00 | 2.29 | 0.30x | 4 |
+| `google/gemma-3-1b-pt` | NVIDIA B200 | `vllm` | bfloat16 | 4096 | 0.9 | - | 5,892,717 | 5,801,739 | 1.02 | 1.96 | 0.25x | 4 |
+| `nvidia/Llama-3.3-70B-Instruct-FP4` | NVIDIA B200 | `vllm` | auto | 8192 | 0.9 | - | 785,104 | 788,591 | 1.00 | 2.72 | 0.35x | 4 |
 | `openai-community/gpt2` | NVIDIA A40 | `vllm` | bfloat16 | 1024 | 0.9 | - | 1,151,632 | 1,141,323 | 1.01 | 0.34 | 0.14x | 8 |
-| `openai-community/gpt2` | NVIDIA B200 | `vllm` | bfloat16 | 1024 | 0.9 | - | 4,658,272 | 4,655,972 | 1.00 | 1.37 | 0.18x | 4 |
+| `openai-community/gpt2` | NVIDIA B200 | `vllm` | bfloat16 | 1024 | 0.9 | - | 4,658,272 | 4,655,972 | 1.00 | 1.35 | 0.17x | 4 |
+| `openai-community/gpt2` | NVIDIA GeForce RTX 5090 | `vllm` | bfloat16 | 1024 | 0.9 | - | 803,440 | 796,721 | 1.01 | 0.59 | 0.32x | 4 |
 | `openai/gpt-oss-20b` | NVIDIA A40 | `vllm` | auto | 4096 | 0.9 | - | 544,919 | 528,722 | 1.03 | 0.12 | 0.05x | 8 |
-| `openai/gpt-oss-20b` | NVIDIA B200 | `vllm` | auto | 4096 | 0.9 | - | 3,167,549 | 2,925,074 | 1.08 | 0.96 | 0.12x | 4 |
+| `openai/gpt-oss-20b` | NVIDIA B200 | `vllm` | auto | 4096 | 0.9 | - | 3,174,144 | 2,925,074 | 1.09 | 0.81 | 0.10x | 4 |
+| `openai/gpt-oss-20b` | NVIDIA GeForce RTX 5090 | `vllm` | auto | 4096 | 0.9 | - | 283,661 | 293,766 | 0.97 ! | 0.48 | 0.26x | 4 |
+
+† Recorded before interp-engine 1.6.0, which shrank a static write delta from `max_num_batched_tokens` rows to one. These runs happened and their pass/fail still stands, but they allocated about twice the static buffers the same command allocates today, so their `KV predicted` came from arithmetic that has since changed. Re-run on the card to replace them; the cache should come out larger.
 
 ### Rows that needed a non-default engine environment
 
@@ -60,7 +69,7 @@ the estimate was conservative.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `Qwen/Qwen3-4B` | NVIDIA A40 | bfloat16 | 2048 | sdpa | 10.4 | 8.7 | 0.84 |
 | `Qwen/Qwen3-4B` | NVIDIA A40 | bfloat16 | 32752 | sdpa | 37.8 | 21.4 | 0.57 |
-| `Qwen/Qwen3-4B` | NVIDIA B200 | bfloat16 | 2032 | sdpa | 10.4 | 9.2 | 0.88 |
+| `Qwen/Qwen3-4B` | NVIDIA B200 | bfloat16 | 2032 | sdpa | 10.4 | 9.1 | 0.88 |
 | `Qwen/Qwen3-4B` | NVIDIA GeForce RTX 5090 | bfloat16 | 2032 | sdpa | 10.4 | 9.0 | 0.86 |
 | `google/gemma-3-12b-pt` | NVIDIA A40 | bfloat16 | 8176 | sdpa | 36.3 | 29.0 | 0.80 |
 
@@ -92,11 +101,10 @@ Run `python gpu-sizer/verify.py --run-pending` on suitable hardware.
 
 | model | backend | dtype | needs |
 | --- | --- | --- | --- |
-| `google/gemma-3-12b-pt` | `vllm-static` | bfloat16 | a B200 or other sm_100 card on vLLM >= 0.28.0. Same deleted 0.27.1 record as the `vllm` row above -- FA4's `SM100 forward with head_dim=256 does not support seqused_q/seqused_k`, fixed by vllm-project/vllm#52050 in 0.28.0. Note the A40 `vllm-static` failure for this model is a separate and still-valid bound, about static buffers rather than kernels |
-| `google/gemma-3-12b-pt` | `vllm` | bfloat16 | a B200 or other sm_100 card on vLLM >= 0.28.0. The 0.27.1 record here was deleted rather than kept: it died in kernel warmup on FA4's `SM100 forward with head_dim=256 does not support seqused_q/seqused_k`, which vllm-project/vllm#52050 fixes in 0.28.0 -- now the declared floor in pyproject.toml -- so it bounded nothing and was stamping `known to fail` on a configuration the pinned floor runs |
+| `google/gemma-3-12b-pt` | `eager` | float32 | needs a card small enough for 45.4 GiB of float32 weights to overrun it; this card is 178.56 GiB |
 
 ## What these runs cover
 
 - Cards exercised: NVIDIA A40, NVIDIA B200, NVIDIA GeForce RTX 5090
-- Records: 18 passing, 5 failing
+- Records: 25 passing, 5 failing
 - Every quantization scheme this catalog tracks has a card behind it here. fp8, nvfp4 cannot be verified on some of the cards above, so read those schemes off the rows whose GPU supports them rather than off the table as a whole.

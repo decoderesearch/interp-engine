@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-08-12",
+  "captured_at": "2026-09-03",
   "device": "cuda",
   "dtype": "bfloat16",
   "engine": "vllm",
@@ -7,48 +7,48 @@
   "known_bug": null,
   "points": {
     "attn_in.47": {
-      "cos": 0.999616335016615,
-      "cos_worst_token": 0.999221122054107,
+      "cos": 0.9996273046024858,
+      "cos_worst_token": 0.9991693357967907,
       "layer": 47,
-      "max_abs_diff": 0.625,
+      "max_abs_diff": 0.3125,
       "point": "attn_in",
-      "rel_diff": 0.027713178773336296,
-      "rel_worst_token": 0.03947514345638012,
+      "rel_diff": 0.027299309309738413,
+      "rel_worst_token": 0.04075507587278419,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 1
+      "worst_token": 3
     },
     "attn_out.47": {
-      "cos": 0.9995613138251352,
-      "cos_worst_token": 0.9992831278999745,
+      "cos": 0.9997316623888264,
+      "cos_worst_token": 0.9993044977234171,
       "layer": 47,
-      "max_abs_diff": 0.59375,
+      "max_abs_diff": 0.3125,
       "point": "attn_out",
-      "rel_diff": 0.03057261671758908,
-      "rel_worst_token": 0.05623373712053491,
+      "rel_diff": 0.02327903090966836,
+      "rel_worst_token": 0.03729010129112307,
       "status": "PASS",
       "tier": "fused",
       "worst_token": 5
     },
     "attn_out_post.47": {
-      "cos": 0.9995613138251352,
-      "cos_worst_token": 0.9992831278999745,
+      "cos": 0.9997316623888264,
+      "cos_worst_token": 0.9993044977234171,
       "layer": 47,
-      "max_abs_diff": 0.59375,
+      "max_abs_diff": 0.3125,
       "point": "attn_out_post",
-      "rel_diff": 0.03057261671758908,
-      "rel_worst_token": 0.05623373712053491,
+      "rel_diff": 0.02327903090966836,
+      "rel_worst_token": 0.03729010129112307,
       "status": "PASS",
       "tier": "fused",
       "worst_token": 5
     },
     "attn_scores.47": {
-      "cos": 0.9999785772372969,
+      "cos": 0.9999729029267589,
       "layer": 47,
       "masked_out": 1248,
-      "max_abs_diff": 0.3138923645019531,
+      "max_abs_diff": 0.38866233825683594,
       "point": "attn_scores",
-      "rel_diff": 0.006891767508643962,
+      "rel_diff": 0.008489329274274069,
       "status": "PASS",
       "tier": "fused"
     },
@@ -65,16 +65,16 @@
       "worst_token": 7
     },
     "final_norm": {
-      "cos": 0.9991946702608848,
-      "cos_worst_token": 0.998254010466657,
+      "cos": 0.9990846621999816,
+      "cos_worst_token": 0.9969132876197506,
       "layer": null,
       "max_abs_diff": 0.75,
       "point": "final_norm",
-      "rel_diff": 0.040162567123506146,
-      "rel_worst_token": 0.05947953704858336,
+      "rel_diff": 0.042803766165767254,
+      "rel_worst_token": 0.07859390306955054,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 4
+      "worst_token": 1
     },
     "k_norm_in.47": {
       "expected": "the fused QK-norm-RoPE-gate kernel is handed the norms' *weights* rather than calling the modules, so a hook on them installs and never fires. interp-engine refuses the point (`vllm_capture._tree.absent_point_reason`) instead of returning nothing silently; eager serves them on the same checkpoint",
@@ -115,100 +115,100 @@
       "status": "N/A"
     },
     "mlp_out.0": {
-      "cos": 0.99993957201339,
-      "cos_worst_token": 0.9996697194618421,
+      "cos": 0.9999412964630061,
+      "cos_worst_token": 0.9996654175692263,
       "layer": 0,
-      "max_abs_diff": 0.002166748046875,
+      "max_abs_diff": 0.0020751953125,
       "point": "mlp_out",
-      "rel_diff": 0.011443530586065684,
-      "rel_worst_token": 0.025701565245274838,
+      "rel_diff": 0.010896237763181505,
+      "rel_worst_token": 0.025887317032501536,
       "status": "PASS",
       "tier": "fused",
       "worst_token": 0
     },
     "mlp_out.24": {
-      "cos": 0.9950954919803274,
-      "cos_worst_token": 0.9853342454574806,
+      "cos": 0.9947792602051307,
+      "cos_worst_token": 0.9789655801716185,
       "layer": 24,
-      "max_abs_diff": 0.171875,
+      "max_abs_diff": 0.1318359375,
       "point": "mlp_out",
-      "rel_diff": 0.09913263185689454,
-      "rel_worst_token": 0.1873344010594467,
+      "rel_diff": 0.10209261740124279,
+      "rel_worst_token": 0.2056080876029474,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 7
+      "worst_token": 8
     },
     "mlp_out.36": {
-      "cos": 0.9947044329729455,
-      "cos_worst_token": 0.9810862878886214,
+      "cos": 0.9964461106075021,
+      "cos_worst_token": 0.9895546815807654,
       "layer": 36,
-      "max_abs_diff": 0.19140625,
+      "max_abs_diff": 0.11328125,
       "point": "mlp_out",
-      "rel_diff": 0.10293689903361185,
-      "rel_worst_token": 0.196510660351617,
+      "rel_diff": 0.08450476021408365,
+      "rel_worst_token": 0.14444762461765204,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 6
+      "worst_token": 12
     },
     "mlp_out.47": {
-      "cos": 0.9994619318897887,
-      "cos_worst_token": 0.9986852043741371,
+      "cos": 0.9995978379671083,
+      "cos_worst_token": 0.996031633656849,
       "layer": 47,
-      "max_abs_diff": 0.8125,
+      "max_abs_diff": 1.22265625,
       "point": "mlp_out",
-      "rel_diff": 0.03282581092434524,
-      "rel_worst_token": 0.05266709938153624,
+      "rel_diff": 0.028408675887629006,
+      "rel_worst_token": 0.08997480086633383,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 4
+      "worst_token": 1
     },
     "mlp_out_post.0": {
-      "cos": 0.99993957201339,
-      "cos_worst_token": 0.9996697194618421,
+      "cos": 0.9999412964630061,
+      "cos_worst_token": 0.9996654175692263,
       "layer": 0,
-      "max_abs_diff": 0.002166748046875,
+      "max_abs_diff": 0.0020751953125,
       "point": "mlp_out_post",
-      "rel_diff": 0.011443530586065684,
-      "rel_worst_token": 0.025701565245274838,
+      "rel_diff": 0.010896237763181505,
+      "rel_worst_token": 0.025887317032501536,
       "status": "PASS",
       "tier": "fused",
       "worst_token": 0
     },
     "mlp_out_post.24": {
-      "cos": 0.9950954919803274,
-      "cos_worst_token": 0.9853342454574806,
+      "cos": 0.9947792602051307,
+      "cos_worst_token": 0.9789655801716185,
       "layer": 24,
-      "max_abs_diff": 0.171875,
+      "max_abs_diff": 0.1318359375,
       "point": "mlp_out_post",
-      "rel_diff": 0.09913263185689454,
-      "rel_worst_token": 0.1873344010594467,
+      "rel_diff": 0.10209261740124279,
+      "rel_worst_token": 0.2056080876029474,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 7
+      "worst_token": 8
     },
     "mlp_out_post.36": {
-      "cos": 0.9947044329729455,
-      "cos_worst_token": 0.9810862878886214,
+      "cos": 0.9964461106075021,
+      "cos_worst_token": 0.9895546815807654,
       "layer": 36,
-      "max_abs_diff": 0.19140625,
+      "max_abs_diff": 0.11328125,
       "point": "mlp_out_post",
-      "rel_diff": 0.10293689903361185,
-      "rel_worst_token": 0.196510660351617,
+      "rel_diff": 0.08450476021408365,
+      "rel_worst_token": 0.14444762461765204,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 6
+      "worst_token": 12
     },
     "mlp_out_post.47": {
-      "cos": 0.9994619318897887,
-      "cos_worst_token": 0.9986852043741371,
+      "cos": 0.9995978379671083,
+      "cos_worst_token": 0.996031633656849,
       "layer": 47,
-      "max_abs_diff": 0.8125,
+      "max_abs_diff": 1.22265625,
       "point": "mlp_out_post",
-      "rel_diff": 0.03282581092434524,
-      "rel_worst_token": 0.05266709938153624,
+      "rel_diff": 0.028408675887629006,
+      "rel_worst_token": 0.08997480086633383,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 4
+      "worst_token": 1
     },
     "q_norm_in.47": {
       "expected": "the fused QK-norm-RoPE-gate kernel is handed the norms' *weights* rather than calling the modules, so a hook on them installs and never fires. interp-engine refuses the point (`vllm_capture._tree.absent_point_reason`) instead of returning nothing silently; eager serves them on the same checkpoint",
@@ -237,88 +237,88 @@
       "worst_token": 3
     },
     "resid_mid.24": {
-      "cos": 0.9997623743670684,
-      "cos_worst_token": 0.9964852502423474,
+      "cos": 0.9997407223919422,
+      "cos_worst_token": 0.9982261301040471,
       "layer": 24,
       "max_abs_diff": 0.25,
       "point": "resid_mid",
-      "rel_diff": 0.02233416891275518,
-      "rel_worst_token": 0.08439846482259031,
-      "status": "PASS",
-      "tier": "fused",
-      "worst_token": 7
-    },
-    "resid_mid.36": {
-      "cos": 0.9996311157644844,
-      "cos_worst_token": 0.998396461485894,
-      "layer": 36,
-      "max_abs_diff": 0.25,
-      "point": "resid_mid",
-      "rel_diff": 0.027459536048784896,
-      "rel_worst_token": 0.05758907862668676,
+      "rel_diff": 0.022788929550006328,
+      "rel_worst_token": 0.06038024721057642,
       "status": "PASS",
       "tier": "fused",
       "worst_token": 6
     },
-    "resid_mid.47": {
-      "cos": 0.9993973098382622,
-      "cos_worst_token": 0.9983887401690709,
-      "layer": 47,
-      "max_abs_diff": 0.75,
+    "resid_mid.36": {
+      "cos": 0.999618753021706,
+      "cos_worst_token": 0.9986117204774119,
+      "layer": 36,
+      "max_abs_diff": 0.25,
       "point": "resid_mid",
-      "rel_diff": 0.03489085010707529,
-      "rel_worst_token": 0.0567450552847682,
+      "rel_diff": 0.02761086334451952,
+      "rel_worst_token": 0.05292821488311511,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 3
+    },
+    "resid_mid.47": {
+      "cos": 0.9994405470429117,
+      "cos_worst_token": 0.9983910558375659,
+      "layer": 47,
+      "max_abs_diff": 0.5,
+      "point": "resid_mid",
+      "rel_diff": 0.033450012325935106,
+      "rel_worst_token": 0.05690471370080887,
       "status": "PASS",
       "tier": "fused",
       "worst_token": 1
     },
     "resid_post.0": {
-      "cos": 0.9999884293145567,
-      "cos_worst_token": 0.9999561560486397,
+      "cos": 0.9999890716399703,
+      "cos_worst_token": 0.999955638146114,
       "layer": 0,
       "max_abs_diff": 0.015625,
       "point": "resid_post",
-      "rel_diff": 0.0048205487177329,
-      "rel_worst_token": 0.00936902973224498,
+      "rel_diff": 0.004675482992981522,
+      "rel_worst_token": 0.00942022699351639,
       "status": "PASS",
       "tier": "fused",
       "worst_token": 0
     },
     "resid_post.24": {
-      "cos": 0.9997435863860675,
-      "cos_worst_token": 0.9967253258994161,
+      "cos": 0.9997199323829207,
+      "cos_worst_token": 0.9982241727558122,
       "layer": 24,
       "max_abs_diff": 0.25,
       "point": "resid_post",
-      "rel_diff": 0.02313777111573204,
-      "rel_worst_token": 0.08092607819318821,
-      "status": "PASS",
-      "tier": "fused",
-      "worst_token": 7
-    },
-    "resid_post.36": {
-      "cos": 0.9995934768486174,
-      "cos_worst_token": 0.9982300744195954,
-      "layer": 36,
-      "max_abs_diff": 0.25,
-      "point": "resid_post",
-      "rel_diff": 0.02869892647722786,
-      "rel_worst_token": 0.05955855854225453,
+      "rel_diff": 0.023666077205061423,
+      "rel_worst_token": 0.060632501924988744,
       "status": "PASS",
       "tier": "fused",
       "worst_token": 6
     },
-    "resid_post.47": {
-      "cos": 0.9991879288641684,
-      "cos_worst_token": 0.998409578029501,
-      "layer": 47,
-      "max_abs_diff": 1.125,
+    "resid_post.36": {
+      "cos": 0.9995954446732314,
+      "cos_worst_token": 0.9985419819537552,
+      "layer": 36,
+      "max_abs_diff": 0.25,
       "point": "resid_post",
-      "rel_diff": 0.04030387082778662,
-      "rel_worst_token": 0.06105532055686369,
+      "rel_diff": 0.02844839827963611,
+      "rel_worst_token": 0.054020954720693154,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 4
+      "worst_token": 3
+    },
+    "resid_post.47": {
+      "cos": 0.9993661195365661,
+      "cos_worst_token": 0.9972432153445447,
+      "layer": 47,
+      "max_abs_diff": 1.0,
+      "point": "resid_post",
+      "rel_diff": 0.03567196787591662,
+      "rel_worst_token": 0.07437567018733426,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 1
     },
     "router_logits.0": {
       "cos": 0.9999953732663742,
@@ -333,46 +333,70 @@
       "worst_token": 9
     },
     "router_logits.24": {
-      "cos": 0.9999720044573752,
-      "cos_worst_token": 0.9999240333934891,
+      "cos": 0.9999739690648632,
+      "cos_worst_token": 0.9999440419378627,
       "layer": 24,
-      "max_abs_diff": 0.34375,
+      "max_abs_diff": 0.25,
       "point": "router_logits",
-      "rel_diff": 0.00754696614536855,
-      "rel_worst_token": 0.012862671744290271,
+      "rel_diff": 0.007220175011433902,
+      "rel_worst_token": 0.011981231023852273,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 7
+      "worst_token": 12
     },
     "router_logits.36": {
-      "cos": 0.9999781586405504,
-      "cos_worst_token": 0.9999502547069152,
+      "cos": 0.9999790151690013,
+      "cos_worst_token": 0.9999690124463716,
       "layer": 36,
-      "max_abs_diff": 0.28125,
+      "max_abs_diff": 0.25,
       "point": "router_logits",
-      "rel_diff": 0.006624000787255914,
-      "rel_worst_token": 0.010627389516992564,
+      "rel_diff": 0.006491502930316452,
+      "rel_worst_token": 0.008518977975913047,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 6
+      "worst_token": 3
     },
     "router_logits.47": {
-      "cos": 0.9999861878040783,
-      "cos_worst_token": 0.9999827962747605,
+      "cos": 0.9999899819564257,
+      "cos_worst_token": 0.9999839893253518,
       "layer": 47,
       "max_abs_diff": 0.1875,
       "point": "router_logits",
-      "rel_diff": 0.005256869011577934,
-      "rel_worst_token": 0.007128520255372394,
+      "rel_diff": 0.004476329865528059,
+      "rel_worst_token": 0.006456325502793294,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 0
+      "worst_token": 3
+    },
+    "value.47": {
+      "cos": 0.999927540721164,
+      "cos_worst_token": 0.9998622142851866,
+      "layer": 47,
+      "max_abs_diff": 0.14453125,
+      "point": "value",
+      "rel_diff": 0.012046486344898709,
+      "rel_worst_token": 0.01663116373170244,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 9
+    },
+    "z.47": {
+      "cos": 0.9997158131176548,
+      "cos_worst_token": 0.9994990964554538,
+      "layer": 47,
+      "max_abs_diff": 0.15625,
+      "point": "z",
+      "rel_diff": 0.023864880569130702,
+      "rel_worst_token": 0.03222911353729132,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 3
     }
   },
   "reason": "",
   "reference": "eager",
   "run": {
-    "date_utc": "2026-08-12T03:31:40+00:00",
+    "date_utc": "2026-09-03T22:47:15+00:00",
     "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
     "eager_only": false,
     "gpu": {
@@ -399,17 +423,17 @@
   "verdict": "\u2705",
   "versions": {
     "interp_engine": {
-      "commit": "c08e9f537dcf77f24d047e85c4637a797f46e6d8",
-      "version": "1.0.1"
+      "commit": "b74a69844215aa342cdaa8b3cfd07a63313ade4c",
+      "version": "1.6.0"
     },
     "torch": {
-      "version": "2.11.0"
+      "version": "2.13.0"
     },
     "transformers": {
-      "version": "5.15.0"
+      "version": "5.16.1"
     },
     "vllm": {
-      "version": "0.26.0"
+      "version": "0.28.0"
     }
   }
 }

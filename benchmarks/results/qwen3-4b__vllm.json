@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "started_at": "2026-08-19T13:31:34+00:00",
+  "started_at": "2026-09-04T07:51:39+00:00",
   "command": "python -m benchmarks.run_bench --model qwen3-4b --variant vllm",
   "python": "python",
   "model": {
@@ -11,6 +11,8 @@
     "dtype": "bfloat16",
     "min_gpu_gib": 0.0,
     "capture_point": "resid_post",
+    "per_variant_vllm_kwargs": {},
+    "static_capture_point": null,
     "extra_eager_kwargs": {},
     "extra_vllm_kwargs": {},
     "gpu_memory_utilization": null,
@@ -28,15 +30,15 @@
   },
   "env": {
     "gpu_name": "NVIDIA B200",
-    "gpu_total_gib": 178.3511962890625,
-    "driver_version": "580.105.08",
+    "gpu_total_gib": 178.35107421875,
+    "driver_version": "580.126.20",
     "cuda_version": "13.0",
-    "torch_version": "2.11.0+cu130",
-    "vllm_version": "0.26.0",
-    "transformers_version": "5.14.1",
-    "interp_engine_version": "1.2.0",
-    "python_version": "3.12.3",
-    "platform": "linux 6.8.0-90-generic",
+    "torch_version": "2.13.0+cu130",
+    "vllm_version": "0.28.0",
+    "transformers_version": "5.16.1",
+    "interp_engine_version": "1.6.0",
+    "python_version": "3.13.8",
+    "platform": "linux 6.8.0-100-generic",
     "extra": {
       "VLLM_DEEP_GEMM_WARMUP": "skip"
     }
@@ -46,14 +48,14 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "ttft_ms": 54.72110724076629,
-        "prefill_tok_s": 9356.535819848485,
-        "decode_tok_s": 47.21824562544739,
-        "total_s": 2.7231811131350696
+        "ttft_ms": 16.475405544042587,
+        "prefill_tok_s": 31076.625011220818,
+        "decode_tok_s": 135.68493487426764,
+        "total_s": 0.952467305585742
       },
       "detail": {
         "prompt_tokens": 512,
-        "generated_tokens": 127,
+        "generated_tokens": 128,
         "repeats": 3
       }
     },
@@ -61,14 +63,14 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "total_s": 3.064706597244367,
-        "aggregate_tok_s": 333.474010503626,
-        "per_request_s": 0.3830883246555459
+        "total_s": 1.0523919542320073,
+        "aggregate_tok_s": 973.0215020004342,
+        "per_request_s": 0.1315489942790009
       },
       "detail": {
         "concurrency": 8,
         "prompt_tokens": 512,
-        "generated_tokens_total": 1022,
+        "generated_tokens_total": 1024,
         "repeats": 2
       }
     },
@@ -76,8 +78,8 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 69.75116394460201,
-        "prompt_tok_s": 7340.379300432065,
+        "latency_ms": 16.0022284835577,
+        "prompt_tok_s": 31995.54365356552,
         "transported_mib": 2.5
       },
       "detail": {
@@ -93,8 +95,8 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 637.6556730829179,
-        "prompt_tok_s": 802.9411822286443,
+        "latency_ms": 130.39290439337492,
+        "prompt_tok_s": 3926.594030418836,
         "transported_mib": 90.0
       },
       "detail": {
@@ -110,7 +112,7 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 836.6644093766809,
+        "latency_ms": 237.60120663791895,
         "transported_mib": 0.7763671875
       },
       "detail": {
@@ -120,7 +122,7 @@
         "rows": 159,
         "width": 2560,
         "steered": false,
-        "completion_head": " me that I may be said to be in a low state of health, I thi",
+        "completion_head": " me that I may be said to be in a low state of animal spirit",
         "repeats": 3
       }
     },
@@ -128,7 +130,7 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 857.8362478874624,
+        "latency_ms": 246.17460276931524,
         "transported_mib": 0.7763671875
       },
       "detail": {
@@ -138,7 +140,7 @@
         "rows": 159,
         "width": 2560,
         "steered": true,
-        "completion_head": " me that I may be said to be in a low state of animal spirit",
+        "completion_head": " me that I find myself on the point of snorting opium, I thi",
         "repeats": 3
       }
     },
@@ -146,8 +148,8 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 188.60664311796427,
-        "rows_per_s": 2714.644572088423,
+        "latency_ms": 26.043002493679523,
+        "rows_per_s": 19659.79153610492,
         "result_mib": 0.05859375
       },
       "detail": {
@@ -155,15 +157,15 @@
         "top_n": 10,
         "path": "worker-side top-k (decode_residuals_topk)",
         "repeats": 3,
-        "topk_id_overlap_vs_full": 0.9838,
+        "topk_id_overlap_vs_full": 0.982,
         "topk_worst_shortfall_frac_of_range": 0.0
       }
     }
   },
   "load": {
-    "construct_s": 1.5250284667126834,
-    "warmup_s": 40.43789745727554,
-    "ready_s": 41.96292592398822,
+    "construct_s": 0.9507990051060915,
+    "warmup_s": 15.933962063863873,
+    "ready_s": 16.884761068969965,
     "n_layers": 36,
     "d_model": 2560,
     "device": "cuda (vllm worker)",
@@ -171,5 +173,5 @@
     "resolved_dtype": "bfloat16",
     "grad_through_forward": false
   },
-  "finished_at": "2026-08-19T13:32:47+00:00"
+  "finished_at": "2026-09-04T07:52:08+00:00"
 }

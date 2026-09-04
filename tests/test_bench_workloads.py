@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from benchmarks.workloads import _no_hooks_reason
+from benchmarks.bench_spec import WORKLOADS
+from benchmarks.workloads import _no_hooks_reason, _warmup_spec
 from interp_engine.address import Address
 
 
@@ -42,3 +43,25 @@ def test_static_writes_can_steer():
         static_writes=(Address("resid_post", 0),),
     )
     assert _no_hooks_reason(model, need_writes=True) is None
+
+
+# --- the warmup has to warm the shape the workload measures ------------------
+#
+# A backend that builds kernels lazily builds them per shape, and batch size is part of the shape.
+# Warming `generate_x8` with a single request leaves every batched kernel to be compiled inside the
+# timed region, where `generate_x8`'s median of two repeats cannot discard it. That is how a cold
+# DeepSeek-V4-Flash box recorded 87 tok/s aggregate against 796 warm on the same configuration.
+
+
+def test_the_warmup_runs_at_the_workload_s_own_concurrency():
+    spec = next(w for w in WORKLOADS if w.key == "generate_x8")
+    assert spec.concurrency > 1, "this test is about the batched workload; nothing else has one"
+    assert _warmup_spec(spec).concurrency == spec.concurrency
+
+
+def test_the_warmup_is_still_short():
+    """Warming the real shape must not mean paying the real workload twice."""
+    for spec in WORKLOADS:
+        warm = _warmup_spec(spec)
+        assert warm.repeats == 1
+        assert warm.max_new_tokens <= 4

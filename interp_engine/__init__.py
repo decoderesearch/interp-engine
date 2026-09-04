@@ -85,7 +85,7 @@ from interp_engine.mappers import (
     tlens_hook_to_point,
     tlens_normalized_hook,
 )
-from interp_engine.model import EagerModel
+from interp_engine.model import EagerModel, HubKernelUnsupported, deepgemm_fallback_kwargs
 from interp_engine.protocol import Completion, InterpModel, Point
 from interp_engine.residual_basis import (
     RESIDUAL_POINTS,
@@ -180,6 +180,8 @@ __all__ = [
     # The models, and the surface they share.
     "Completion",
     "EagerModel",
+    "HubKernelUnsupported",
+    "deepgemm_fallback_kwargs",
     "InterpModel",
     "VLLMModel",
     # That same surface without an event loop, for scripts and notebooks. The sync free

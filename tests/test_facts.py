@@ -344,6 +344,40 @@ def test_a_config_with_no_experts_has_no_sparse_layers():
     assert resolve_facts(cfg).moe_layers == ()
 
 
+def test_a_nested_config_is_still_read_as_sparse():
+    """A composite MoE must not read as dense just because its counts are one level down.
+
+    Gemma-4 and Qwen3.6 nest the text fields, and the failure mode is silence rather than an error:
+    both accessors return the same 0 a dense checkpoint returns, and 0 is what callers branch on.
+    That skipped `router_logits` in the vLLM static read set and disabled the router-width check in
+    `assert_routing_shapes`, on the two newest MoE families and with nothing printed either time.
+    """
+    cfg = CompositeConfig(
+        text=FakeConfig(
+            num_hidden_layers=4, num_attention_heads=8, hidden_size=512, num_experts=128, num_experts_per_tok=8
+        ),
+        architectures=["Gemma4ForConditionalGeneration"],
+    )
+    assert facts.n_experts(cfg) == 128
+    assert facts.experts_per_token(cfg) == 8
+
+
+def test_unwrapping_the_expert_counts_twice_is_the_same_as_once():
+    """`resolve_facts` already narrows before it asks, so the accessors have to be idempotent."""
+    text = FakeConfig(
+        num_hidden_layers=4, num_attention_heads=8, hidden_size=512, num_experts=128, num_experts_per_tok=8
+    )
+    assert facts.n_experts(text) == facts.n_experts(CompositeConfig(text=text)) == 128
+    assert facts.experts_per_token(text) == facts.experts_per_token(CompositeConfig(text=text)) == 8
+
+
+def test_a_nested_dense_config_still_reports_no_experts():
+    """The narrowing must not invent a router: nesting is not evidence of one."""
+    text = FakeConfig(num_hidden_layers=4, num_attention_heads=8, hidden_size=512)
+    assert facts.n_experts(CompositeConfig(text=text)) == 0
+    assert facts.experts_per_token(CompositeConfig(text=text)) == 0
+
+
 def test_a_single_sublayer_trunk_declares_its_feed_forward_in_layer_types():
     """Nemotron-H's blocks are a norm plus one mixer, so its `layer_types` names all four kinds:
     `['linear_attention', 'moe', 'full_attention', 'mlp']`. Only the `moe` block is sparse -- the

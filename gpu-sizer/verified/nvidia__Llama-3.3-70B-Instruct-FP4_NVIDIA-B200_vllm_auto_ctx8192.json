@@ -12,6 +12,7 @@
     "gpu_memory_utilization": 0.9,
     "num_gpus": 1,
     "static_sites": 0,
+    "static_points": [],
     "enforce_eager": null,
     "batch_size": 1,
     "seq_len": 0,
@@ -64,25 +65,23 @@
         "side": "pool"
       }
     ],
-    "warnings": [
-      "quantized checkpoint (nvfp4): 39.8 GiB served natively, but ~139.4 GiB if the kernels are missing and transformers dequantizes silently -- install the `quant` extra and pre-cache its Hub kernels"
-    ],
+    "warnings": [],
     "weights_source": "safetensors-metadata"
   },
   "measured": {
     "baseline_bytes": 0,
-    "post_load_bytes": 174313177088,
+    "post_load_bytes": 174063616000,
     "post_reserve_bytes": 0,
-    "post_warmup_bytes": 174317371392,
-    "peak_bytes": 175019917312,
+    "post_warmup_bytes": 174067810304,
+    "peak_bytes": 175474999296,
     "per_device_peak_bytes": [
-      175019917312
+      175474999296
     ],
     "pool_claimed_bytes": 172556078284,
-    "outside_measured_bytes": 2463839028,
+    "outside_measured_bytes": 2918921012,
     "torch_peak_bytes": 0,
-    "kv_cache_tokens": 784896,
-    "samples": 404
+    "kv_cache_tokens": 785104,
+    "samples": 717
   },
   "stress": {
     "max_concurrency_passed": 4,
@@ -91,10 +90,10 @@
     "requests_ok": 4,
     "requests_failed": 0,
     "latencies_ms": [
-      995.9562551230192,
-      1609.805931802839,
-      2211.3173129037023,
-      2617.5227407366037
+      2369.3959140218794,
+      3605.4273180197924,
+      4378.988964017481,
+      5003.2397620379925
     ],
     "failure_kind": "",
     "failure_detail": ""
@@ -109,15 +108,15 @@
   "engine_env_note": "",
   "cannot_verify": [],
   "expected": "pass",
-  "why": "",
+  "why": "NVFP4 on Blackwell: a 70B in ~35 GiB, which changes which card class the model needs",
   "error": "",
   "versions": {
     "torch": "2.13.0+cu130",
     "transformers": "5.16.1",
     "vllm": "0.28.0",
-    "interp_engine": "1.3.6",
-    "driver": "580.126.20"
+    "interp_engine": "1.6.0",
+    "driver": "580.167.08"
   },
-  "duration_s": 108.6,
-  "recorded_at": "2026-08-29T06:34:50Z"
+  "duration_s": 201.2,
+  "recorded_at": "2026-09-03T04:00:08Z"
 }

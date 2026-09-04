@@ -390,7 +390,14 @@ def _run_with_cache_eager(
         # Flat, however the family produced it: a value norm sees the per-head view and a value
         # projection does not, and `value` is one point. See `hooks.flat_per_head`.
         layer = key.layer or 0
-        flat, _ = flat_per_head(cache.tensors[key], heads=model.arch.kv_heads_for_layer(layer))
+        raw = cache.tensors[key]
+        if model.arch.quirks.fused_qkv:
+            # The value alone, not the `[q | k | v]` slab the fused projection emits. This point
+            # declares `Width.HEADS` and both vLLM backends return exactly that, so leaving the slab
+            # here made the reference three times too wide on gpt2, GPT-NeoX and Falcon -- and the
+            # engine every other one is scored against was the one disagreeing.
+            raw = split_fused_qkv(model, raw)["v"]
+        flat, _ = flat_per_head(raw, heads=model.arch.kv_heads_for_layer(layer))
         cache.tensors[key] = flat
 
     if wants_attn:
@@ -493,10 +500,10 @@ def capture_attention_eager(
         tokens,
         [Address(name, layer) for layer in wanted for name in ("attn_scores", "attn_probs", "value")],
     )
-    # `value` comes out of the same pass but is read through `per_head_value`: the raw point is
-    # whatever the projection emitted (a fused qkv slab on gpt2, unscaled on MiMo-V2), and it is the
-    # per-head, scaled tensor that satisfies `probs @ value == z` -- which is what the vLLM arm
-    # hands back, and therefore what a caller comparing the two indexes.
+    # `value` comes out of the same pass but is read through `per_head_value`: the raw point is flat
+    # and unscaled (MiMo-V2 scales by `v_scale`), and it is the per-head, scaled tensor that satisfies
+    # `probs @ value == z` -- which is what the vLLM arm hands back, and therefore what a caller
+    # comparing the two indexes.
     return {
         layer: {
             "scores": cache.get("attn_scores", layer)[0],
@@ -546,13 +553,14 @@ def split_fused_qkv(model: EagerModel, fused: torch.Tensor) -> dict[str, torch.T
 def per_head_value(model: EagerModel, cache: Cache, layer: int) -> torch.Tensor:
     """Return per-head value vectors ``[batch, src_pos, n_kv_heads, v_head_dim]`` for DFA.
 
-    Handles both a standalone ``v_proj`` and a fused capture in either supported layout, and applies
-    whatever the family does to the projection's output before attention reads it -- MiMo-V2 scales it
-    by ``v_scale``. So this, not the raw ``value`` point, is what satisfies ``probs @ value == z``.
+    Reshapes the ``value`` point and applies whatever the family does to the projection's output
+    before attention reads it -- MiMo-V2 scales it by ``v_scale``. So this, not the raw ``value``
+    point, is what satisfies ``probs @ value == z``.
+
+    A fused qkv is already split by the time the point lands in the cache, so there is nothing to
+    unpack here: the raw point is the value at ``Width.HEADS`` on every family.
     """
-    raw = cache.get("value", layer)  # [batch, seq, hidden] (fused) or [batch, seq, n_kv*hd]
-    if model.arch.quirks.fused_qkv:
-        raw = split_fused_qkv(model, raw)["v"]
+    raw = cache.get("value", layer)  # [batch, seq, n_kv_heads * v_head_dim]
     batch, seq, _ = raw.shape
     # Per layer, not per model: a Gemma-4 non-sliding layer's head is twice as wide as the config's
     # top-level `head_dim`, and reshaping by the global value would mis-split it silently. And the

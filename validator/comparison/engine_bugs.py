@@ -137,12 +137,14 @@ ENGINE_BUGS: tuple[EngineBug, ...] = (
     # per-layer geometry properly, so vllm-project/vllm#51744 no longer describes anything that
     # happens: `google/gemma-4-31B` went from a dead load to 54 agreed / 0 differs.
     #
-    # The 12B and 26B still disagree with `eager` on their middle layers, and that is deliberately
-    # left as a plain non-passing verdict rather than moved to a new row. It is not #51744 -- those
-    # models load -- and nothing here can be filed against vLLM yet: `eager`, `tlens_v3` and `nnsight`
-    # all wrap HF transformers, so the three of them agreeing is one implementation, not three, and
-    # the bar at the top of this file is an investigation with a repro. Until somebody does it, the
-    # honest cell is the one that says the two engines disagree and does not say whose fault it is.
+    # The 12B, and the 26B's *hooked* column, still disagree with `eager` on their middle layers, and
+    # that stays a plain non-passing verdict rather than a row. It is not #51744 -- those models load --
+    # and it cannot be filed against vLLM on the evidence here: `eager`, `tlens_v3` and `nnsight` all
+    # wrap HF transformers, so the three of them agreeing is one implementation, not three, and the bar
+    # at the top of this file is an investigation with a repro. Until somebody does it, the honest cell
+    # is the one that says the two engines disagree and does not say whose fault it is. The 26B's static
+    # column cleared that bar and is the row below; the distinction is that its evidence never mentions
+    # a reference at all.
     #
     # The same defect in two adapters, filed separately because the fix is in two projects. Both read the
     # HF module's output for the sublayer contribution, and BLOOM's sublayers add the residual inside
@@ -171,6 +173,33 @@ ENGINE_BUGS: tuple[EngineBug, ...] = (
         "sublayers add the residual internally. Breaks TL's own decomposition -- resid_pre + attn_out "
         "!= resid_mid, off by a full residual (rel 0.90-1.00) -- while TL2's HookedTransformer is exact.",
         workaround="tlens_v2 (HookedTransformer) is correct on this family.",
+    ),
+    EngineBug(
+        # `vllm-static` alone, because the eager arm is the one that holds still: plain vLLM returns the
+        # same greedy token from `enforce_eager=True` whether or not batch invariance is on, and it is the
+        # CUDA-graph arm that moves. The hooked column forces eager, so whatever it disagrees with `eager`
+        # about on this checkpoint is the unfiled question in the comment above, not this.
+        #
+        # Whole-cell rather than a `points` list, unusually, and only because a list would say the same
+        # thing at more length: all fourteen point names are below tolerance at layers 22 and 29, so there
+        # is no subset to name. What the scope wants to express is "layer 15 and deeper", which `covers`
+        # cannot say -- it is handed the bare point name with the layer stripped. Layer 0 is unaffected
+        # (worst 0.99997) and keeps its ✅ on its own, since a 🐞 is only ever consulted for a cell that is
+        # already WARN or FAIL.
+        engine="vllm-static",
+        model="google/gemma-4-26B-A4B-it",
+        url="https://github.com/vllm-project/vllm/issues/55238",
+        title="gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        mechanism="vLLM disagrees with itself on this checkpoint between its compiled and eager paths, "
+        "with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing "
+        "changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, "
+        "7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same "
+        "test, so it is neither bf16 nor MoE routing in general.",
+        workaround="`VLLM_BATCH_INVARIANT=1` converges the two arms enough to attribute the fault -- "
+        "attn_in.22 reads 0.99300 rather than 0.00119 -- but does not fix it: that run still flips one "
+        "position and 2.39 nats, further from self-consistent than either control model is untouched. It "
+        "also costs throughput and vLLM refuses it on some trunks, so it is a diagnostic and not a "
+        "setting (docs/COMPARISON.md).",
     ),
     EngineBug(
         # Only 27b: it is the gemma-2 whose query_pre_attn_scalar (144) differs from its head_dim (128),

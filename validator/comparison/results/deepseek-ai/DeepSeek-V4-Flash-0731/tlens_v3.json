@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-08-19",
+  "captured_at": "2026-09-04",
   "device": "cuda",
   "dtype": "bfloat16",
   "engine": "tlens_v3",
@@ -7,28 +7,52 @@
   "known_bug": null,
   "points": {
     "attn_out.0": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 0,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "attn_out",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 4
     },
     "attn_out.21": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 21,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "attn_out",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 0
     },
     "attn_out.32": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 32,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "attn_out",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 9
     },
     "attn_out.42": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 42,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "attn_out",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 5
     },
     "attn_out_post.0": {
       "layer": 0,
@@ -55,100 +79,232 @@
       "status": "N/A"
     },
     "attn_stream_collapse.0": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 0,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "attn_stream_collapse",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 0
     },
     "attn_stream_collapse.21": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 21,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "attn_stream_collapse",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 1
     },
     "attn_stream_collapse.32": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 32,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "attn_stream_collapse",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 0
     },
     "attn_stream_collapse.42": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 42,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "attn_stream_collapse",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 5
     },
     "attn_stream_mix.0": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 0,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "attn_stream_mix",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "stochastic_eng": "columns",
+      "stochastic_ref": "columns",
+      "tier": "tlens",
+      "worst_token": 1
     },
     "attn_stream_mix.21": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 21,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "attn_stream_mix",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "stochastic_eng": "columns",
+      "stochastic_ref": "columns",
+      "tier": "tlens",
+      "worst_token": 0
     },
     "attn_stream_mix.32": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 32,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "attn_stream_mix",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "stochastic_eng": "both",
+      "stochastic_ref": "both",
+      "tier": "tlens",
+      "worst_token": 6
     },
     "attn_stream_mix.42": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 42,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "attn_stream_mix",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "stochastic_eng": "columns",
+      "stochastic_ref": "columns",
+      "tier": "tlens",
+      "worst_token": 2
     },
     "attn_stream_write.0": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 0,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "attn_stream_write",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 4
     },
     "attn_stream_write.21": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 21,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "attn_stream_write",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 1
     },
     "attn_stream_write.32": {
+      "cos": 0.9999999999999998,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 32,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "attn_stream_write",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 5
     },
     "attn_stream_write.42": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 42,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "attn_stream_write",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 1
+    },
+    "mlp_act.0": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 0,
+      "missing": "reference",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.21": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 21,
+      "missing": "reference",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.32": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 32,
+      "missing": "reference",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.42": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 42,
+      "missing": "reference",
+      "point": "mlp_act",
       "status": "N/A"
     },
     "mlp_out.0": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 0,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_out",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 10
     },
     "mlp_out.21": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 21,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_out",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 4
     },
     "mlp_out.32": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 32,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_out",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 0
     },
     "mlp_out.42": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 42,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_out",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 9
     },
     "mlp_out_post.0": {
       "layer": 0,
@@ -174,112 +330,244 @@
       "point": "mlp_out_post",
       "status": "N/A"
     },
-    "mlp_stream_collapse.0": {
+    "mlp_pre.0": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
       "layer": 0,
-      "missing": "engine",
-      "point": "mlp_stream_collapse",
+      "missing": "reference",
+      "point": "mlp_pre",
       "status": "N/A"
+    },
+    "mlp_pre.21": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 21,
+      "missing": "reference",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "mlp_pre.32": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 32,
+      "missing": "reference",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "mlp_pre.42": {
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layer": 42,
+      "missing": "reference",
+      "point": "mlp_pre",
+      "status": "N/A"
+    },
+    "mlp_stream_collapse.0": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "mlp_stream_collapse",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 3
     },
     "mlp_stream_collapse.21": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 21,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_stream_collapse",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 9
     },
     "mlp_stream_collapse.32": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 32,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_stream_collapse",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 2
     },
     "mlp_stream_collapse.42": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 42,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_stream_collapse",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 12
     },
     "mlp_stream_mix.0": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999997,
       "layer": 0,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_stream_mix",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "stochastic_eng": "columns",
+      "stochastic_ref": "columns",
+      "tier": "tlens",
+      "worst_token": 0
     },
     "mlp_stream_mix.21": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 21,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_stream_mix",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "stochastic_eng": "columns",
+      "stochastic_ref": "columns",
+      "tier": "tlens",
+      "worst_token": 8
     },
     "mlp_stream_mix.32": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 32,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_stream_mix",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "stochastic_eng": "columns",
+      "stochastic_ref": "columns",
+      "tier": "tlens",
+      "worst_token": 8
     },
     "mlp_stream_mix.42": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999997,
       "layer": 42,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_stream_mix",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "stochastic_eng": "columns",
+      "stochastic_ref": "columns",
+      "tier": "tlens",
+      "worst_token": 0
     },
     "mlp_stream_write.0": {
+      "cos": 1.0,
+      "cos_worst_token": 1.0,
       "layer": 0,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_stream_write",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 0
     },
     "mlp_stream_write.21": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 21,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_stream_write",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 0
     },
     "mlp_stream_write.32": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 32,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_stream_write",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 2
     },
     "mlp_stream_write.42": {
+      "cos": 0.9999999999999998,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 42,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_stream_write",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 1
     },
     "resid_streams.0": {
+      "cos": 1.0,
+      "cos_worst_token": 1.0,
       "layer": 0,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "resid_streams",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 2
     },
     "resid_streams.21": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 21,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "resid_streams",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 2
     },
     "resid_streams.32": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 32,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "resid_streams",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 9
     },
     "resid_streams.42": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 42,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "resid_streams",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 10
     }
   },
-  "reason": "RuntimeError: Promotion for Float8 Types is not supported, attempted to promote BFloat16 and Float8_e4m3fn",
+  "reason": "",
   "reference": "eager",
   "run": {
-    "date_utc": "2026-08-19T13:14:09+00:00",
+    "date_utc": "2026-09-04T03:53:33+00:00",
     "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
     "eager_only": false,
     "gpu": {
-      "memory_total": "183359 MiB",
-      "name": "NVIDIA B200"
+      "memory_total": "32607 MiB",
+      "name": "NVIDIA GeForce RTX 5090"
     },
     "native_dtype": "bfloat16",
     "reference_status": {
@@ -297,17 +585,17 @@
     ]
   },
   "sae": {},
-  "status": "skip",
-  "verdict": "unsupported",
+  "status": "ok",
+  "verdict": "\u26a0\ufe0f",
   "versions": {
     "torch": {
-      "version": "2.13.0"
+      "version": "2.14.0"
     },
     "transformer_lens": {
-      "version": "3.7.2"
+      "version": "3.8.1"
     },
     "transformers": {
-      "version": "5.15.0"
+      "version": "5.16.1"
     }
   }
 }

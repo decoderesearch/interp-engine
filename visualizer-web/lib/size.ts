@@ -225,12 +225,12 @@ const STATIC_POINT_WIDTHS: Record<string, string> = {
  * Points that allocate a read buffer and nothing else. `attn` is refused as a write outright: it is
  * a copy of the kernel's q/k/v, and adding to it means nothing.
  *
- * Everything else is priced with a write buffer beside the read, which is a choice worth naming.
- * `"auto"` declares a write at every read and that is what doubles the default set — but the engine
- * leaves an *explicit* list read-only unless `static_writes` restates it. Pricing a named set the
- * expensive way is deliberate: a tap set is asked for in order to steer at the same addresses, and
- * quoting the read-only figure to someone who then adds a steer is the direction that OOMs. `snippet`
- * emits the matching `static_writes` so the code and this figure describe the same pod.
+ * Everything else is priced with a write delta beside the read, and every named set is priced as
+ * though it takes one even though the engine leaves an *explicit* list read-only unless
+ * `static_writes` restates it. That used to be the difference between a figure and twice it; since
+ * the delta became one row it is worth a fraction of a MiB, and the reason to keep charging it is
+ * only that a tap set is usually asked for in order to steer at the same addresses. `snippet` emits
+ * the matching `static_writes` so the code and this figure describe the same pod.
  */
 const STATIC_CAPTURE_ONLY = new Set(["attn"]);
 
@@ -270,10 +270,25 @@ export function defaultStaticPoint(facts: ModelMemoryFacts): string {
  *
  * Three for `attn`, which is not a tensor but a request for the kernel's q, k and v; two for
  * everything else, a read and the write `"auto"` declares beside it.
+ *
+ * A count of tensors, not of memory: see `staticPointRowBuffers` for the ones that are actually
+ * `maxNumBatchedTokens` tall.
  */
 export function staticPointBuffers(point: string): number {
   if (point === "attn") return 3;
   return STATIC_CAPTURE_ONLY.has(point) ? 1 : 2;
+}
+
+/**
+ * Of a point's buffers, the ones whose height is `maxNumBatchedTokens`.
+ *
+ * Every read is one. A write is not: it is the same constant vector on every token, so the engine
+ * allocates it `[1, width]` and broadcasts at add time (`vllm_capture/static.py`'s `_alloc_site`).
+ * So a read/write point costs one per-token buffer, not two, and a static set is about half the
+ * VRAM this priced before.
+ */
+export function staticPointRowBuffers(point: string): number {
+  return point === "attn" ? 3 : 1;
 }
 
 /**
@@ -287,6 +302,9 @@ export function staticPointBuffers(point: string): number {
  * Pricing every point at `d_model` is what this exists to stop being: on Qwen3-32B `mlp_act` is 5.0x
  * a residual tap and `attn` is 0.6x, so a set of three is anywhere from 1.6x to 11x the default
  * depending on which three.
+ *
+ * Reads only. The write delta a read/write point allocates beside its read is one row whatever the
+ * batch size, so it has no per-token cost; `staticPointWriteElements` prices it.
  */
 export function staticPointElements(
   point: string,
@@ -309,7 +327,21 @@ export function staticPointElements(
     width =
       (Math.max(facts.nHeads, 1) + 2 * Math.max(facts.nKvHeads, 1)) * headDim;
   }
-  return STATIC_CAPTURE_ONLY.has(point) ? width : width * 2;
+  return width;
+}
+
+/**
+ * Elements in one point's write delta at one layer: one row, or none if it takes no write.
+ *
+ * Kept apart from `staticPointElements` rather than folded into it because the two scale
+ * differently — this one does not scale at all. It is a fraction of a MiB across a whole model and
+ * is priced only so the static term reconciles with what the engine allocates.
+ */
+export function staticPointWriteElements(
+  point: string,
+  facts: ModelMemoryFacts,
+): number {
+  return STATIC_CAPTURE_ONLY.has(point) ? 0 : staticPointElements(point, facts);
 }
 
 /**
@@ -352,6 +384,26 @@ export function resolvedStaticSites(
 }
 
 /**
+ * Of `resolvedStaticSites`, the buffers that are `maxNumBatchedTokens` tall.
+ *
+ * A raw `staticSites` count is taken at its word and read as that many per-token buffers, which is
+ * the conservative reading and the only one available: a bare number does not say which of them are
+ * writes.
+ */
+export function staticRowBuffers(
+  spec: WorkloadSpec,
+  facts: ModelMemoryFacts,
+): number {
+  if (spec.backend !== "vllm-static") return 0;
+  if (spec.staticSites) return spec.staticSites;
+  const points = resolvedStaticPoints(spec, facts);
+  return (
+    Math.max(facts.nLayers, 1) *
+    points.reduce((total, point) => total + staticPointRowBuffers(point), 0)
+  );
+}
+
+/**
  * Elements per token across every static buffer, which is what the bytes scale with.
  *
  * Not `sites * width`: a named set has no single width, and averaging one is how a set carrying
@@ -368,6 +420,27 @@ export function staticElements(
     Math.max(facts.nLayers, 1) *
     points.reduce(
       (total, point) => total + staticPointElements(point, facts),
+      0,
+    )
+  );
+}
+
+/**
+ * Elements across every write delta, each one row tall regardless of the batch size.
+ *
+ * Zero for a raw `staticSites` count, which `staticRowBuffers` has already charged in full rather
+ * than guessing at a read/write split.
+ */
+export function staticWriteElements(
+  spec: WorkloadSpec,
+  facts: ModelMemoryFacts,
+): number {
+  if (spec.backend !== "vllm-static" || spec.staticSites) return 0;
+  const points = resolvedStaticPoints(spec, facts);
+  return (
+    Math.max(facts.nLayers, 1) *
+    points.reduce(
+      (total, point) => total + staticPointWriteElements(point, facts),
       0,
     )
   );
@@ -955,8 +1028,11 @@ export function estimate(
   });
 
   const sites = resolvedStaticSites(spec, facts);
+  const rowBuffers = staticRowBuffers(spec, facts);
+  const writeBuffers = sites - rowBuffers;
   const buffers = sites
-    ? staticTapBytes(staticElements(spec, facts), spec.maxNumBatchedTokens)
+    ? staticTapBytes(staticElements(spec, facts), spec.maxNumBatchedTokens) +
+      staticTapBytes(staticWriteElements(spec, facts), 1)
     : 0;
   if (sites) {
     const named = resolvedStaticPoints(spec, facts);
@@ -968,7 +1044,8 @@ export function estimate(
         (named.length && !spec.staticSites
           ? `${named.join(", ")} at ${Math.max(facts.nLayers, 1)} layers`
           : `${sites} sites x ${staticWidth(facts)} wide`) +
-        ` = ${sites} buffers x ${spec.maxNumBatchedTokens} rows` +
+        ` = ${rowBuffers} buffers x ${spec.maxNumBatchedTokens} rows` +
+        (writeBuffers ? ` + ${writeBuffers} write deltas x 1 row` : "") +
         (tp > 1 ? " (not sharded by TP)" : ""),
     });
   }
@@ -1160,8 +1237,10 @@ function vllmAdvice({
   if (poolHeadroom < 0) {
     const shortfall = gib(-poolHeadroom);
     if (buffers && buffers > -poolHeadroom) {
+      // Not `static_writes=[]` any more: a write delta is one row, so dropping the writes gives
+      // back kilobytes. The batch size is the only lever on this term now, and it is linear in it.
       out.push(
-        `static buffers are ${gib(buffers)} GiB: a smaller max_num_batched_tokens, or static_writes=[] to drop the write half, recovers most of ${shortfall} GiB`,
+        `static buffers are ${gib(buffers)} GiB and scale with max_num_batched_tokens: halving it recovers about ${gib(buffers / 2)} GiB of the ${shortfall} GiB, or declare fewer static points`,
       );
     }
     if (spec.maxModelLen > 2048) {

@@ -487,13 +487,32 @@ def pair_tier(a: str, b: str) -> str:
 # PASS if max-abs-diff <= atol AND mean cosine-sim >= cos; else WARN; the aggregator only
 # hard-FAILS the raw_hf tier (a real regression between two raw-HF captures).
 #
-# The `tlens` gate is 0.99 rather than 0.999 because TransformerLens runs its *own* attention
+# The `tlens` gate is 0.98 rather than 0.999 because TransformerLens runs its *own* attention
 # implementation: at bf16, on the deepest layers of a 27B, that lands 0.1-0.7% off in direction
 # (gemma-3-27b: cos 0.9927-0.9987) with a relative error of 6-14%, which is the same quantity computed
 # a different way, not a different quantity. Every actual TransformerLens fault this sweep has caught
 # is orders away from the line — cos 0.28-0.40 for zero-filled K/V weights, negative for an
 # anti-correlated bridge capture — so tightening back to 0.999 buys no detection and costs a column
 # of ⚠️ that readers learn to ignore.
+#
+# Both loose gates moved 0.99 -> 0.98, and unlike `rel` below this one is *not* a gap between two
+# populations: the cosines run continuously through it (66 scored cells in [0.95, 0.98), 96 in
+# [0.98, 0.99)), so no threshold here separates right from wrong by inspection. The argument is about
+# what the gate can still resolve. Re-running `eager` at float32 and scoring both bf16 arms against it
+# put the *reference* further from the truth than vLLM on five of the seven models that had any cell
+# under 0.99 — so in this band a ⚠️ no longer says which side is wrong, only that two bf16 numbers
+# differ in the last percent. Below it the finding reverses and the engine is the outlier again, which
+# is the property being kept.
+#
+# It is also less exceptional than it looks beside the waivers underneath: those already grant 0.90,
+# 0.90, 0.95 and 0.97 to named checkpoints on the same evidence, one measurement at a time. 0.98 is
+# tighter than every one of them, so nothing that was scored becomes unscored — it generalizes the
+# concession rather than widening it, and the four rows keep their own looser numbers.
+#
+# What it moves, measured on the 09/03 sweep: about forty ⚠️ cells pass, all on gemma-4-12B,
+# gemma-4-26B, gemma-3-27b and phi-2. `microsoft/phi-2` (both vLLM arms, worst 0.98627) and
+# `google/gemma-3-27b-it` on tlens_v2 (worst 0.98554) go green. gemma-4-12B and gemma-4-26B keep their
+# ⚠️ on points below 0.98, and every filed 🐞 is orders away and untouched.
 #
 # `rel` is the loose tiers' MAGNITUDE gate, and it exists because cosine cannot see a scale factor.
 # The loose tiers judge agreement by direction (see `_status`), so a capture that is the right tensor
@@ -511,8 +530,8 @@ def pair_tier(a: str, b: str) -> str:
 # near-zero tensors (a router logit) would otherwise trip a relative gate on an absolute nothing.
 TOLERANCES: dict[str, dict[str, float]] = {
     "raw_hf": {"atol": 2e-3, "cos": 0.9999, "hard_fail": True},
-    "tlens": {"atol": 5e-2, "cos": 0.99, "rel": 0.5, "hard_fail": False},
-    "fused": {"atol": 2e-1, "cos": 0.99, "rel": 0.5, "hard_fail": False},
+    "tlens": {"atol": 5e-2, "cos": 0.98, "rel": 0.5, "hard_fail": False},
+    "fused": {"atol": 2e-1, "cos": 0.98, "rel": 0.5, "hard_fail": False},
 }
 
 # --- per-checkpoint tolerance waivers ---------------------------------------------------
@@ -655,6 +674,12 @@ REFERENCE_GAPS: tuple[dict, ...] = (
     },
     {
         "models": (
+            # LFM2-8B-A1B is the hybrid case, and the one that shows the gap is per layer rather
+            # than per checkpoint: its layer 0 is dense and hands back all three points, while
+            # 2/12/18/23 are `Lfm2MoeSparseMoeBlock` and hand back none. Listed here for the same
+            # reason as the rest -- tlens_v3 returns the fused bank's tensor at those layers, so the
+            # reference declining looked like a reference bug until somebody read which layers.
+            "LiquidAI/LFM2-8B-A1B",
             "Qwen/Qwen3-30B-A3B",
             "Qwen/Qwen3-Next-*",
             "Qwen/Qwen3.6-*-A3B",
@@ -768,6 +793,23 @@ ENGINE_GAPS: tuple[dict, ...] = (
             "multi-head latent attention: the block has no `self_attn.attn` to read q/k off, because the "
             "kernel attends over a compressed KV it decompresses internally. vLLM serves `attn_scores` by "
             "recomputing from captured q/k, and on MLA there is nothing to recompute from"
+        ),
+    },
+    {
+        "engines": ("vllm", "vllm-static"),
+        # V4 only, and the narrowness is the point: V2/V3 hold an ordinary `o_proj` and vLLM serves
+        # `z` off it. V4 is the one that factors the output projection *and* fuses it.
+        "models": ("deepseek-ai/DeepSeek-V4-*",),
+        "points": ("z",),
+        "reason": (
+            "the output projection is factored into `wo_a`/`wo_b` and computed inside a fused `_o_proj` "
+            "kernel that is handed `wo_a` rather than calling it, on all four of vLLM's platform "
+            "implementations (FlashMLA, FlashInfer, ROCm, XPU). So the module whose input `z` names is "
+            "never called and a hook on it never fires. interp-engine refuses the point "
+            "(`vllm_capture._tree.absent_point_reason`) rather than resolving it: when it did resolve, "
+            "`vllm-static` returned a full-looking (13, 4096) of exact zeros -- its buffer, never "
+            "written -- against a real (13, 8, 4096) eager reference. Eager serves `z` on the same "
+            "checkpoint, where the same pair is called as ordinary modules"
         ),
     },
     {
