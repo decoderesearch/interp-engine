@@ -1,9 +1,0 @@
-{
-  "model": "google/gemma-3-12b-pt",
-  "backend": "vllm-static",
-  "dtype": "bfloat16",
-  "max_model_len": 8192,
-  "expect": "pass",
-  "why": "the same head_dim=256 shape with capture buffers and a graph pool on top, which is where the sizer is tightest",
-  "needs": "a B200 or other sm_100 card on vLLM >= 0.28.0. Same deleted 0.27.1 record as the `vllm` row above -- FA4's `SM100 forward with head_dim=256 does not support seqused_q/seqused_k`, fixed by vllm-project/vllm#52050 in 0.28.0. Note the A40 `vllm-static` failure for this model is a separate and still-valid bound, about static buffers rather than kernels"
-}

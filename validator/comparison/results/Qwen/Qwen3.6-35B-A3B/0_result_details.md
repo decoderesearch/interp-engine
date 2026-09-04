@@ -8,18 +8,18 @@ Generated from the `<engine>.json` files beside this one, which hold the same nu
 
 | engine | verdict | capture | dtype | version | agreed | differs | failed | not compared |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| [interp-engine eager](eager.json) *(reference)* | ref | ok | bfloat16 | v1.1.0+dirty | — | — | — | — |
-| [interp-engine vllm](vllm.json) | ✅ | ok | bfloat16 | v0.26.0 | 30 | 0 | 0 | 4 |
-| [interp-engine vllm-static](vllm-static.json) | ⚠️ | ok | bfloat16 | v0.27.1 | 24 | 0 | 0 | 4 |
-| [tlens_v2](tlens_v2.json) | unsupported | skip: ValueError: Qwen/Qwen3.6-35B-A3B not found. Valid official model names (excl aliases): ['01-ai/Yi-34B', '01-ai/Yi-34B-Chat', '01-ai/Yi-6B', '01-ai/Yi-6B-Chat', 'ai-forever/mGPT',… | bfloat16 | v3.7.0 | 0 | 0 | 0 | 26 |
-| [tlens_v3](tlens_v3.json) | ✅ | ok | bfloat16 | v3.7.0 | 18 | 0 | 0 | 8 |
+| [interp-engine eager](eager.json) *(reference)* | ref | ok | bfloat16 | v1.6.0 | — | — | — | — |
+| [interp-engine vllm](vllm.json) | ✅ | ok | bfloat16 | v0.28.0 | 32 | 0 | 0 | 4 |
+| [interp-engine vllm-static](vllm-static.json) | ✅ | ok | bfloat16 | v0.28.0 | 30 | 0 | 0 | 4 |
+| [tlens_v2](tlens_v2.json) | unsupported | skip: ValueError: Qwen/Qwen3.6-35B-A3B not found. Valid official model names (excl aliases): ['01-ai/Yi-34B', '01-ai/Yi-34B-Chat', '01-ai/Yi-6B', '01-ai/Yi-6B-Chat', 'ai-forever/mGPT',… | bfloat16 | v3.8.1 | 0 | 0 | 0 | 26 |
+| [tlens_v3](tlens_v3.json) | ✅ | ok | bfloat16 | v3.8.1 | 18 | 0 | 0 | 8 |
 | [nnsight](nnsight.json) | ✅ | ok | bfloat16 | v0.7.0 | 14 | 0 | 0 | 8 |
 
 ### Point by point
 
 ✅ agrees · ⚠️ differs in value · ❌ structurally wrong, or the engine did not deliver it · 🐞 differs because the reference is wrong here, with an issue filed against it (`ref🐞` marks the reference's own column) · `ref` the reference produced this point (nothing scores it — it *is* the baseline) · `n/a` this engine declines the point · `no ref` the reference declined it · `—` no comparison here — the point is not asked of this engine, or it is listed under *Not compared* · † a waiver carried the pass (listed below)
 
-| point<br>layer | interp-engine eager<br>[v1.1.0+dirty](eager.json) | interp-engine vllm<br>[v0.26.0](vllm.json) | interp-engine vllm-static<br>[v0.27.1](vllm-static.json) | tlens_v3<br>[v3.7.0](tlens_v3.json) | nnsight<br>[v0.7.0](nnsight.json) |
+| point<br>layer | interp-engine eager<br>[v1.6.0](eager.json) | interp-engine vllm<br>[v0.28.0](vllm.json) | interp-engine vllm-static<br>[v0.28.0](vllm-static.json) | tlens_v3<br>[v3.8.1](tlens_v3.json) | nnsight<br>[v0.7.0](nnsight.json) |
 | --- | --- | --- | --- | --- | --- |
 | `resid_post`<br>layer 0 | ref | ✅ | ✅ | ✅ | ✅ |
 | `resid_post`<br>layer 20 | ref | ✅ | ✅ | ✅ | ✅ |
@@ -52,10 +52,12 @@ Generated from the `<engine>.json` files beside this one, which hold the same nu
 | `q_norm_out`<br>layer 39 | ref | ✅ | ✅ | — | — |
 | `k_norm_in`<br>layer 39 | ref | ✅ | ✅ | — | — |
 | `k_norm_out`<br>layer 39 | ref | ✅ | ✅ | — | — |
-| `router_logits`<br>layer 0 | ref | ✅ | n/a | — | — |
-| `router_logits`<br>layer 20 | ref | ✅ | n/a | — | — |
-| `router_logits`<br>layer 30 | ref | ✅ | n/a | — | — |
-| `router_logits`<br>layer 39 | ref | ✅ | n/a | — | — |
+| `value`<br>layer 39 | ref | ✅ | ✅ | — | — |
+| `z`<br>layer 39 | ref | ✅ | ✅ | — | — |
+| `router_logits`<br>layer 0 | ref | ✅ | ✅ | — | — |
+| `router_logits`<br>layer 20 | ref | ✅ | ✅ | — | — |
+| `router_logits`<br>layer 30 | ref | ✅ | ✅ | — | — |
+| `router_logits`<br>layer 39 | ref | ✅ | ✅ | — | — |
 | `embeddings` | ref | ✅ | — | — | — |
 | `final_norm` | ref | ✅ | — | — | — |
 | `attn_scores`<br>layer 39 | ref | ✅ | ✅ | — | — |
@@ -70,14 +72,14 @@ Nothing: every point every engine captured agreed with the reference.
 
 | engine | point | layer | cos | worst token's cos | which token | its rel diff |
 | --- | --- | --- | --- | --- | --- | --- |
-| interp-engine vllm | `mlp_out` | 20 | 0.992263 | 0.940336 | 1 | 0.3626 |
-| interp-engine vllm | `mlp_out` | 30 | 0.99617 | 0.980566 | 9 | 0.1962 |
-| interp-engine vllm | `mlp_out_post` | 20 | 0.992263 | 0.940336 | 1 | 0.3626 |
-| interp-engine vllm | `mlp_out_post` | 30 | 0.99617 | 0.980566 | 9 | 0.1962 |
-| interp-engine vllm-static | `mlp_out` | 20 | 0.995474 | 0.947781 | 1 | 0.3267 |
-| interp-engine vllm-static | `mlp_out` | 30 | 0.997464 | 0.975221 | 12 | 0.2283 |
-| interp-engine vllm-static | `mlp_out_post` | 20 | 0.995474 | 0.947781 | 1 | 0.3267 |
-| interp-engine vllm-static | `mlp_out_post` | 30 | 0.997464 | 0.975221 | 12 | 0.2283 |
+| interp-engine vllm | `mlp_out` | 20 | 0.99222 | 0.94671 | 1 | 0.3307 |
+| interp-engine vllm | `mlp_out` | 30 | 0.99666 | 0.972057 | 12 | 0.2412 |
+| interp-engine vllm | `mlp_out_post` | 20 | 0.99222 | 0.94671 | 1 | 0.3307 |
+| interp-engine vllm | `mlp_out_post` | 30 | 0.99666 | 0.972057 | 12 | 0.2412 |
+| interp-engine vllm-static | `mlp_out` | 20 | 0.99222 | 0.94671 | 1 | 0.3307 |
+| interp-engine vllm-static | `mlp_out` | 30 | 0.99666 | 0.972057 | 12 | 0.2412 |
+| interp-engine vllm-static | `mlp_out_post` | 20 | 0.99222 | 0.94671 | 1 | 0.3307 |
+| interp-engine vllm-static | `mlp_out_post` | 30 | 0.99666 | 0.972057 | 12 | 0.2412 |
 
 These cells pass: the scored cosine is over the whole tensor, and it clears the tier. The column beside it is the same measurement on the single worst token, and it does not -- so a reader who takes one token's activations out of this capture is not getting the agreement the verdict promises. Nothing here is re-scored on that number (the tiers were calibrated against whole-tensor metrics), but a sublayer point that warns while the residual around it passes is usually this, arriving where the massive coordinates are no longer there to average it away.
 
@@ -87,6 +89,5 @@ These cells pass: the scored cosine is over the whole tensor, and it clears the 
 | --- | --- | --- | --- |
 | `mlp_pre` | 0, 20, 30, 39 | nnsight | neither engine captured it |
 | `mlp_pre` | 0, 20, 30, 39 | tlens_v3 | the `eager` reference declined the point, so there is nothing to score against — sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity |
-| `mlp_act` | 0, 20, 30, 39 | nnsight, interp-engine vllm | neither engine captured it |
+| `mlp_act` | 0, 20, 30, 39 | nnsight, interp-engine vllm, interp-engine vllm-static | neither engine captured it |
 | `mlp_act` | 0, 20, 30, 39 | tlens_v3 | the `eager` reference declined the point, so there is nothing to score against — sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity |
-| `router_logits` | 0, 20, 30, 39 | interp-engine vllm-static | this engine declined the point |

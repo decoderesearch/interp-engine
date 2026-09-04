@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-08-19",
+  "captured_at": "2026-09-03",
   "device": "cuda",
   "dtype": "float32",
   "engine": "vllm-static",
@@ -429,12 +429,108 @@
       "status": "PASS",
       "tier": "fused",
       "worst_token": 11
+    },
+    "value.0": {
+      "cos": 0.9999999999994187,
+      "cos_worst_token": 0.9999999999991348,
+      "layer": 0,
+      "max_abs_diff": 2.5272369384765625e-05,
+      "point": "value",
+      "rel_diff": 1.077989911568161e-06,
+      "rel_worst_token": 1.3187618152112763e-06,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 7
+    },
+    "value.23": {
+      "cos": 0.9999997080528436,
+      "cos_worst_token": 0.999999341331463,
+      "layer": 23,
+      "max_abs_diff": 0.011013507843017578,
+      "point": "value",
+      "rel_diff": 0.0007684435035959094,
+      "rel_worst_token": 0.0011519949276698174,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 11
+    },
+    "value.34": {
+      "cos": 0.9999998526064325,
+      "cos_worst_token": 0.9999995100498115,
+      "layer": 34,
+      "max_abs_diff": 0.007368564605712891,
+      "point": "value",
+      "rel_diff": 0.000545501919340038,
+      "rel_worst_token": 0.0010071988453615773,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 11
+    },
+    "value.45": {
+      "cos": 0.9999999426270632,
+      "cos_worst_token": 0.9999998089330413,
+      "layer": 45,
+      "max_abs_diff": 0.06514358520507812,
+      "point": "value",
+      "rel_diff": 0.00033893273797794835,
+      "rel_worst_token": 0.0008922393456572329,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 11
+    },
+    "z.0": {
+      "cos": 0.9999999711536469,
+      "cos_worst_token": 0.9999999585836181,
+      "layer": 0,
+      "max_abs_diff": 0.011034011840820312,
+      "point": "z",
+      "rel_diff": 0.0005180391676007092,
+      "rel_worst_token": 0.0006091908866652163,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "z.23": {
+      "cos": 0.9999993957923916,
+      "cos_worst_token": 0.999999004106839,
+      "layer": 23,
+      "max_abs_diff": 0.010060310363769531,
+      "point": "z",
+      "rel_diff": 0.0011579892157621149,
+      "rel_worst_token": 0.0014402651433073556,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "z.34": {
+      "cos": 0.9999993860511532,
+      "cos_worst_token": 0.9999988641873255,
+      "layer": 34,
+      "max_abs_diff": 0.009249448776245117,
+      "point": "z",
+      "rel_diff": 0.0012300504734580866,
+      "rel_worst_token": 0.0019486386132977,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 12
+    },
+    "z.45": {
+      "cos": 0.9999999185057704,
+      "cos_worst_token": 0.9999998304083401,
+      "layer": 45,
+      "max_abs_diff": 0.0965576171875,
+      "point": "z",
+      "rel_diff": 0.0005410325187085098,
+      "rel_worst_token": 0.0012383136491503329,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 11
     }
   },
   "reason": "",
   "reference": "eager",
   "run": {
-    "date_utc": "2026-08-19T13:14:09+00:00",
+    "date_utc": "2026-09-03T22:47:15+00:00",
     "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
     "eager_only": false,
     "gpu": {
@@ -461,18 +557,17 @@
   "verdict": "\u2705",
   "versions": {
     "interp_engine": {
-      "commit": "640b8a739c68219ab65ebb0bac33f61b6ee9b1f1",
-      "dirty": true,
-      "version": "1.1.0"
+      "commit": "b74a69844215aa342cdaa8b3cfd07a63313ade4c",
+      "version": "1.6.0"
     },
     "torch": {
       "version": "2.13.0"
     },
     "transformers": {
-      "version": "5.15.0"
+      "version": "5.16.1"
     },
     "vllm": {
-      "version": "0.27.1"
+      "version": "0.28.0"
     }
   }
 }

@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-08-19",
+  "captured_at": "2026-09-03",
   "device": "cuda",
   "dtype": "bfloat16",
   "engine": "vllm-static",
@@ -339,12 +339,36 @@
       "status": "PASS",
       "tier": "fused",
       "worst_token": 1
+    },
+    "value.63": {
+      "cos": 0.9999886541768533,
+      "cos_worst_token": 0.9999837328063292,
+      "layer": 63,
+      "max_abs_diff": 0.25,
+      "point": "value",
+      "rel_diff": 0.004765534833229449,
+      "rel_worst_token": 0.005708200258822196,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 1
+    },
+    "z.63": {
+      "cos": 0.9999382309495221,
+      "cos_worst_token": 0.9999167276812626,
+      "layer": 63,
+      "max_abs_diff": 0.3125,
+      "point": "z",
+      "rel_diff": 0.011166446913967723,
+      "rel_worst_token": 0.012949814211495126,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 4
     }
   },
   "reason": "",
   "reference": "eager",
   "run": {
-    "date_utc": "2026-08-19T13:14:09+00:00",
+    "date_utc": "2026-09-03T22:47:15+00:00",
     "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
     "eager_only": false,
     "gpu": {
@@ -371,18 +395,17 @@
   "verdict": "\u2705",
   "versions": {
     "interp_engine": {
-      "commit": "325e23f29dcc05c21c4896baae451a370fa25ac8",
-      "dirty": true,
-      "version": "1.1.0"
+      "commit": "b74a69844215aa342cdaa8b3cfd07a63313ade4c",
+      "version": "1.6.0"
     },
     "torch": {
       "version": "2.13.0"
     },
     "transformers": {
-      "version": "5.15.0"
+      "version": "5.16.1"
     },
     "vllm": {
-      "version": "0.27.1"
+      "version": "0.28.0"
     }
   }
 }

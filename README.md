@@ -82,21 +82,21 @@ One stream (tok/s):
 
 | model                    | eager | vLLM       | vLLM + static taps |
 | ------------------------ | ----- | ---------- | ------------------ |
-| `gemma-2-2b`             | 31    | 31 (1.0x)  | **214 (6.9x)**     |
-| `qwen3-4b`               | 24    | 47 (2.0x)  | **296 (12.3x)**    |
-| `llama-3.1-8b`           | 33    | 57 (1.7x)  | **256 (7.9x)**     |
-| `qwen3.8-27b`            | 9.9   | 12 (1.2x)  | **63 (6.4x)**      |
-| `deepseek-v4-flash-0731` | 3.3   | 2.9 (0.9x) | **119 (36x)**      |
+| `gemma-2-2b`             | 75    | 88 (1.2x)  | **220 (2.9x)**     |
+| `qwen3-4b`               | 60    | 136 (2.3x) | **313 (5.2x)**     |
+| `llama-3.1-8b`           | 84    | 163 (1.9x) | **258 (3.1x)**     |
+| `qwen3.8-27b`            | 25    | 35 (1.4x)  | **63 (2.5x)**      |
+| `deepseek-v4-flash-0731` | 5.3   | 15 (2.9x)  | **132 (25x)**      |
 
 8 concurrent requests (aggregate tok/s):
 
-| model                    | eager | vLLM        | vLLM + static taps |
-| ------------------------ | ----- | ----------- | ------------------ |
-| `gemma-2-2b`             | 30    | 226 (7.5x)  | **1,238 (41x)**    |
-| `qwen3-4b`               | 24    | 333 (14.0x) | **1,018 (43x)**    |
-| `llama-3.1-8b`           | 32    | 419 (13.0x) | **1,536 (48x)**    |
-| `qwen3.8-27b`            | 9.5   | 87 (9.2x)   | **386 (41x)**      |
-| `deepseek-v4-flash-0731` | 3.2   | 23 (7.2x)   | **402 (127x)**     |
+| model                    | eager | vLLM          | vLLM + static taps |
+| ------------------------ | ----- | ------------- | ------------------ |
+| `gemma-2-2b`             | 75    | 675 (9.0x)    | **1,436 (19.2x)**  |
+| `qwen3-4b`               | 61    | 973 (15.9x)   | **2,219 (36x)**    |
+| `llama-3.1-8b`           | 81    | 1,187 (14.6x) | **1,755 (22x)**    |
+| `qwen3.8-27b`            | 24    | 246 (10.3x)   | **408 (17.0x)**    |
+| `deepseek-v4-flash-0731` | 5.4   | 117 (22x)     | **631 (116x)**     |
 
 <!-- THROUGHPUT:END -->
 
@@ -129,6 +129,7 @@ Never OOM again - `interp-engine` includes gpu-sizer, an intuitive UI which tell
 
 - **Gemma 4 requires transformers 5.14.1** because 5.15 moved `head_dim` into `per_layer_config` and vLLM's config read dies before a weight loads ([vllm#51744](https://github.com/vllm-project/vllm/issues/51744)).
 - **DeepSeek-V2 on transformers older than 5.15.0** captures a wrong attention temperature — the engine warns at load, and upgrading is the fix ([COMPATIBILITY.md](docs/COMPATIBILITY.md)).
+- **DeepSeek-V4 on the eager backend needs two flags outside Hopper.** Its FP8 paths reach for `kernels-community/deep-gemm`, which declares a `9.0a` build, and with `kernels` >= 0.16.1 the arch refusal escapes transformers' Triton fallback and kills the first forward. Load with `TRANSFORMERS_DISABLE_DEEPGEMM_LINEAR=1` and `experts_implementation="grouped_mm"`, which transformers [already recommends on B200](https://github.com/huggingface/transformers/blob/93c8b7b485963a10800c91f55304db6be211c2bd/src/transformers/integrations/finegrained_fp8.py#L252-L254) for an unrelated DeepGEMM accuracy problem. The engine raises `HubKernelUnsupported` naming both; vLLM is unaffected.
 - **MXFP4 checkpoints (gpt-oss) need `interp-engine[quant]`**, which the `[vllm]` extra does not include; without it transformers dequantizes them to bf16 at roughly 3x the weights, which can turn a model that fits into one that does not.
 
 Per-architecture structural quirks — which points a family serves and why — are not caveats but facts about the architecture, and live in [ARCHITECTURE_QUIRKS.md](docs/ARCHITECTURE_QUIRKS.md).

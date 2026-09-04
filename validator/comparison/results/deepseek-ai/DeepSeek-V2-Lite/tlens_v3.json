@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-08-12",
+  "captured_at": "2026-09-03",
   "device": "cuda",
   "dtype": "bfloat16",
   "engine": "tlens_v3",
@@ -18,120 +18,112 @@
   },
   "points": {
     "attn_out.0": {
-      "cos": 0.9903617573373042,
-      "cos_worst_token": 0.9783593425106492,
+      "cos": 0.9999999999999998,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 0,
-      "max_abs_diff": 0.1640625,
+      "max_abs_diff": 0.0,
       "point": "attn_out",
-      "rel_diff": 0.1504687224784374,
-      "rel_worst_token": 0.21557851070259207,
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 4
+      "worst_token": 0
     },
     "attn_out.13": {
-      "cos": 0.9543845965733739,
-      "cos_worst_token": 0.9144514553675499,
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 13,
-      "max_abs_diff": 0.3125,
+      "max_abs_diff": 0.0,
       "point": "attn_out",
-      "rel_diff": 0.30830150371005804,
-      "rel_worst_token": 0.40488850082027744,
-      "status": "WARN",
-      "tier": "tlens",
-      "worst_token": 9
-    },
-    "attn_out.20": {
-      "cos": 0.881086463054817,
-      "cos_worst_token": 0.7347914262918862,
-      "layer": 20,
-      "max_abs_diff": 2.7734375,
-      "point": "attn_out",
-      "rel_diff": 0.557391793058122,
-      "rel_worst_token": 0.9516932846007665,
-      "status": "WARN",
-      "tier": "tlens",
-      "worst_token": 10
-    },
-    "attn_out.26": {
-      "cos": 0.9479863071685364,
-      "cos_worst_token": 0.8750719149053755,
-      "layer": 26,
-      "max_abs_diff": 3.546875,
-      "point": "attn_out",
-      "rel_diff": 0.42652521451299663,
-      "rel_worst_token": 0.6011271188774348,
-      "status": "WARN",
-      "tier": "tlens",
-      "worst_token": 3
-    },
-    "attn_out_post.0": {
-      "cos": 0.9903617573373042,
-      "cos_worst_token": 0.9783593425106492,
-      "layer": 0,
-      "max_abs_diff": 0.1640625,
-      "point": "attn_out_post",
-      "rel_diff": 0.1504687224784374,
-      "rel_worst_token": 0.21557851070259207,
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 4
-    },
-    "attn_out_post.13": {
-      "cos": 0.9543845965733739,
-      "cos_worst_token": 0.9144514553675499,
-      "layer": 13,
-      "max_abs_diff": 0.3125,
-      "point": "attn_out_post",
-      "rel_diff": 0.30830150371005804,
-      "rel_worst_token": 0.40488850082027744,
-      "status": "WARN",
-      "tier": "tlens",
-      "worst_token": 9
-    },
-    "attn_out_post.20": {
-      "cos": 0.881086463054817,
-      "cos_worst_token": 0.7347914262918862,
-      "layer": 20,
-      "max_abs_diff": 2.7734375,
-      "point": "attn_out_post",
-      "rel_diff": 0.557391793058122,
-      "rel_worst_token": 0.9516932846007665,
-      "status": "WARN",
-      "tier": "tlens",
       "worst_token": 10
     },
-    "attn_out_post.26": {
-      "cos": 0.9479863071685364,
-      "cos_worst_token": 0.8750719149053755,
-      "layer": 26,
-      "max_abs_diff": 3.546875,
-      "point": "attn_out_post",
-      "rel_diff": 0.42652521451299663,
-      "rel_worst_token": 0.6011271188774348,
-      "status": "WARN",
+    "attn_out.20": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 20,
+      "max_abs_diff": 0.0,
+      "point": "attn_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
       "tier": "tlens",
       "worst_token": 3
     },
-    "mlp_act.0": {
-      "engine_bug": {
-        "mechanism": "The adapter installs MoEBridge for every block, and MoEBridge aliases `hook_pre` to `hook_in` and `hook_post` to `hook_out`. On a dense DeepseekV2MLP those are the block's own d_model-wide input and output rather than the gate_proj output and down_proj input, and `hook_pre_linear` is absent entirely.",
-        "title": "DeepSeek V2 dense layers expose MLP boundary tensors under neuron-hook names",
-        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1645"
-      },
+    "attn_out.26": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 26,
+      "max_abs_diff": 0.0,
+      "point": "attn_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 6
+    },
+    "attn_out_post.0": {
+      "cos": 0.9999999999999998,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 0,
-      "mismatch": "shape",
+      "max_abs_diff": 0.0,
+      "point": "attn_out_post",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 0
+    },
+    "attn_out_post.13": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 13,
+      "max_abs_diff": 0.0,
+      "point": "attn_out_post",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 10
+    },
+    "attn_out_post.20": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 20,
+      "max_abs_diff": 0.0,
+      "point": "attn_out_post",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 3
+    },
+    "attn_out_post.26": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 26,
+      "max_abs_diff": 0.0,
+      "point": "attn_out_post",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 6
+    },
+    "mlp_act.0": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 0,
+      "max_abs_diff": 0.0,
       "point": "mlp_act",
-      "shape_eng": [
-        13,
-        2048
-      ],
-      "shape_ref": [
-        13,
-        10944
-      ],
-      "status": "FAIL",
-      "tier": "tlens"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 3
     },
     "mlp_act.13": {
       "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
@@ -155,120 +147,112 @@
       "status": "N/A"
     },
     "mlp_out.0": {
-      "cos": 0.986823593677195,
-      "cos_worst_token": 0.9111826079989132,
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 0,
-      "max_abs_diff": 0.1268310546875,
+      "max_abs_diff": 0.0,
       "point": "mlp_out",
-      "rel_diff": 0.1618231699666354,
-      "rel_worst_token": 0.4127917063642289,
-      "status": "WARN",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
       "tier": "tlens",
-      "worst_token": 4
+      "worst_token": 11
     },
     "mlp_out.13": {
-      "cos": 0.9617350556480652,
-      "cos_worst_token": 0.8913216865481953,
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 13,
-      "max_abs_diff": 0.328125,
+      "max_abs_diff": 0.0,
       "point": "mlp_out",
-      "rel_diff": 0.27429904264364763,
-      "rel_worst_token": 0.466827726635502,
-      "status": "WARN",
-      "tier": "tlens",
-      "worst_token": 10
-    },
-    "mlp_out.20": {
-      "cos": 0.9742178043091553,
-      "cos_worst_token": 0.965185397981836,
-      "layer": 20,
-      "max_abs_diff": 1.859375,
-      "point": "mlp_out",
-      "rel_diff": 0.23537482558524095,
-      "rel_worst_token": 0.2954287343971807,
-      "status": "WARN",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
       "tier": "tlens",
       "worst_token": 1
     },
-    "mlp_out.26": {
-      "cos": 0.9976837274809837,
-      "cos_worst_token": 0.9762169663618963,
-      "layer": 26,
-      "max_abs_diff": 17.96875,
+    "mlp_out.20": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 20,
+      "max_abs_diff": 0.0,
       "point": "mlp_out",
-      "rel_diff": 0.07174363825080105,
-      "rel_worst_token": 0.3093191147504838,
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
       "worst_token": 3
     },
-    "mlp_out_post.0": {
-      "cos": 0.986823593677195,
-      "cos_worst_token": 0.9111826079989132,
-      "layer": 0,
-      "max_abs_diff": 0.1268310546875,
-      "point": "mlp_out_post",
-      "rel_diff": 0.1618231699666354,
-      "rel_worst_token": 0.4127917063642289,
-      "status": "WARN",
+    "mlp_out.26": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 26,
+      "max_abs_diff": 0.0,
+      "point": "mlp_out",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
       "tier": "tlens",
       "worst_token": 4
     },
-    "mlp_out_post.13": {
-      "cos": 0.9617350556480652,
-      "cos_worst_token": 0.8913216865481953,
-      "layer": 13,
-      "max_abs_diff": 0.328125,
+    "mlp_out_post.0": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999999,
+      "layer": 0,
+      "max_abs_diff": 0.0,
       "point": "mlp_out_post",
-      "rel_diff": 0.27429904264364763,
-      "rel_worst_token": 0.466827726635502,
-      "status": "WARN",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
       "tier": "tlens",
-      "worst_token": 10
+      "worst_token": 11
     },
-    "mlp_out_post.20": {
-      "cos": 0.9742178043091553,
-      "cos_worst_token": 0.965185397981836,
-      "layer": 20,
-      "max_abs_diff": 1.859375,
+    "mlp_out_post.13": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 13,
+      "max_abs_diff": 0.0,
       "point": "mlp_out_post",
-      "rel_diff": 0.23537482558524095,
-      "rel_worst_token": 0.2954287343971807,
-      "status": "WARN",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
       "tier": "tlens",
       "worst_token": 1
     },
-    "mlp_out_post.26": {
-      "cos": 0.9976837274809837,
-      "cos_worst_token": 0.9762169663618963,
-      "layer": 26,
-      "max_abs_diff": 17.96875,
+    "mlp_out_post.20": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 20,
+      "max_abs_diff": 0.0,
       "point": "mlp_out_post",
-      "rel_diff": 0.07174363825080105,
-      "rel_worst_token": 0.3093191147504838,
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
       "worst_token": 3
     },
+    "mlp_out_post.26": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 26,
+      "max_abs_diff": 0.0,
+      "point": "mlp_out_post",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 4
+    },
     "mlp_pre.0": {
-      "engine_bug": {
-        "mechanism": "The adapter installs MoEBridge for every block, and MoEBridge aliases `hook_pre` to `hook_in` and `hook_post` to `hook_out`. On a dense DeepseekV2MLP those are the block's own d_model-wide input and output rather than the gate_proj output and down_proj input, and `hook_pre_linear` is absent entirely.",
-        "title": "DeepSeek V2 dense layers expose MLP boundary tensors under neuron-hook names",
-        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1645"
-      },
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 0,
-      "mismatch": "shape",
+      "max_abs_diff": 0.0,
       "point": "mlp_pre",
-      "shape_eng": [
-        13,
-        2048
-      ],
-      "shape_ref": [
-        13,
-        10944
-      ],
-      "status": "FAIL",
-      "tier": "tlens"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 1
     },
     "mlp_pre.13": {
       "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
@@ -292,112 +276,118 @@
       "status": "N/A"
     },
     "mlp_pre_linear.0": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 0,
-      "missing": "engine",
+      "max_abs_diff": 0.0,
       "point": "mlp_pre_linear",
-      "status": "N/A"
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 8
     },
     "resid_mid.0": {
-      "cos": 0.9974369823507417,
-      "cos_worst_token": 0.9933009322437594,
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 0,
-      "max_abs_diff": 0.1640625,
+      "max_abs_diff": 0.0,
       "point": "resid_mid",
-      "rel_diff": 0.07189902359443448,
-      "rel_worst_token": 0.11634566697919534,
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 4
+      "worst_token": 2
     },
     "resid_mid.13": {
-      "cos": 0.999979162880286,
-      "cos_worst_token": 0.979371719217645,
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 13,
-      "max_abs_diff": 1.125,
+      "max_abs_diff": 0.0,
       "point": "resid_mid",
-      "rel_diff": 0.006455591829742668,
-      "rel_worst_token": 0.20874903050068913,
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 10
+      "worst_token": 3
     },
     "resid_mid.20": {
-      "cos": 0.999920170088577,
-      "cos_worst_token": 0.9825606253336729,
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 20,
-      "max_abs_diff": 3.75,
+      "max_abs_diff": 0.0,
       "point": "resid_mid",
-      "rel_diff": 0.012635960499094106,
-      "rel_worst_token": 0.1862826106329729,
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 10
+      "worst_token": 1
     },
     "resid_mid.26": {
-      "cos": 0.9957685826976118,
-      "cos_worst_token": 0.9933844511452884,
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 26,
-      "max_abs_diff": 15.875,
+      "max_abs_diff": 0.0,
       "point": "resid_mid",
-      "rel_diff": 0.10015523582757428,
-      "rel_worst_token": 0.14498281419799025,
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 3
+      "worst_token": 7
     },
     "resid_post.0": {
-      "cos": 0.9982892331851562,
-      "cos_worst_token": 0.9968987893488563,
+      "cos": 0.9999999999999998,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 0,
-      "max_abs_diff": 0.09375,
+      "max_abs_diff": 0.0,
       "point": "resid_post",
-      "rel_diff": 0.058479831027049546,
-      "rel_worst_token": 0.08124184921885944,
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 4
+      "worst_token": 6
     },
     "resid_post.13": {
-      "cos": 0.9999789171919705,
-      "cos_worst_token": 0.9811065915563659,
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 13,
-      "max_abs_diff": 1.125,
+      "max_abs_diff": 0.0,
       "point": "resid_post",
-      "rel_diff": 0.006493556039389288,
-      "rel_worst_token": 0.19467334672498587,
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 10
+      "worst_token": 6
     },
     "resid_post.20": {
-      "cos": 0.9999164591790202,
-      "cos_worst_token": 0.9857210430908623,
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 20,
-      "max_abs_diff": 4.0,
+      "max_abs_diff": 0.0,
       "point": "resid_post",
-      "rel_diff": 0.012927415930472641,
-      "rel_worst_token": 0.17011786774640875,
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 10
+      "worst_token": 11
     },
     "resid_post.26": {
-      "cos": 0.9967594109603964,
-      "cos_worst_token": 0.9882580732432374,
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 26,
-      "max_abs_diff": 33.0,
+      "max_abs_diff": 0.0,
       "point": "resid_post",
-      "rel_diff": 0.08633103469066081,
-      "rel_worst_token": 0.1837454171109239,
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 3
+      "worst_token": 5
     }
   },
   "reason": "",
   "reference": "eager",
   "run": {
-    "date_utc": "2026-08-12T03:31:40+00:00",
+    "date_utc": "2026-09-03T22:47:15+00:00",
     "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
     "eager_only": false,
     "gpu": {
@@ -421,16 +411,16 @@
   },
   "sae": {},
   "status": "ok",
-  "verdict": "\u26a0\ufe0f",
+  "verdict": "\u2705",
   "versions": {
     "torch": {
-      "version": "2.13.0"
+      "version": "2.14.0"
     },
     "transformer_lens": {
-      "version": "3.7.0"
+      "version": "3.8.1"
     },
     "transformers": {
-      "version": "5.15.0"
+      "version": "5.16.1"
     }
   }
 }

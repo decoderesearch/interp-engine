@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-08-19",
+  "captured_at": "2026-09-03",
   "device": "cuda",
   "dtype": "bfloat16",
   "engine": "eager",
@@ -8,9 +8,34 @@
   "points": {},
   "reason": "",
   "reference": "eager",
-  "reference_gaps": [],
+  "reference_gaps": [
+    {
+      "engines": [
+        "tlens_v3"
+      ],
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layers": [
+        13,
+        20,
+        26
+      ],
+      "point": "mlp_act"
+    },
+    {
+      "engines": [
+        "tlens_v3"
+      ],
+      "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
+      "layers": [
+        13,
+        20,
+        26
+      ],
+      "point": "mlp_pre"
+    }
+  ],
   "run": {
-    "date_utc": "2026-08-19T13:14:09+00:00",
+    "date_utc": "2026-09-03T22:47:15+00:00",
     "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
     "eager_only": false,
     "gpu": {
@@ -36,15 +61,14 @@
   "verdict": "ref",
   "versions": {
     "interp_engine": {
-      "commit": "640b8a739c68219ab65ebb0bac33f61b6ee9b1f1",
-      "dirty": true,
-      "version": "1.1.0"
+      "commit": "b74a69844215aa342cdaa8b3cfd07a63313ade4c",
+      "version": "1.6.0"
     },
     "torch": {
-      "version": "2.13.0"
+      "version": "2.14.0"
     },
     "transformers": {
-      "version": "5.15.0"
+      "version": "5.16.1"
     }
   }
 }

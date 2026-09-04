@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-08-19",
+  "captured_at": "2026-09-03",
   "device": "cuda",
   "dtype": "bfloat16",
   "engine": "vllm-static",
@@ -7,16 +7,16 @@
   "known_bug": null,
   "points": {
     "attn_in.18": {
-      "cos": 0.9973090939900267,
-      "cos_worst_token": 0.9922157166617243,
+      "cos": 0.9961655442986482,
+      "cos_worst_token": 0.9894571004118634,
       "layer": 18,
-      "max_abs_diff": 0.1171875,
+      "max_abs_diff": 0.125,
       "point": "attn_in",
-      "rel_diff": 0.07332647456164135,
-      "rel_worst_token": 0.12580515754681507,
+      "rel_diff": 0.08758254273923047,
+      "rel_worst_token": 0.14527044505155184,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 13
+      "worst_token": 7
     },
     "attn_in.2": {
       "cos": 0.9999766203432506,
@@ -31,13 +31,13 @@
       "worst_token": 7
     },
     "attn_out.18": {
-      "cos": 0.9976286778519017,
-      "cos_worst_token": 0.9951568030933541,
+      "cos": 0.9971896363499113,
+      "cos_worst_token": 0.9943967424333588,
       "layer": 18,
-      "max_abs_diff": 0.109375,
+      "max_abs_diff": 0.09375,
       "point": "attn_out",
-      "rel_diff": 0.06975775010839065,
-      "rel_worst_token": 0.10308394592223499,
+      "rel_diff": 0.07580036208695887,
+      "rel_worst_token": 0.10808424480515252,
       "status": "PASS",
       "tier": "fused",
       "worst_token": 13
@@ -55,13 +55,13 @@
       "worst_token": 2
     },
     "attn_out_post.18": {
-      "cos": 0.9976286778519017,
-      "cos_worst_token": 0.9951568030933541,
+      "cos": 0.9971896363499113,
+      "cos_worst_token": 0.9943967424333588,
       "layer": 18,
-      "max_abs_diff": 0.109375,
+      "max_abs_diff": 0.09375,
       "point": "attn_out_post",
-      "rel_diff": 0.06975775010839065,
-      "rel_worst_token": 0.10308394592223499,
+      "rel_diff": 0.07580036208695887,
+      "rel_worst_token": 0.10808424480515252,
       "status": "PASS",
       "tier": "fused",
       "worst_token": 13
@@ -79,12 +79,12 @@
       "worst_token": 2
     },
     "attn_scores.18": {
-      "cos": 0.9999196196870089,
+      "cos": 0.9998990578656466,
       "layer": 18,
       "masked_out": 2912,
-      "max_abs_diff": 0.5633134841918945,
+      "max_abs_diff": 0.5836849212646484,
       "point": "attn_scores",
-      "rel_diff": 0.012792773650965024,
+      "rel_diff": 0.014238133210208427,
       "status": "PASS",
       "tier": "fused"
     },
@@ -110,6 +110,30 @@
       "tier": "fused",
       "worst_token": 7
     },
+    "mlp_act.12": {
+      "layer": 12,
+      "missing": "both",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.18": {
+      "layer": 18,
+      "missing": "both",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.2": {
+      "layer": 2,
+      "missing": "both",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_act.23": {
+      "layer": 23,
+      "missing": "both",
+      "point": "mlp_act",
+      "status": "N/A"
+    },
     "mlp_out.0": {
       "cos": 0.9999838593930185,
       "cos_worst_token": 0.9996804918602303,
@@ -123,50 +147,49 @@
       "worst_token": 7
     },
     "mlp_out.12": {
-      "cos": 0.9894613921278019,
-      "cos_worst_token": 0.9252619565366785,
+      "cos": 0.9891501207818045,
+      "cos_worst_token": 0.9253522577122111,
       "layer": 12,
-      "max_abs_diff": 0.028900146484375,
+      "max_abs_diff": 0.02935791015625,
       "point": "mlp_out",
-      "rel_diff": 0.14482316659120179,
-      "rel_worst_token": 0.3799788273434277,
+      "rel_diff": 0.1469191347792468,
+      "rel_worst_token": 0.3794756804235395,
       "status": "PASS",
       "tier": "fused",
-      "waived": "the reference's own bf16 rounding, not vLLM's: against a float32 eager run of this checkpoint, vLLM's bf16 capture of mlp_out.23 scores cos 0.9989 while eager's own bf16 capture of it scores 0.9277 -- so the ~0.94 between the two engines is almost entirely the reference moving. 24 layers of hybrid trunk compound to ~10% by layer 22, and layer 23's conv contributes a token whose output is as large as the residual it writes into",
       "worst_token": 13
     },
     "mlp_out.18": {
-      "cos": 0.9939339052518157,
-      "cos_worst_token": 0.9853435520063297,
+      "cos": 0.9918577850548139,
+      "cos_worst_token": 0.9804481185846946,
       "layer": 18,
-      "max_abs_diff": 0.084228515625,
+      "max_abs_diff": 0.092041015625,
       "point": "mlp_out",
-      "rel_diff": 0.11094933557103169,
-      "rel_worst_token": 0.17076541706708925,
+      "rel_diff": 0.12873913297862927,
+      "rel_worst_token": 0.19743301523734735,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 8
+      "worst_token": 7
     },
     "mlp_out.2": {
-      "cos": 0.9999478997982042,
-      "cos_worst_token": 0.9998125596965904,
+      "cos": 0.9999480873245369,
+      "cos_worst_token": 0.9998015583668182,
       "layer": 2,
       "max_abs_diff": 0.001220703125,
       "point": "mlp_out",
-      "rel_diff": 0.010207765256744912,
-      "rel_worst_token": 0.020088929426871432,
+      "rel_diff": 0.010196324918190555,
+      "rel_worst_token": 0.020310267722901044,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 5
+      "worst_token": 2
     },
     "mlp_out.23": {
-      "cos": 0.9408058887225039,
-      "cos_worst_token": 0.09182010284536403,
+      "cos": 0.9264162771437131,
+      "cos_worst_token": -0.07712948486065949,
       "layer": 23,
-      "max_abs_diff": 12.625,
+      "max_abs_diff": 14.75,
       "point": "mlp_out",
-      "rel_diff": 0.3449009141708183,
-      "rel_worst_token": 1.3816458685421475,
+      "rel_diff": 0.3834913257723589,
+      "rel_worst_token": 1.5370474347553562,
       "status": "PASS",
       "tier": "fused",
       "waived": "the reference's own bf16 rounding, not vLLM's: against a float32 eager run of this checkpoint, vLLM's bf16 capture of mlp_out.23 scores cos 0.9989 while eager's own bf16 capture of it scores 0.9277 -- so the ~0.94 between the two engines is almost entirely the reference moving. 24 layers of hybrid trunk compound to ~10% by layer 22, and layer 23's conv contributes a token whose output is as large as the residual it writes into",
@@ -185,50 +208,49 @@
       "worst_token": 7
     },
     "mlp_out_post.12": {
-      "cos": 0.9894613921278019,
-      "cos_worst_token": 0.9252619565366785,
+      "cos": 0.9891501207818045,
+      "cos_worst_token": 0.9253522577122111,
       "layer": 12,
-      "max_abs_diff": 0.028900146484375,
+      "max_abs_diff": 0.02935791015625,
       "point": "mlp_out_post",
-      "rel_diff": 0.14482316659120179,
-      "rel_worst_token": 0.3799788273434277,
+      "rel_diff": 0.1469191347792468,
+      "rel_worst_token": 0.3794756804235395,
       "status": "PASS",
       "tier": "fused",
-      "waived": "the reference's own bf16 rounding, not vLLM's: against a float32 eager run of this checkpoint, vLLM's bf16 capture of mlp_out.23 scores cos 0.9989 while eager's own bf16 capture of it scores 0.9277 -- so the ~0.94 between the two engines is almost entirely the reference moving. 24 layers of hybrid trunk compound to ~10% by layer 22, and layer 23's conv contributes a token whose output is as large as the residual it writes into",
       "worst_token": 13
     },
     "mlp_out_post.18": {
-      "cos": 0.9939339052518157,
-      "cos_worst_token": 0.9853435520063297,
+      "cos": 0.9918577850548139,
+      "cos_worst_token": 0.9804481185846946,
       "layer": 18,
-      "max_abs_diff": 0.084228515625,
+      "max_abs_diff": 0.092041015625,
       "point": "mlp_out_post",
-      "rel_diff": 0.11094933557103169,
-      "rel_worst_token": 0.17076541706708925,
+      "rel_diff": 0.12873913297862927,
+      "rel_worst_token": 0.19743301523734735,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 8
+      "worst_token": 7
     },
     "mlp_out_post.2": {
-      "cos": 0.9999478997982042,
-      "cos_worst_token": 0.9998125596965904,
+      "cos": 0.9999480873245369,
+      "cos_worst_token": 0.9998015583668182,
       "layer": 2,
       "max_abs_diff": 0.001220703125,
       "point": "mlp_out_post",
-      "rel_diff": 0.010207765256744912,
-      "rel_worst_token": 0.020088929426871432,
+      "rel_diff": 0.010196324918190555,
+      "rel_worst_token": 0.020310267722901044,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 5
+      "worst_token": 2
     },
     "mlp_out_post.23": {
-      "cos": 0.9408058887225039,
-      "cos_worst_token": 0.09182010284536403,
+      "cos": 0.9264162771437131,
+      "cos_worst_token": -0.07712948486065949,
       "layer": 23,
-      "max_abs_diff": 12.625,
+      "max_abs_diff": 14.75,
       "point": "mlp_out_post",
-      "rel_diff": 0.3449009141708183,
-      "rel_worst_token": 1.3816458685421475,
+      "rel_diff": 0.3834913257723589,
+      "rel_worst_token": 1.5370474347553562,
       "status": "PASS",
       "tier": "fused",
       "waived": "the reference's own bf16 rounding, not vLLM's: against a float32 eager run of this checkpoint, vLLM's bf16 capture of mlp_out.23 scores cos 0.9989 while eager's own bf16 capture of it scores 0.9277 -- so the ~0.94 between the two engines is almost entirely the reference moving. 24 layers of hybrid trunk compound to ~10% by layer 22, and layer 23's conv contributes a token whose output is as large as the residual it writes into",
@@ -247,28 +269,28 @@
       "worst_token": 7
     },
     "resid_mid.12": {
-      "cos": 0.9999859034500909,
-      "cos_worst_token": 0.9922250125676029,
+      "cos": 0.9999883759954448,
+      "cos_worst_token": 0.9921199901457027,
       "layer": 12,
-      "max_abs_diff": 0.25,
+      "max_abs_diff": 0.048828125,
       "point": "resid_mid",
-      "rel_diff": 0.00590539866863824,
-      "rel_worst_token": 0.12538639035825688,
+      "rel_diff": 0.004821617458030501,
+      "rel_worst_token": 0.12621091757907243,
       "status": "PASS",
       "tier": "fused",
       "worst_token": 2
     },
     "resid_mid.18": {
-      "cos": 0.9998857201243855,
-      "cos_worst_token": 0.9899993763544803,
+      "cos": 0.9998517565037672,
+      "cos_worst_token": 0.9872897007437764,
       "layer": 18,
-      "max_abs_diff": 0.25,
+      "max_abs_diff": 0.109375,
       "point": "resid_mid",
-      "rel_diff": 0.015335626482091465,
-      "rel_worst_token": 0.14167993567354104,
+      "rel_diff": 0.01721868868299359,
+      "rel_worst_token": 0.16000755868219146,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 8
+      "worst_token": 7
     },
     "resid_mid.2": {
       "cos": 0.9999751610662998,
@@ -283,13 +305,13 @@
       "worst_token": 2
     },
     "resid_mid.23": {
-      "cos": 0.9653234762114689,
-      "cos_worst_token": 0.7893978754735732,
+      "cos": 0.9597267077655847,
+      "cos_worst_token": 0.7573404473039661,
       "layer": 23,
-      "max_abs_diff": 1.36328125,
+      "max_abs_diff": 1.44140625,
       "point": "resid_mid",
-      "rel_diff": 0.26301343950509326,
-      "rel_worst_token": 0.6447998460741031,
+      "rel_diff": 0.2836774937213614,
+      "rel_worst_token": 0.6948056010927877,
       "status": "PASS",
       "tier": "fused",
       "waived": "the reference's own bf16 rounding, not vLLM's: against a float32 eager run of this checkpoint, vLLM's bf16 capture of mlp_out.23 scores cos 0.9989 while eager's own bf16 capture of it scores 0.9277 -- so the ~0.94 between the two engines is almost entirely the reference moving. 24 layers of hybrid trunk compound to ~10% by layer 22, and layer 23's conv contributes a token whose output is as large as the residual it writes into",
@@ -308,77 +330,77 @@
       "worst_token": 7
     },
     "resid_post.12": {
-      "cos": 0.9999784545118646,
-      "cos_worst_token": 0.9869128821053538,
+      "cos": 0.999980756218586,
+      "cos_worst_token": 0.9867818072080664,
       "layer": 12,
-      "max_abs_diff": 0.25,
+      "max_abs_diff": 0.037353515625,
       "point": "resid_post",
-      "rel_diff": 0.007052887575594429,
-      "rel_worst_token": 0.16173196296037712,
+      "rel_diff": 0.006203811900574417,
+      "rel_worst_token": 0.16264625133047808,
       "status": "PASS",
       "tier": "fused",
       "worst_token": 13
     },
     "resid_post.18": {
-      "cos": 0.999850577835702,
-      "cos_worst_token": 0.9898307660941045,
+      "cos": 0.9998033849259886,
+      "cos_worst_token": 0.9865720754881598,
       "layer": 18,
-      "max_abs_diff": 0.25,
+      "max_abs_diff": 0.12109375,
       "point": "resid_post",
-      "rel_diff": 0.017462136111800797,
-      "rel_worst_token": 0.14278029110441998,
+      "rel_diff": 0.01983070472097,
+      "rel_worst_token": 0.16447697756450766,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 8
+      "worst_token": 7
     },
     "resid_post.2": {
-      "cos": 0.9999543438173454,
-      "cos_worst_token": 0.9999172849623053,
+      "cos": 0.9999546000060304,
+      "cos_worst_token": 0.9999158074085189,
       "layer": 2,
       "max_abs_diff": 0.003662109375,
       "point": "resid_post",
-      "rel_diff": 0.009559594899911808,
-      "rel_worst_token": 0.01300323373239142,
+      "rel_diff": 0.009534807378255543,
+      "rel_worst_token": 0.013109850483161612,
       "status": "PASS",
       "tier": "fused",
       "worst_token": 2
     },
     "resid_post.23": {
-      "cos": 0.9625927217914378,
-      "cos_worst_token": 0.24995494846355504,
+      "cos": 0.9536933653908655,
+      "cos_worst_token": 0.11469254069855199,
       "layer": 23,
-      "max_abs_diff": 11.75,
+      "max_abs_diff": 13.78125,
       "point": "resid_post",
-      "rel_diff": 0.27493005641545554,
-      "rel_worst_token": 1.3417682782979616,
+      "rel_diff": 0.30502552888664,
+      "rel_worst_token": 1.4903091047745824,
       "status": "PASS",
       "tier": "fused",
       "waived": "the reference's own bf16 rounding, not vLLM's: against a float32 eager run of this checkpoint, vLLM's bf16 capture of mlp_out.23 scores cos 0.9989 while eager's own bf16 capture of it scores 0.9277 -- so the ~0.94 between the two engines is almost entirely the reference moving. 24 layers of hybrid trunk compound to ~10% by layer 22, and layer 23's conv contributes a token whose output is as large as the residual it writes into",
       "worst_token": 6
     },
     "router_logits.12": {
-      "cos": 0.9999782212871773,
-      "cos_worst_token": 0.9999268735912151,
+      "cos": 0.9999718309595795,
+      "cos_worst_token": 0.9999142382588907,
       "layer": 12,
-      "max_abs_diff": 0.09375,
+      "max_abs_diff": 0.109375,
       "point": "router_logits",
-      "rel_diff": 0.0067697645262142035,
-      "rel_worst_token": 0.012113872603662871,
+      "rel_diff": 0.00762837991984215,
+      "rel_worst_token": 0.01329929807010669,
       "status": "PASS",
       "tier": "fused",
       "worst_token": 8
     },
     "router_logits.18": {
-      "cos": 0.9999289288858272,
-      "cos_worst_token": 0.9997112792958996,
+      "cos": 0.9999010180549526,
+      "cos_worst_token": 0.9996705276893995,
       "layer": 18,
-      "max_abs_diff": 0.21875,
+      "max_abs_diff": 0.2421875,
       "point": "router_logits",
-      "rel_diff": 0.011988104637301161,
-      "rel_worst_token": 0.02408087972164139,
+      "rel_diff": 0.014070453666152172,
+      "rel_worst_token": 0.027393511045366085,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 2
+      "worst_token": 7
     },
     "router_logits.2": {
       "cos": 0.9999959847580406,
@@ -393,22 +415,70 @@
       "worst_token": 7
     },
     "router_logits.23": {
-      "cos": 0.9996123503007706,
-      "cos_worst_token": 0.9977005417990314,
+      "cos": 0.999549076865446,
+      "cos_worst_token": 0.9972780789957885,
       "layer": 23,
-      "max_abs_diff": 1.09375,
+      "max_abs_diff": 1.234375,
       "point": "router_logits",
-      "rel_diff": 0.02827463103427015,
-      "rel_worst_token": 0.08932260118374664,
+      "rel_diff": 0.03040921114473008,
+      "rel_worst_token": 0.09680717003004707,
       "status": "PASS",
       "tier": "fused",
       "worst_token": 6
+    },
+    "value.18": {
+      "cos": 0.9952483093133347,
+      "cos_worst_token": 0.9837471835471177,
+      "layer": 18,
+      "max_abs_diff": 0.129150390625,
+      "point": "value",
+      "rel_diff": 0.09742590202878196,
+      "rel_worst_token": 0.180607562541647,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 7
+    },
+    "value.2": {
+      "cos": 0.9999780607712548,
+      "cos_worst_token": 0.9999765252195516,
+      "layer": 2,
+      "max_abs_diff": 0.0009765625,
+      "point": "value",
+      "rel_diff": 0.0066504388832088505,
+      "rel_worst_token": 0.010358129280543315,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 7
+    },
+    "z.18": {
+      "cos": 0.9961310676565779,
+      "cos_worst_token": 0.9931730247714982,
+      "layer": 18,
+      "max_abs_diff": 0.08544921875,
+      "point": "z",
+      "rel_diff": 0.08887714152899268,
+      "rel_worst_token": 0.11807226689887279,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 8
+    },
+    "z.2": {
+      "cos": 0.9999292178533072,
+      "cos_worst_token": 0.999860395035428,
+      "layer": 2,
+      "max_abs_diff": 0.0018310546875,
+      "point": "z",
+      "rel_diff": 0.011911036336905548,
+      "rel_worst_token": 0.01721889561232435,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 2
     }
   },
   "reason": "",
   "reference": "eager",
   "run": {
-    "date_utc": "2026-08-19T13:14:09+00:00",
+    "date_utc": "2026-09-03T22:47:15+00:00",
     "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
     "eager_only": false,
     "gpu": {
@@ -435,18 +505,17 @@
   "verdict": "\u2705",
   "versions": {
     "interp_engine": {
-      "commit": "640b8a739c68219ab65ebb0bac33f61b6ee9b1f1",
-      "dirty": true,
-      "version": "1.1.0"
+      "commit": "b74a69844215aa342cdaa8b3cfd07a63313ade4c",
+      "version": "1.6.0"
     },
     "torch": {
       "version": "2.13.0"
     },
     "transformers": {
-      "version": "5.15.0"
+      "version": "5.16.1"
     },
     "vllm": {
-      "version": "0.27.1"
+      "version": "0.28.0"
     }
   }
 }

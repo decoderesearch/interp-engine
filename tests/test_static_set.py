@@ -15,6 +15,8 @@ from interp_engine.vllm_capture.static import (
     StaticState,
     _activation_width,
     _add_rows,
+    _alloc_site,
+    _apply_write,
     _buffer_shape,
     _copy_sum,
     _drop_absent_sites,
@@ -23,8 +25,10 @@ from interp_engine.vllm_capture.static import (
     _model_hidden_size,
     _require_matching_width,
     _row_view,
+    _rows,
     _Site,
     _site_width,
+    _value_view,
     _wrap_attn,
     _wrap_module,
     apply_breakable_env,
@@ -506,6 +510,50 @@ def test_activation_width_reads_vllm_linear_names():
     assert _activation_width(VllmDown(), "resid_pre", 768) == 768
 
 
+def test_a_router_that_wraps_its_projection_is_still_sized_at_the_expert_count():
+    """Gemma-4's router normalizes and rescales, then delegates -- the width is a level down.
+
+    The wrapper states nothing, so this fell through to `d_model` and allocated 2816 against 128
+    live. Sized wrong rather than absent, it survives install and dies at the first forward, which
+    on the static backend is the whole engine core rather than one row.
+
+    The `norm` sibling is why the search wants a 2-D weight and not merely a width: it is a real
+    module, it comes first, and it answers about the hidden size it normalizes over.
+    """
+
+    class GateLinear(torch.nn.Module):
+        input_size = 2816
+        output_size = 128
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.weight = torch.nn.Parameter(torch.zeros(128, 2816))
+
+    class RouterNorm(torch.nn.Module):
+        output_size = 2816
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.weight = torch.nn.Parameter(torch.zeros(2816))
+
+    class Gemma4Router(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.norm = RouterNorm()
+            self.proj = GateLinear()
+
+    assert _activation_width(Gemma4Router(), "router_logits", 2816) == 128
+
+
+def test_a_router_with_nothing_to_read_still_falls_back_to_d_model():
+    """The descent is a rescue, not a new requirement: an unreadable router keeps the old answer."""
+
+    class Opaque(torch.nn.Module):
+        pass
+
+    assert _activation_width(Opaque(), "router_logits", 768) == 768
+
+
 def test_a_nonempty_static_set_forces_breakable_graphs(monkeypatch):
     monkeypatch.delenv(BREAKABLE_ENV, raising=False)
     apply_breakable_env([Address("resid_pre", 0)], [Address("resid_pre", 0)])
@@ -632,6 +680,66 @@ def test_a_read_buffer_is_not_used_as_a_boolean_when_sizing_the_write():
     buf = torch.zeros(8, 5)
     site = _Site(address=Address("resid_pre", 0), buf=buf)
     assert _site_width(site, "resid_pre", 768) == 5
+
+
+def _cpu_site(shape: tuple[int, ...], *, need_buf: bool, need_delta: bool) -> _Site:
+    return _alloc_site(
+        Address("resid_post", 0),
+        module=None,
+        shape=shape,
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+        need_buf=need_buf,
+        need_delta=need_delta,
+    )
+
+
+def test_a_write_delta_is_one_row_and_broadcasts_over_the_whole_batch():
+    """A static write is one constant vector, so the buffer holds one and not ``max_n`` copies.
+
+    Every row of the old full-height delta held the same numbers. Shrinking it takes the row cap off
+    the tensor's own height, which is the part that has to keep working: ``_rows`` reads the cap
+    from ``_Site.shape`` now, and a delta that clipped the batch to its own single row would steer
+    the first token of a prompt and leave the rest alone.
+    """
+    site = _cpu_site((8, 2), need_buf=False, need_delta=True)
+    assert site.buf is None
+    assert site.delta is not None and tuple(site.delta.shape) == (1, 2)
+    assert site.rows == 8, "the cap is the shape the site serves, not the height of its delta"
+
+    site.delta[:] = 0.5
+    live = torch.zeros(5, 2)
+    _apply_write(live, None, site, _rows(live, site), fused=False)
+    assert torch.equal(live, torch.full((5, 2), 0.5)), "one row of delta, every row of the batch"
+
+    # Taller than the site was built for: the surplus is left alone, as it was when the cap came
+    # from the buffer's own height.
+    over = torch.zeros(12, 2)
+    _apply_write(over, None, site, _rows(over, site), fused=False)
+    assert torch.equal(over[:8], torch.full((8, 2), 0.5))
+    assert torch.equal(over[8:], torch.zeros(4, 2))
+
+
+def test_a_read_and_a_write_at_one_address_pay_for_one_full_height_buffer():
+    """What the shape change is worth: the read scales with the batch and the write does not."""
+    site = _cpu_site((8192, 8), need_buf=True, need_delta=True)
+    assert site.buf is not None and site.delta is not None
+    assert site.buf.numel() == 8192 * site.delta.numel()
+
+
+def test_a_batched_hidden_state_reaches_a_write_only_site_too():
+    """``_row_view`` reads the squeeze off the site's shape, which a one-row delta cannot supply.
+
+    The ``(1, tokens, d_model)`` families again -- but at a site with no read buffer, where the
+    trailing shape used to be read off a full-height delta.
+    """
+    site = _cpu_site((4, 2), need_buf=False, need_delta=True)
+    site.delta[:] = 1.0
+    live = torch.zeros(1, 3, 2)
+    rows = _row_view(live, site)
+    assert rows is not None and tuple(rows.shape) == (3, 2)
+    _apply_write(rows, None, site, _rows(rows, site), fused=False)
+    assert torch.equal(live[0], torch.ones(3, 2)), "the view has to be onto the tensor, not a copy"
 
 
 def test_resid_post_wrap_copies_the_sum_and_adds_only_into_hidden():
@@ -889,6 +997,41 @@ def test_set_static_delta_installs_a_live_modifier_and_clear_drops_it():
     assert site.lens_scope is None
 
 
+def test_a_constant_write_records_on_the_host_that_the_buffer_is_live():
+    """``delta_set`` tracks the buffer so the mHC recorder never has to ask the device.
+
+    The recorder wants one bool per stacked site per forward, and ``(delta != 0).any().item()``
+    buys it with a device-to-host sync: the whole pipeline drains, inside the forward, once per
+    layer per decode step. The flag is the same answer off the host, so the two writers of the
+    buffer are the two things that have to maintain it.
+    """
+    from types import SimpleNamespace
+
+    from interp_engine.vllm_capture.static import worker_clear_static_delta, worker_set_static_delta
+
+    static = StaticState()
+    site = _Site(address=Address("resid_post", 0), delta=torch.zeros(1, 2))
+    static.writes["resid_post.0"] = site
+    worker = SimpleNamespace(_ie_static=static)
+    assert site.delta_set is False
+
+    worker_set_static_delta(worker, [{"point": "resid_post", "layer": 0, "vector": [1.0, 0.0], "coeff": 2.0}])
+    assert site.delta_set is True
+    assert torch.equal(site.delta, torch.tensor([[2.0, 0.0]]))
+
+    worker_clear_static_delta(worker)
+    assert site.delta_set is False
+    assert torch.equal(site.delta, torch.zeros(1, 2))
+
+    # An op that is not a plain constant leaves the buffer alone, so the flag stays down and the
+    # recorder takes the modifier branch instead.
+    worker_set_static_delta(
+        worker,
+        [{"point": "resid_post", "layer": 0, "op": "orthogonal", "vector": [1.0, 0.0], "coeff": 1.0}],
+    )
+    assert site.delta_set is False and site.modify is not None
+
+
 def _demux_worker(site: _Site):
     from types import SimpleNamespace
 
@@ -1094,3 +1237,60 @@ def test_capturing_attn_wrap_weak_refs_qkv_before_add_eager(monkeypatch):
     assert torch.equal(q_site.buf[:3], q)
     assert torch.equal(k_site.buf[:3], k)
     assert torch.equal(v_site.buf[:3], v)
+
+
+class _FusedQKV(torch.nn.Module):
+    """The three numbers :func:`value_span` reads off vLLM's ``QKVParallelLinear``."""
+
+    def __init__(self, num_heads: int, num_kv_heads: int, head_size: int) -> None:
+        super().__init__()
+        self.num_heads = num_heads
+        self.num_kv_heads = num_kv_heads
+        self.head_size = head_size
+
+
+def test_a_value_site_is_as_wide_as_the_value_and_not_as_the_fused_projection():
+    """``d_model`` is the wrong width for ``value`` and only looks right on MHA.
+
+    Gemma-3-1B projects 4 query heads and 1 KV head of 256 against a 1152 ``d_model``: the value is
+    256 wide, the projection hands back 1536, and ``d_model`` is neither. gpt2 is why this went
+    unnoticed -- 12 heads of 64 is exactly its ``d_model``, so the fallback was right by coincidence
+    on the one model the static parity tests use.
+    """
+    layer = torch.nn.Module()
+    assert _buffer_shape("value", layer, 8, 1152, qkv_widths=(1024, 256, 256)) == (8, 256)
+
+
+def test_a_value_read_is_narrowed_to_the_value_third_of_a_fused_projection():
+    """vLLM packs ``[q | k | v]`` into one output, and the static tap has to cut the same third the
+    hooked tap cuts. Copying the packed tensor whole returns queries and keys under the value's name;
+    here it cannot even do that, because the buffer is the value's width and the copy is refused.
+    """
+    module = _FusedQKV(num_heads=4, num_kv_heads=1, head_size=256)
+    site = _alloc_site(
+        Address("value", 0),
+        module=module,
+        shape=(8, 256),
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+        need_buf=True,
+        need_delta=False,
+    )
+    packed = torch.zeros(3, 1536)
+    packed[:, 1280:] = 7.0  # the value third: (4 + 1) * 256 onwards
+
+    live = _value_view(packed, site)
+
+    assert tuple(live.shape) == (3, 256)
+    assert torch.equal(live, torch.full((3, 256), 7.0))
+    _require_matching_width(live, site.buf, site)
+
+    live[0, 0] = 1.0
+    assert packed[0, 1280] == 1.0, "a view, so a static write through it reaches the tensor the model uses"
+
+
+def test_every_other_point_passes_through_the_value_narrowing_untouched():
+    """``_value_view`` is keyed on the point name, so a resid site keeps the whole hidden state."""
+    site = _cpu_site((8, 4), need_buf=True, need_delta=False)
+    hidden = torch.arange(12, dtype=torch.float32).reshape(3, 4)
+    assert _value_view(hidden, site) is hidden

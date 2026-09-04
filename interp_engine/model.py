@@ -16,6 +16,7 @@ Never imports from ``neuronpedia_inference``.
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import AbstractContextManager, nullcontext
 from typing import TYPE_CHECKING, Any
@@ -107,6 +108,136 @@ def _release_failed_attempt(exc: Exception) -> Exception:
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     return exc
+
+
+#: transformers' own note that DeepGEMM and Triton disagree end-to-end on B200, and that the pair of
+#: settings below is the way off DeepGEMM. Pinned to the v5.16.1 commit so the lines stay put.
+TRANSFORMERS_DEEPGEMM_NOTE = (
+    "https://github.com/huggingface/transformers/blob/93c8b7b485963a10800c91f55304db6be211c2bd/"
+    "src/transformers/integrations/finegrained_fp8.py#L252-L254"
+)
+
+
+class HubKernelUnsupported(RuntimeError):
+    """A Hub kernel transformers wants is not built for this GPU, and its fallback never runs."""
+
+
+def _hub_kernel_arch_refusal() -> str | None:
+    """The `kernels` arch refusal for DeepGEMM on this device, or None if the forward will survive.
+
+    `kernels` 0.16.1 refuses a prebuilt kernel whose declared architectures miss the current device
+    and raises ``RuntimeError`` to say so. ``transformers.integrations.hub_kernels.lazy_load_kernel``
+    catches only ``FileNotFoundError`` and ``AssertionError``, so that error escapes instead of
+    returning ``None`` and reaching the Triton fallback its callers already have ready.
+
+    Asking here is the same call the forward makes, which is the point: the weights load fine and
+    the refusal only arrives once an FP8 path runs, so a caller otherwise meets it partway through a
+    capture. Matching on the message is the only handle -- the type is a bare ``RuntimeError`` and
+    the class lives in a package we do not depend on.
+    """
+    try:
+        from transformers.integrations.hub_kernels import lazy_load_kernel
+    except ImportError:
+        return None
+    try:
+        lazy_load_kernel("deep-gemm")
+    except Exception as err:  # noqa: BLE001 - the type is bare; the message is the signal
+        text = str(err)
+        if "does not support the current device" in text and "architectures of the build" in text:
+            return text
+    return None
+
+
+#: The two ``experts_implementation`` values that route the MoE experts through DeepGEMM.
+_DEEPGEMM_EXPERTS = ("deepgemm", "deepgemm_megamoe")
+#: transformers reads this per call, inside ``fp8_linear``, so setting it before a load is in time.
+DISABLE_DEEPGEMM_LINEAR = "TRANSFORMERS_DISABLE_DEEPGEMM_LINEAR"
+
+
+def _wants_deepgemm(config: Any) -> bool:
+    """Whether either FP8 path will still reach for DeepGEMM on the next forward.
+
+    Two paths, disabled two different ways: the dense FP8 linear by an environment variable, the MoE
+    experts by which implementation the config names. A caller who has turned both off is not going
+    to meet the refusal, so there is nothing to warn them about.
+    """
+    if os.environ.get(DISABLE_DEEPGEMM_LINEAR, "0") != "1":
+        return True
+    return str(getattr(config, "_experts_implementation", "") or "") in _DEEPGEMM_EXPERTS
+
+
+def _is_fp8(quant_method: str | None) -> bool:
+    return quant_method is not None and "fp8" in quant_method.lower()
+
+
+def deepgemm_fallback_kwargs(hf_model_id: str) -> dict[str, Any]:
+    """``model_kwargs`` that keep this checkpoint off DeepGEMM, or ``{}`` where it is not needed.
+
+    Empty unless the checkpoint is FP8 *and* this GPU is one the ``deep-gemm`` Hub build does not
+    target -- the case :class:`HubKernelUnsupported` refuses. Loading with these reaches the Triton
+    path transformers means to fall back to, and reaches it exactly: measured on a B200 against the
+    same checkpoint loaded through a patched ``lazy_load_kernel``, all four captured layers of
+    DeepSeek-V4-Flash-0731 came back bit-identical (cosine 1.0, max abs diff 0) with the same
+    generated text. It is also far the quicker way to decline -- 90s against ~25 minutes for one
+    forward and 16 tokens, because the implementation named here is a better expert path than the
+    one a bare refusal falls back to.
+
+    Opt-in, and deliberately not applied by ``EagerModel`` itself: which experts implementation runs
+    is a numerics decision, and a library that quietly rewrites one is worse than a library that
+    says no. The two harnesses in this repo -- the validator's eager adapter and the benchmark
+    runner -- call this, so an unattended sweep on a Blackwell box measures the checkpoint instead of
+    skipping the row (and with `eager` the reference, skipping it costs every other engine's cell
+    too). It lives here rather than in either of them for the reason
+    ``_mandatory_engine_kwargs`` gives: a rule spelled out once per harness is a rule that goes
+    missing from the thing a deployment imports.
+
+    Sets :data:`DISABLE_DEEPGEMM_LINEAR` as a side effect, since that half of the pair has no kwarg.
+    """
+    if not torch.cuda.is_available():
+        return {}
+    try:
+        cfg = AutoConfig.from_pretrained(hf_model_id, trust_remote_code=True)
+    except Exception:  # noqa: BLE001 - an unreadable config is the load's problem to report
+        return {}
+    quantization = getattr(cfg, "quantization_config", None) or {}
+    method = (
+        quantization.get("quant_method")
+        if isinstance(quantization, dict)
+        else getattr(quantization, "quant_method", None)
+    )
+    if not _is_fp8(str(getattr(method, "value", method)) if method is not None else None):
+        return {}
+    if _hub_kernel_arch_refusal() is None:
+        return {}
+    os.environ[DISABLE_DEEPGEMM_LINEAR] = "1"
+    # Only a sparse trunk has experts to reimplement; on a dense FP8 checkpoint the linear path is
+    # the whole exposure, and naming an experts implementation it has no experts for would be a
+    # kwarg transformers has nowhere to put.
+    return {"experts_implementation": "grouped_mm"} if facts.n_experts(cfg) > 0 else {}
+
+
+def _check_hub_kernels(hf_model_id: str, quant_method: str | None, config: Any) -> None:
+    """Refuse an FP8 checkpoint whose first forward would die on a Hub kernel built for another GPU.
+
+    Only FP8 reaches for DeepGEMM, and only on CUDA, so nothing else pays for the probe.
+    """
+    if not _is_fp8(quant_method) or not torch.cuda.is_available() or not _wants_deepgemm(config):
+        return
+    refusal = _hub_kernel_arch_refusal()
+    if refusal is None:
+        return
+    raise HubKernelUnsupported(
+        f"{hf_model_id} would die on its first forward. transformers reaches for the `deep-gemm` Hub "
+        "kernel on FP8 paths and this GPU is not one its build targets; `kernels` >= 0.16.1 raises "
+        "RuntimeError to say so, and `lazy_load_kernel` catches only FileNotFoundError and "
+        "AssertionError, so the Triton fallback it would have taken is unreachable.\n"
+        f"Refusal: {refusal}\n"
+        "Set TRANSFORMERS_DISABLE_DEEPGEMM_LINEAR=1 in the environment and pass "
+        '`model_kwargs={"experts_implementation": "grouped_mm"}`, which keeps both FP8 paths off '
+        "DeepGEMM. transformers recommends that same pair on B200 for an unrelated DeepGEMM accuracy "
+        f"problem: {TRANSFORMERS_DEEPGEMM_NOTE}\n"
+        "The vLLM backend is unaffected -- it vendors its own DeepGEMM."
+    )
 
 
 def _load_hf_model(hf_model_id: str, load_kwargs: dict[str, Any], *, trust_remote_code: bool) -> nn.Module:
@@ -300,6 +431,10 @@ class EagerModel:
         # every capture that keeps its graph, which is why serving does not pay it.
         self.hf_model.requires_grad_(requires_grad)
         self.config = self.hf_model.config
+        # After the load, because it reads the resolved quantization config -- and still well before
+        # any capture, which is the whole point: the weights load fine and the refusal below would
+        # otherwise arrive partway through one.
+        _check_hub_kernels(hf_model_id, self.quant_method, self.config)
 
         if tokenizer is None:
             tokenizer = AutoTokenizer.from_pretrained(hf_model_id, trust_remote_code=trust_remote)

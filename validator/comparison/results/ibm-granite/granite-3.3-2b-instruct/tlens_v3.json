@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-08-11",
+  "captured_at": "2026-09-03",
   "device": "cuda",
   "dtype": "bfloat16",
   "engine": "tlens_v3",
@@ -65,72 +65,52 @@
       "worst_token": 11
     },
     "attn_out_post.0": {
-      "cos": 0.999998721102306,
-      "cos_worst_token": 0.9999984363564747,
-      "engine_bug": {
-        "mechanism": "Granite multiplies each sublayer output by `residual_multiplier` (0.22 on these checkpoints) after the module returns and before adding it, and the adapter leaves the aliases on the module output, so the hooks are the unscaled contribution.",
-        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
-        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
-      },
+      "cos": 0.9999999999999998,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 0,
-      "max_abs_diff": 14.8125,
+      "max_abs_diff": 0.0,
       "point": "attn_out_post",
-      "rel_diff": 3.5457378036942258,
-      "rel_worst_token": 3.5472585117372666,
-      "status": "WARN",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
       "tier": "tlens",
-      "worst_token": 6
+      "worst_token": 4
     },
     "attn_out_post.20": {
-      "cos": 0.9999986283231599,
-      "cos_worst_token": 0.9999982909387783,
-      "engine_bug": {
-        "mechanism": "Granite multiplies each sublayer output by `residual_multiplier` (0.22 on these checkpoints) after the module returns and before adding it, and the adapter leaves the aliases on the module output, so the hooks are the unscaled contribution.",
-        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
-        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
-      },
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 20,
-      "max_abs_diff": 2.90234375,
+      "max_abs_diff": 0.0,
       "point": "attn_out_post",
-      "rel_diff": 3.5461070163518444,
-      "rel_worst_token": 3.5472331334857565,
-      "status": "WARN",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
       "tier": "tlens",
-      "worst_token": 6
+      "worst_token": 4
     },
     "attn_out_post.30": {
-      "cos": 0.9999985810516057,
-      "cos_worst_token": 0.9999984518004003,
-      "engine_bug": {
-        "mechanism": "Granite multiplies each sublayer output by `residual_multiplier` (0.22 on these checkpoints) after the module returns and before adding it, and the adapter leaves the aliases on the module output, so the hooks are the unscaled contribution.",
-        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
-        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
-      },
+      "cos": 0.9999999999999998,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 30,
-      "max_abs_diff": 3.78125,
+      "max_abs_diff": 0.0,
       "point": "attn_out_post",
-      "rel_diff": 3.545912593599449,
-      "rel_worst_token": 3.547542225022873,
-      "status": "WARN",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
       "tier": "tlens",
-      "worst_token": 9
+      "worst_token": 4
     },
     "attn_out_post.39": {
-      "cos": 0.9999988693527067,
-      "cos_worst_token": 0.9999981521304006,
-      "engine_bug": {
-        "mechanism": "Granite multiplies each sublayer output by `residual_multiplier` (0.22 on these checkpoints) after the module returns and before adding it, and the adapter leaves the aliases on the module output, so the hooks are the unscaled contribution.",
-        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
-        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
-      },
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 39,
-      "max_abs_diff": 181.0,
+      "max_abs_diff": 0.0,
       "point": "attn_out_post",
-      "rel_diff": 3.546870929120833,
-      "rel_worst_token": 3.5489769012792407,
-      "status": "WARN",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
       "tier": "tlens",
-      "worst_token": 2
+      "worst_token": 1
     },
     "mlp_act.0": {
       "cos": 0.9999999999999999,
@@ -229,72 +209,52 @@
       "worst_token": 8
     },
     "mlp_out_post.0": {
-      "cos": 0.9999986043963068,
-      "cos_worst_token": 0.9999985182891371,
-      "engine_bug": {
-        "mechanism": "Granite multiplies each sublayer output by `residual_multiplier` (0.22 on these checkpoints) after the module returns and before adding it, and the adapter leaves the aliases on the module output, so the hooks are the unscaled contribution.",
-        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
-        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
-      },
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 0,
-      "max_abs_diff": 4.5078125,
+      "max_abs_diff": 0.0,
       "point": "mlp_out_post",
-      "rel_diff": 3.5457008039320166,
-      "rel_worst_token": 3.5461290025716026,
-      "status": "WARN",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
       "tier": "tlens",
-      "worst_token": 5
+      "worst_token": 1
     },
     "mlp_out_post.20": {
-      "cos": 0.9999985241583447,
-      "cos_worst_token": 0.9999979707778495,
-      "engine_bug": {
-        "mechanism": "Granite multiplies each sublayer output by `residual_multiplier` (0.22 on these checkpoints) after the module returns and before adding it, and the adapter leaves the aliases on the module output, so the hooks are the unscaled contribution.",
-        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
-        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
-      },
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 20,
-      "max_abs_diff": 4.171875,
+      "max_abs_diff": 0.0,
       "point": "mlp_out_post",
-      "rel_diff": 3.5456386546945415,
-      "rel_worst_token": 3.5472628526083123,
-      "status": "WARN",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
       "tier": "tlens",
-      "worst_token": 11
+      "worst_token": 2
     },
     "mlp_out_post.30": {
-      "cos": 0.9999986651516657,
-      "cos_worst_token": 0.9999985300546143,
-      "engine_bug": {
-        "mechanism": "Granite multiplies each sublayer output by `residual_multiplier` (0.22 on these checkpoints) after the module returns and before adding it, and the adapter leaves the aliases on the module output, so the hooks are the unscaled contribution.",
-        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
-        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
-      },
+      "cos": 0.9999999999999998,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 30,
-      "max_abs_diff": 6.4375,
+      "max_abs_diff": 0.0,
       "point": "mlp_out_post",
-      "rel_diff": 3.546012774486695,
-      "rel_worst_token": 3.5476861043052366,
-      "status": "WARN",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
       "tier": "tlens",
-      "worst_token": 4
+      "worst_token": 0
     },
     "mlp_out_post.39": {
-      "cos": 0.9999986306286432,
-      "cos_worst_token": 0.9999958032782893,
-      "engine_bug": {
-        "mechanism": "Granite multiplies each sublayer output by `residual_multiplier` (0.22 on these checkpoints) after the module returns and before adding it, and the adapter leaves the aliases on the module output, so the hooks are the unscaled contribution.",
-        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
-        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
-      },
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 39,
-      "max_abs_diff": 3268.0,
+      "max_abs_diff": 0.0,
       "point": "mlp_out_post",
-      "rel_diff": 3.544781699510203,
-      "rel_worst_token": 3.5504702229271294,
-      "status": "WARN",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
       "tier": "tlens",
-      "worst_token": 3
+      "worst_token": 5
     },
     "mlp_pre.0": {
       "cos": 0.9999999999999998,
@@ -492,7 +452,7 @@
   "reason": "",
   "reference": "eager",
   "run": {
-    "date_utc": "2026-08-12T03:31:40+00:00",
+    "date_utc": "2026-09-03T22:47:15+00:00",
     "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
     "eager_only": false,
     "gpu": {
@@ -516,16 +476,16 @@
   },
   "sae": {},
   "status": "ok",
-  "verdict": "\ud83d\udc1e",
+  "verdict": "\u2705",
   "versions": {
     "torch": {
-      "version": "2.13.0"
+      "version": "2.14.0"
     },
     "transformer_lens": {
-      "version": "3.7.0"
+      "version": "3.8.1"
     },
     "transformers": {
-      "version": "5.15.0"
+      "version": "5.16.1"
     }
   }
 }

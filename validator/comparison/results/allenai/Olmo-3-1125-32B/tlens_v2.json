@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-08-12",
+  "captured_at": "2026-09-03",
   "device": "cuda",
   "dtype": "bfloat16",
   "engine": "tlens_v2",
@@ -65,70 +65,50 @@
       "worst_token": 10
     },
     "attn_out_post.0": {
-      "cos": 0.5761291701520409,
-      "cos_worst_token": 0.4895282121833456,
-      "engine_bug": {
-        "mechanism": "BlockBridge only moves the compatibility aliases past a post-sublayer norm when the adapter names it `ln1_post`/`ln2_post`; the OLMo adapters name theirs `ln1`/`ln2`, so both aliases stay on the raw module output. The converted HookedTransformer path calls the same two hooks before applying OLMo's norms, which is why tlens_v2 and tlens_v3 agree to four decimals.",
-        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
-        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
-      },
+      "cos": 0.9999901724052022,
+      "cos_worst_token": 0.9999820889272102,
       "layer": 0,
-      "max_abs_diff": 9.22900390625,
+      "max_abs_diff": 0.0078125,
       "point": "attn_out_post",
-      "rel_diff": 11.015770672557124,
-      "rel_worst_token": 21.017928235761794,
-      "status": "WARN",
+      "rel_diff": 0.0044391858940032464,
+      "rel_worst_token": 0.0059874351314134185,
+      "status": "PASS",
       "tier": "tlens",
-      "worst_token": 0
+      "worst_token": 5
     },
     "attn_out_post.32": {
-      "cos": 0.42663358025981196,
-      "cos_worst_token": 0.3751419658879441,
-      "engine_bug": {
-        "mechanism": "BlockBridge only moves the compatibility aliases past a post-sublayer norm when the adapter names it `ln1_post`/`ln2_post`; the OLMo adapters name theirs `ln1`/`ln2`, so both aliases stay on the raw module output. The converted HookedTransformer path calls the same two hooks before applying OLMo's norms, which is why tlens_v2 and tlens_v3 agree to four decimals.",
-        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
-        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
-      },
+      "cos": 0.9998775417556285,
+      "cos_worst_token": 0.9997179595961099,
       "layer": 32,
-      "max_abs_diff": 61.99102783203125,
+      "max_abs_diff": 0.0048828125,
       "point": "attn_out_post",
-      "rel_diff": 38.05541131640152,
-      "rel_worst_token": 85.33748548953561,
-      "status": "FAIL",
+      "rel_diff": 0.015668613192624192,
+      "rel_worst_token": 0.02823563082535317,
+      "status": "PASS",
       "tier": "tlens",
-      "worst_token": 6
+      "worst_token": 8
     },
     "attn_out_post.48": {
-      "cos": 0.26381036027272003,
-      "cos_worst_token": 0.27407521997774764,
-      "engine_bug": {
-        "mechanism": "BlockBridge only moves the compatibility aliases past a post-sublayer norm when the adapter names it `ln1_post`/`ln2_post`; the OLMo adapters name theirs `ln1`/`ln2`, so both aliases stay on the raw module output. The converted HookedTransformer path calls the same two hooks before applying OLMo's norms, which is why tlens_v2 and tlens_v3 agree to four decimals.",
-        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
-        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
-      },
+      "cos": 0.9998489516798414,
+      "cos_worst_token": 0.9996710717580146,
       "layer": 48,
-      "max_abs_diff": 105.53173828125,
+      "max_abs_diff": 0.005859375,
       "point": "attn_out_post",
-      "rel_diff": 79.41322965984145,
-      "rel_worst_token": 203.7137310347408,
-      "status": "FAIL",
+      "rel_diff": 0.01749822262336487,
+      "rel_worst_token": 0.027045501156742986,
+      "status": "PASS",
       "tier": "tlens",
       "worst_token": 6
     },
     "attn_out_post.63": {
-      "cos": 0.5314008457782193,
-      "cos_worst_token": 0.47523807932961176,
-      "engine_bug": {
-        "mechanism": "BlockBridge only moves the compatibility aliases past a post-sublayer norm when the adapter names it `ln1_post`/`ln2_post`; the OLMo adapters name theirs `ln1`/`ln2`, so both aliases stay on the raw module output. The converted HookedTransformer path calls the same two hooks before applying OLMo's norms, which is why tlens_v2 and tlens_v3 agree to four decimals.",
-        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
-        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
-      },
+      "cos": 0.9999337527562769,
+      "cos_worst_token": 0.9998694621739701,
       "layer": 63,
-      "max_abs_diff": 114.767578125,
+      "max_abs_diff": 0.125,
       "point": "attn_out_post",
-      "rel_diff": 23.949337180390756,
-      "rel_worst_token": 40.200393648249054,
-      "status": "WARN",
+      "rel_diff": 0.011743677580285019,
+      "rel_worst_token": 0.017797903618668936,
+      "status": "PASS",
       "tier": "tlens",
       "worst_token": 6
     },
@@ -229,72 +209,52 @@
       "worst_token": 10
     },
     "mlp_out_post.0": {
-      "cos": 0.6713303198553551,
-      "cos_worst_token": 0.47082345817995014,
-      "engine_bug": {
-        "mechanism": "BlockBridge only moves the compatibility aliases past a post-sublayer norm when the adapter names it `ln1_post`/`ln2_post`; the OLMo adapters name theirs `ln1`/`ln2`, so both aliases stay on the raw module output. The converted HookedTransformer path calls the same two hooks before applying OLMo's norms, which is why tlens_v2 and tlens_v3 agree to four decimals.",
-        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
-        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
-      },
+      "cos": 0.9999842488263583,
+      "cos_worst_token": 0.9999692795356812,
       "layer": 0,
-      "max_abs_diff": 7.093846797943115,
+      "max_abs_diff": 0.005859375,
       "point": "mlp_out_post",
-      "rel_diff": 9.17770750188544,
-      "rel_worst_token": 13.037877381755255,
-      "status": "WARN",
+      "rel_diff": 0.005617560648380334,
+      "rel_worst_token": 0.007839814245529321,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 5
+    },
+    "mlp_out_post.32": {
+      "cos": 0.9998905939693427,
+      "cos_worst_token": 0.9998385918756313,
+      "layer": 32,
+      "max_abs_diff": 0.0166015625,
+      "point": "mlp_out_post",
+      "rel_diff": 0.01485025516027522,
+      "rel_worst_token": 0.01841100608865772,
+      "status": "PASS",
       "tier": "tlens",
       "worst_token": 10
     },
-    "mlp_out_post.32": {
-      "cos": 0.7884515062222002,
-      "cos_worst_token": 0.20453217119137593,
-      "engine_bug": {
-        "mechanism": "BlockBridge only moves the compatibility aliases past a post-sublayer norm when the adapter names it `ln1_post`/`ln2_post`; the OLMo adapters name theirs `ln1`/`ln2`, so both aliases stay on the raw module output. The converted HookedTransformer path calls the same two hooks before applying OLMo's norms, which is why tlens_v2 and tlens_v3 agree to four decimals.",
-        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
-        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
-      },
-      "layer": 32,
-      "max_abs_diff": 106.4111328125,
-      "point": "mlp_out_post",
-      "rel_diff": 18.724984605815717,
-      "rel_worst_token": 49.396828820730626,
-      "status": "WARN",
-      "tier": "tlens",
-      "worst_token": 6
-    },
     "mlp_out_post.48": {
-      "cos": 0.7473089066936831,
-      "cos_worst_token": 0.36107328585398507,
-      "engine_bug": {
-        "mechanism": "BlockBridge only moves the compatibility aliases past a post-sublayer norm when the adapter names it `ln1_post`/`ln2_post`; the OLMo adapters name theirs `ln1`/`ln2`, so both aliases stay on the raw module output. The converted HookedTransformer path calls the same two hooks before applying OLMo's norms, which is why tlens_v2 and tlens_v3 agree to four decimals.",
-        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
-        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
-      },
+      "cos": 0.9998178242632567,
+      "cos_worst_token": 0.9996119834019251,
       "layer": 48,
-      "max_abs_diff": 167.0224609375,
+      "max_abs_diff": 0.0234375,
       "point": "mlp_out_post",
-      "rel_diff": 28.9652107864012,
-      "rel_worst_token": 40.80605140204277,
-      "status": "WARN",
+      "rel_diff": 0.01913220230753151,
+      "rel_worst_token": 0.02825476026226899,
+      "status": "PASS",
       "tier": "tlens",
-      "worst_token": 6
+      "worst_token": 10
     },
     "mlp_out_post.63": {
-      "cos": 0.8272902812820764,
-      "cos_worst_token": 0.46169018709433596,
-      "engine_bug": {
-        "mechanism": "BlockBridge only moves the compatibility aliases past a post-sublayer norm when the adapter names it `ln1_post`/`ln2_post`; the OLMo adapters name theirs `ln1`/`ln2`, so both aliases stay on the raw module output. The converted HookedTransformer path calls the same two hooks before applying OLMo's norms, which is why tlens_v2 and tlens_v3 agree to four decimals.",
-        "title": "hook_attn_out / hook_mlp_out are pre-transform module outputs on OLMo 2/3 and Granite",
-        "url": "https://github.com/TransformerLensOrg/TransformerLens/issues/1648"
-      },
+      "cos": 0.9999202055529806,
+      "cos_worst_token": 0.9998267961382872,
       "layer": 63,
-      "max_abs_diff": 554.75,
+      "max_abs_diff": 0.3125,
       "point": "mlp_out_post",
-      "rel_diff": 54.93989132949907,
-      "rel_worst_token": 70.34791217361234,
-      "status": "WARN",
+      "rel_diff": 0.012632897947581401,
+      "rel_worst_token": 0.018680480664003393,
+      "status": "PASS",
       "tier": "tlens",
-      "worst_token": 6
+      "worst_token": 10
     },
     "mlp_pre.0": {
       "cos": 0.9999917694274217,
@@ -492,7 +452,7 @@
   "reason": "",
   "reference": "eager",
   "run": {
-    "date_utc": "2026-08-12T03:31:40+00:00",
+    "date_utc": "2026-09-03T22:47:15+00:00",
     "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
     "eager_only": false,
     "gpu": {
@@ -516,16 +476,16 @@
   },
   "sae": {},
   "status": "ok",
-  "verdict": "\ud83d\udc1e",
+  "verdict": "\u2705",
   "versions": {
     "torch": {
-      "version": "2.13.0"
+      "version": "2.14.0"
     },
     "transformer_lens": {
-      "version": "3.7.0"
+      "version": "3.8.1"
     },
     "transformers": {
-      "version": "5.15.0"
+      "version": "5.16.1"
     }
   }
 }

@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-08-19",
+  "captured_at": "2026-09-03",
   "device": "cuda",
   "dtype": "float16",
   "engine": "eager",
@@ -8,9 +8,23 @@
   "points": {},
   "reason": "",
   "reference": "eager",
-  "reference_gaps": [],
+  "reference_gaps": [
+    {
+      "engines": [
+        "tlens_v2",
+        "tlens_v3"
+      ],
+      "expected": "OPT inlines fc1/fc2 on the decoder layer, so no module's *input* is the residual between the sublayers, and the norm that would carry it cannot be identified by name: OPT calls it `final_layer_norm`, which is also what the trunk calls the model's final norm, and `config.do_layer_norm_before` decides whether it runs before the MLP (opt-125m) or after it (opt-350m). interp-engine refuses rather than binding the wrong module on one of the two shapes; TransformerLens knows which from its own conversion",
+      "layers": [
+        0,
+        6,
+        11
+      ],
+      "point": "resid_mid"
+    }
+  ],
   "run": {
-    "date_utc": "2026-08-19T13:14:09+00:00",
+    "date_utc": "2026-09-03T22:47:15+00:00",
     "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
     "eager_only": false,
     "gpu": {
@@ -36,15 +50,14 @@
   "verdict": "ref",
   "versions": {
     "interp_engine": {
-      "commit": "640b8a739c68219ab65ebb0bac33f61b6ee9b1f1",
-      "dirty": true,
-      "version": "1.1.0"
+      "commit": "b74a69844215aa342cdaa8b3cfd07a63313ade4c",
+      "version": "1.6.0"
     },
     "torch": {
-      "version": "2.13.0"
+      "version": "2.14.0"
     },
     "transformers": {
-      "version": "5.15.0"
+      "version": "5.16.1"
     }
   }
 }

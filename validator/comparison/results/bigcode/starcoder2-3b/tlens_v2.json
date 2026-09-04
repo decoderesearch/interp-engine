@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-08-11",
+  "captured_at": "2026-09-03",
   "device": "cuda",
   "dtype": "float32",
   "engine": "tlens_v2",
@@ -202,7 +202,7 @@
   "reason": "ValueError: bigcode/starcoder2-3b not found. Valid official model names (excl aliases): ['01-ai/Yi-34B', '01-ai/Yi-34B-Chat', '01-ai/Yi-6B', '01-ai/Yi-6B-Chat', 'ai-forever/mGPT', 'allenai/OLMo-1B-hf', 'allenai/O",
   "reference": "eager",
   "run": {
-    "date_utc": "2026-08-12T03:31:40+00:00",
+    "date_utc": "2026-09-03T22:47:15+00:00",
     "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
     "eager_only": false,
     "gpu": {
@@ -229,13 +229,13 @@
   "verdict": "unsupported",
   "versions": {
     "torch": {
-      "version": "2.13.0"
+      "version": "2.14.0"
     },
     "transformer_lens": {
-      "version": "3.7.0"
+      "version": "3.8.1"
     },
     "transformers": {
-      "version": "5.15.0"
+      "version": "5.16.1"
     }
   }
 }

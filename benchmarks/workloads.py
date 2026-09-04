@@ -440,6 +440,27 @@ async def run_lens_topk(model: Any, spec: WorkloadSpec, prompt_ids: list[int]) -
     return result
 
 
+def _warmup_spec(spec: WorkloadSpec) -> WorkloadSpec:
+    """The unmeasured run that precedes ``spec``: the same shape, over far less work.
+
+    Same *shape* is the part that matters. A backend which builds kernels lazily builds them per
+    shape, and the batch size is part of the shape, so warming `generate_x8` with a single request
+    leaves every batched kernel to be compiled inside the timed region -- where a median of two
+    repeats cannot discard it. A cold DeepSeek-V4-Flash box recorded 87 tok/s aggregate that way
+    against 796 warm on the same configuration, with vLLM's own `jit_monitor` warning that a
+    TileLang kernel was compiling mid-inference. Everything else is cut back: a few tokens rather
+    than the full generation, one repeat rather than the workload's, which is enough to pay the lazy
+    imports, the allocator's first growth and the first `collective_rpc` round trip.
+    """
+    return WorkloadSpec(
+        key=spec.key,
+        prompt_tokens=spec.prompt_tokens,
+        max_new_tokens=min(spec.max_new_tokens, 4) if spec.max_new_tokens else 0,
+        concurrency=spec.concurrency,
+        repeats=1,
+    )
+
+
 async def run_workload(model: Any, spec: WorkloadSpec, *, point: str = DEFAULT_POINT) -> WorkloadResult:
     """Dispatch on the workload key, with one unmeasured warmup run before the measured ones.
 
@@ -449,15 +470,7 @@ async def run_workload(model: Any, spec: WorkloadSpec, *, point: str = DEFAULT_P
     rather than steady state.
     """
     prompt_ids = build_prompt(model.tokenizer, spec.prompt_tokens)
-    warmup = WorkloadSpec(
-        key=spec.key,
-        prompt_tokens=spec.prompt_tokens,
-        # A warmup only has to touch the same code path, so generation is cut to a few tokens and
-        # concurrency to one. A full-length warmup would double the sweep's runtime for nothing.
-        max_new_tokens=min(spec.max_new_tokens, 4) if spec.max_new_tokens else 0,
-        concurrency=1,
-        repeats=1,
-    )
+    warmup = _warmup_spec(spec)
 
     async def dispatch(s: WorkloadSpec) -> WorkloadResult:
         if s.key == "generate":

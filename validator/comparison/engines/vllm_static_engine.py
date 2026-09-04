@@ -205,6 +205,17 @@ def _static_reads(hf_id: str, points: list[str], layers: list[int]):
     hook_points = _declarable_points(points, n_streams, hf_id)
     for point in hook_points:
         if point == "router_logits" and n_experts <= 0:
+            # Said out loud, because the one time this was wrong it was unfalsifiable from the
+            # output: `facts.n_experts` read 0 off the outer config of a nested-config MoE, the
+            # point vanished from the read set with no line anywhere, and the cell showed four N/A
+            # rows that looked exactly like a dense model's. On a dense checkpoint `eager` declines
+            # the point too, so this line is the only place the claim is visible at all.
+            print(
+                f"[vllm-static/{hf_id}] point 'router_logits' skipped: the config reports no routed "
+                f"experts (n_experts={n_experts}), so this checkpoint is read as dense",
+                file=sys.stderr,
+                flush=True,
+            )
             continue
         is_qk_norm = point in _QK_NORM_POINTS
         if is_qk_norm and qk_layers is None and not _config_qk_norm(cfg):

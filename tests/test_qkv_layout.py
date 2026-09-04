@@ -134,6 +134,24 @@ def test_per_head_value_agrees_with_the_split(spec: ModelSpec, expected: QKVLayo
     assert torch.allclose(reconstructed, cache.get("z", 0).float(), atol=1e-5)
 
 
+@pytest.mark.parametrize(("spec", "expected"), FUSED_MODELS)
+def test_the_raw_value_point_is_the_value_and_not_the_whole_fused_slab(spec: ModelSpec, expected: QKVLayout):
+    """`value` declares ``Width.HEADS``, so a fused family has to be split before the point is served.
+
+    It was not: the raw point handed back ``[q | k | v]``, three times too wide on gpt2 -- and on the
+    one engine every other one is scored against. Both vLLM backends already returned the value alone,
+    so the reference was the odd one out and the sweep's `value` cells failed on a shape mismatch
+    rather than on a number. `per_head_value` split it for DFA and was the only reader that did.
+    """
+    model = load_model(spec, device="cpu", attn_implementation="eager", required=parity_required())
+    ids = model.tokenizer(PROMPT, return_tensors="pt")["input_ids"].to(model.device)
+    cache = run_with_cache(model, ids, [("value", 0)])
+
+    value = cache.get("value", 0)
+    assert value.shape[-1] == model.n_kv_heads * model.head_dim
+    assert torch.allclose(value, per_head_value(model, cache, 0).flatten(-2, -1))
+
+
 def test_pythia_can_capture_value_at_all():
     """A regression guard: this raised `No value projection resolvable` before the layout landed.
 

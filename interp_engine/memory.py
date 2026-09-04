@@ -1630,9 +1630,10 @@ class WorkloadSpec:
     max_num_seqs: int = 0
     gpu_memory_utilization: float = 0.0
     num_gpus: int = 1
-    #: Static tap sites, read and write counted together, for ``vllm-static``. ``"auto"`` resolves to
-    #: ``resid_post`` read and write at every layer, i.e. ``2 * n_layers``. A raw count prices every
-    #: site at the residual width; name the points in :attr:`static_points` to price them at theirs.
+    #: Static tap sites for ``vllm-static``, as a raw count. Every one is priced as a full-height
+    #: buffer at the residual width, because a bare number cannot say which are the cheap write
+    #: deltas; name the points in :attr:`static_points` to have them priced at their real widths and
+    #: heights.
     static_sites: int = 0
     #: The static tap points to declare, at every layer, for ``vllm-static``, priced to read *and*
     #: write as ``"auto"`` does -- see :data:`_STATIC_CAPTURE_ONLY`. Empty resolves to ``"auto"``.
@@ -1690,6 +1691,20 @@ class WorkloadSpec:
         points = self.resolved_static_points(facts)
         return max(facts.n_layers, 1) * sum(static_point_buffers(point) for point in points)
 
+    def static_row_buffers(self, facts: ModelMemoryFacts) -> int:
+        """Of :meth:`resolved_static_sites`, the buffers that are ``max_num_batched_tokens`` tall.
+
+        A raw ``static_sites`` count is taken at its word and read as that many per-token buffers,
+        which is the conservative reading and the only one available: a bare number does not say
+        which of them are writes.
+        """
+        if self.backend != "vllm-static":
+            return 0
+        if self.static_sites:
+            return self.static_sites
+        points = self.resolved_static_points(facts)
+        return max(facts.n_layers, 1) * sum(static_point_row_buffers(point) for point in points)
+
     def static_elements(self, facts: ModelMemoryFacts) -> int:
         """Elements per token across every static buffer, which is what the bytes scale with.
 
@@ -1702,6 +1717,17 @@ class WorkloadSpec:
             return self.static_sites * _static_width(facts)
         points = self.resolved_static_points(facts)
         return max(facts.n_layers, 1) * sum(static_point_elements(point, facts) for point in points)
+
+    def static_write_elements(self, facts: ModelMemoryFacts) -> int:
+        """Elements across every write delta, each one row tall regardless of the batch size.
+
+        Zero for a raw ``static_sites`` count, which :meth:`static_row_buffers` has already charged
+        in full rather than guessing at a read/write split.
+        """
+        if self.backend != "vllm-static" or self.static_sites:
+            return 0
+        points = self.resolved_static_points(facts)
+        return max(facts.n_layers, 1) * sum(static_point_write_elements(point, facts) for point in points)
 
     def with_defaults(self, facts: ModelMemoryFacts) -> WorkloadSpec:
         """Fill in the engine's own defaults, so a spec prices what would really happen.
@@ -1887,12 +1913,13 @@ _STATIC_POINT_WIDTHS: dict[str, str] = {
 #: Points that allocate a read buffer and nothing else. ``attn`` is refused as a write outright -- it
 #: is a copy of the kernel's q/k/v, and there is no meaning to adding to it.
 #:
-#: Everything else is priced with a ``delta`` beside its ``buf``, which is a choice worth naming.
-#: ``"auto"`` declares a write at every read and that is what doubles the default set -- but
+#: Everything else is priced with a ``delta`` beside its ``buf``, and every named set is priced as
+#: though it takes one even though
 #: :func:`~interp_engine.vllm_capture.static.resolve_static_points` leaves an *explicit* list
-#: read-only unless ``static_writes`` restates it. Pricing a named set the expensive way is
-#: deliberate: a tap set is asked for in order to steer at the same addresses, and quoting the
-#: read-only figure to someone who then adds a steer is the direction that OOMs.
+#: read-only unless ``static_writes`` restates it. That used to be the difference between a figure
+#: and twice it; since the delta became one row it is worth a fraction of a MiB, and the reason to
+#: keep charging it is only that a tap set is usually asked for in order to steer at the same
+#: addresses.
 _STATIC_CAPTURE_ONLY: frozenset[str] = frozenset({"attn"})
 
 #: Points a hyper-connection trunk refuses, mirroring ``vllm_capture._tree._SINGLE_STREAM_POINTS``:
@@ -1934,8 +1961,22 @@ def static_point_buffers(point: str) -> int:
 
     Three for ``attn``, which is not a tensor but a request for the kernel's q, k and v; two for
     everything else, a read and the write ``"auto"`` declares beside it.
+
+    A count of tensors, not of memory: see :func:`static_point_row_buffers` for the ones that are
+    actually ``max_num_batched_tokens`` tall.
     """
     return 3 if point == "attn" else 1 if point in _STATIC_CAPTURE_ONLY else 2
+
+
+def static_point_row_buffers(point: str) -> int:
+    """Of a point's buffers, the ones whose height is ``max_num_batched_tokens``.
+
+    Every read is one. A write is not: it is the same constant vector on every token, so the engine
+    allocates it ``[1, width]`` and broadcasts at add time
+    (:func:`~interp_engine.vllm_capture.static._alloc_site`). So a read/write point costs one
+    per-token buffer, not two, and a static set is about half the VRAM this priced before.
+    """
+    return 3 if point == "attn" else 1
 
 
 def static_point_elements(point: str, facts: ModelMemoryFacts) -> int:
@@ -1950,6 +1991,9 @@ def static_point_elements(point: str, facts: ModelMemoryFacts) -> int:
     Pricing every point at ``d_model`` is what this exists to stop being: on Qwen3-32B ``mlp_act`` is
     5.0x a residual tap and ``attn`` is 0.6x, so a set of three is anywhere from 1.6x to 11x the
     default depending on which three.
+
+    Reads only. The write delta a read/write point allocates beside its read is one row whatever the
+    batch size, so it has no per-token cost; :func:`static_point_write_elements` prices it.
     """
     d_model = max(facts.d_model, 1)
     head_dim = max(facts.head_dim, 1)
@@ -1967,7 +2011,17 @@ def static_point_elements(point: str, facts: ModelMemoryFacts) -> int:
         width = (max(facts.n_heads, 1) + 2 * max(facts.n_kv_heads, 1)) * head_dim
     else:
         width = d_model
-    return width if point in _STATIC_CAPTURE_ONLY else width * 2
+    return width
+
+
+def static_point_write_elements(point: str, facts: ModelMemoryFacts) -> int:
+    """Elements in one point's write delta at one layer: one row, or none if it takes no write.
+
+    Kept apart from :func:`static_point_elements` rather than folded into it because the two scale
+    differently -- this one does not scale at all. It is a fraction of a MiB across a whole model
+    and is priced only so the static term reconciles with what the engine allocates.
+    """
+    return 0 if point in _STATIC_CAPTURE_ONLY else static_point_elements(point, facts)
 
 
 def estimate(
@@ -2168,7 +2222,11 @@ def estimate(
     sites = spec.resolved_static_sites(facts)
     elements = spec.static_elements(facts)
     if sites:
-        buffers = static_tap_bytes(elements, spec.max_num_batched_tokens)
+        rows = spec.static_row_buffers(facts)
+        writes = sites - rows
+        buffers = static_tap_bytes(elements, spec.max_num_batched_tokens) + static_tap_bytes(
+            spec.static_write_elements(facts), 1
+        )
         named = spec.resolved_static_points(facts)
         terms.append(
             MemoryTerm(
@@ -2180,7 +2238,8 @@ def estimate(
                     if named and not spec.static_sites
                     else f"{sites} sites x {_static_width(facts)} wide"
                 )
-                + f" = {sites} buffers x {spec.max_num_batched_tokens} rows"
+                + f" = {rows} buffers x {spec.max_num_batched_tokens} rows"
+                + (f" + {writes} write deltas x 1 row" if writes else "")
                 + (" (not sharded by TP)" if tp > 1 else ""),
             )
         )
@@ -2311,9 +2370,13 @@ def _vllm_advice(
     if pool_headroom < 0:
         shortfall = -pool_headroom / GIB
         if buffers and buffers > -pool_headroom:
+            # Not `static_writes=[]` any more: a write delta is one row, so dropping the writes
+            # gives back kilobytes. The batch size is the only lever on this term now, and it is
+            # linear in it.
             out.append(
-                f"static buffers are {buffers / GIB:.1f} GiB: a smaller max_num_batched_tokens, or "
-                f"static_writes=[] to drop the write half, recovers most of {shortfall:.1f} GiB"
+                f"static buffers are {buffers / GIB:.1f} GiB and scale with max_num_batched_tokens: "
+                f"halving it recovers about {buffers / 2 / GIB:.1f} GiB of the {shortfall:.1f} GiB, "
+                f"or declare fewer static points"
             )
         if spec.max_model_len > 2048:
             # Per card, like every other figure in this list: the reader is looking at one card's

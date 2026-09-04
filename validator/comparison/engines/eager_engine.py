@@ -82,9 +82,19 @@ def capture(
     dtype: str = "float32",
 ) -> tuple[dict[str, np.ndarray], list[dict]]:
     import torch
-    from interp_engine import EagerModel, run_with_cache
+    from interp_engine import EagerModel, deepgemm_fallback_kwargs, run_with_cache
 
-    model = EagerModel(hf_id, dtype=dtype, device=device, attn_implementation="eager")
+    # Empty for every checkpoint but an FP8 one on a GPU the `deep-gemm` Hub build does not target,
+    # where it is the difference between measuring the row and losing it: the library refuses that
+    # combination rather than choosing an experts implementation on a caller's behalf, and `eager` is
+    # the reference, so its skip would take every other engine's cell in the row down with it.
+    model = EagerModel(
+        hf_id,
+        dtype=dtype,
+        device=device,
+        attn_implementation="eager",
+        model_kwargs=deepgemm_fallback_kwargs(hf_id),
+    )
     ids = torch.tensor([input_ids], device=model.device)
 
     announced: set[str] = set()

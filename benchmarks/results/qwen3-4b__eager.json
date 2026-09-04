@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "started_at": "2026-08-19T13:29:08+00:00",
+  "started_at": "2026-09-04T07:50:39+00:00",
   "command": "python -m benchmarks.run_bench --model qwen3-4b --variant eager",
   "python": "python",
   "model": {
@@ -11,6 +11,8 @@
     "dtype": "bfloat16",
     "min_gpu_gib": 0.0,
     "capture_point": "resid_post",
+    "per_variant_vllm_kwargs": {},
+    "static_capture_point": null,
     "extra_eager_kwargs": {},
     "extra_vllm_kwargs": {},
     "gpu_memory_utilization": null,
@@ -26,15 +28,15 @@
   },
   "env": {
     "gpu_name": "NVIDIA B200",
-    "gpu_total_gib": 178.3511962890625,
-    "driver_version": "580.105.08",
+    "gpu_total_gib": 178.35107421875,
+    "driver_version": "580.126.20",
     "cuda_version": "13.0",
-    "torch_version": "2.11.0+cu130",
-    "vllm_version": "0.26.0",
-    "transformers_version": "5.14.1",
-    "interp_engine_version": "1.2.0",
-    "python_version": "3.12.3",
-    "platform": "linux 6.8.0-90-generic",
+    "torch_version": "2.13.0+cu130",
+    "vllm_version": "0.28.0",
+    "transformers_version": "5.16.1",
+    "interp_engine_version": "1.6.0",
+    "python_version": "3.13.8",
+    "platform": "linux 6.8.0-100-generic",
     "extra": {
       "VLLM_DEEP_GEMM_WARMUP": "skip"
     }
@@ -44,10 +46,10 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "ttft_ms": 48.30653313547373,
-        "prefill_tok_s": 10598.980443579268,
-        "decode_tok_s": 24.04915982916178,
-        "total_s": 5.329156296793371
+        "ttft_ms": 18.837198615074158,
+        "prefill_tok_s": 27180.262334245414,
+        "decode_tok_s": 59.66395755748432,
+        "total_s": 2.147425465285778
       },
       "detail": {
         "prompt_tokens": 512,
@@ -59,9 +61,9 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "total_s": 42.92172516672872,
-        "aggregate_tok_s": 23.857382153729592,
-        "per_request_s": 5.36521564584109
+        "total_s": 16.77719606924802,
+        "aggregate_tok_s": 61.035228757739446,
+        "per_request_s": 2.0971495086560026
       },
       "detail": {
         "concurrency": 8,
@@ -74,8 +76,8 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 48.19912603124976,
-        "prompt_tok_s": 10622.599249373241,
+        "latency_ms": 19.054408185184002,
+        "prompt_tok_s": 26870.422582744508,
         "transported_mib": 2.5
       },
       "detail": {
@@ -91,8 +93,8 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 162.92536770924926,
-        "prompt_tok_s": 3142.543160704702,
+        "latency_ms": 44.44546438753605,
+        "prompt_tok_s": 11519.735636817453,
         "transported_mib": 90.0
       },
       "detail": {
@@ -108,7 +110,7 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 1316.8333675712347,
+        "latency_ms": 548.3178161084652,
         "transported_mib": 0.7763671875
       },
       "detail": {
@@ -126,7 +128,7 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 1362.4496371485293,
+        "latency_ms": 578.883919864893,
         "transported_mib": 0.7763671875
       },
       "detail": {
@@ -136,7 +138,7 @@
         "rows": 159,
         "width": 2560,
         "steered": true,
-        "completion_head": " me that I find myself on the point of snorting opium, I thi",
+        "completion_head": " me that I may be said to be in a low state of animal spirit",
         "repeats": 3
       }
     },
@@ -144,8 +146,8 @@
       "status": "ok",
       "reason": "",
       "metrics": {
-        "latency_ms": 2.377368975430727,
-        "rows_per_s": 215364.12954461007,
+        "latency_ms": 1.4040805399417877,
+        "rows_per_s": 364651.4465767236,
         "result_mib": 0.048828125
       },
       "detail": {
@@ -157,9 +159,9 @@
     }
   },
   "load": {
-    "construct_s": 8.505032608285546,
-    "warmup_s": 3.516580909490585e-05,
-    "ready_s": 8.505067774094641,
+    "construct_s": 1.8311645528301597,
+    "warmup_s": 7.789582014083862e-06,
+    "ready_s": 1.8311723424121737,
     "n_layers": 36,
     "d_model": 2560,
     "device": "cuda:0",
@@ -167,5 +169,5 @@
     "resolved_dtype": "bfloat16",
     "grad_through_forward": false
   },
-  "finished_at": "2026-08-19T13:31:19+00:00"
+  "finished_at": "2026-09-04T07:51:29+00:00"
 }

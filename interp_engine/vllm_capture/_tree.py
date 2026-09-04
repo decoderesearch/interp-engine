@@ -486,7 +486,13 @@ def _mlp_boundary(layer: torch.nn.Module, name: str) -> torch.nn.Module:
 
 
 def _attn_out_proj(layer: torch.nn.Module) -> torch.nn.Module:
-    """The attention output projection; its INPUT is ``z`` (per-head output, pre-W_O)."""
+    """The attention output projection; its INPUT is ``z`` (per-head output, pre-W_O).
+
+    Deliberately does *not* fall back to the factored ``wo_a``/``wo_b`` pair the way
+    ``arch.ArchSpec.attn_out_proj`` falls back to ``o_a_proj``/``o_b_proj``. On vLLM that half is
+    never called -- see :func:`_fused_o_proj_reason`, which refuses ``z`` up front so the point
+    cannot resolve to a module whose hook would never fire.
+    """
     return _first_submodule(_attn_module(layer), _ATTN_OUT_PROJ_ATTRS, "attention output projection")
 
 
@@ -662,6 +668,43 @@ def _fused_qk_norm_reason(layer: torch.nn.Module | None, name: str) -> str | Non
     )
 
 
+#: The method vLLM's DeepSeek-V4 attention declares for its output projection. Abstract on
+#: ``DeepseekV4Attention`` and implemented once per platform (FlashMLA, FlashInfer, ROCm, XPU), and
+#: every one of those implementations passes ``wo_a`` *as an object* into a fused inverse-RoPE kernel
+#: rather than calling it. So its presence beside the factored pair is the marker: not "this model
+#: factors its output projection" (eager does too, and serves ``z`` through it) but "the down half is
+#: consumed by a kernel, so nothing calls the module whose input ``z`` is".
+_FUSED_O_PROJ_METHOD = "_o_proj"
+
+
+def _fused_o_proj_reason(layer: torch.nn.Module | None, name: str) -> str | None:
+    """Why ``z`` cannot be hooked on a fused factored output projection, or None when it can.
+
+    The same shape as :func:`_fused_qk_norm_reason` and worth the same up-front check, for a reason
+    the sweep showed rather than argued: resolving ``z`` to ``wo_a`` here made ``vllm-static``
+    install a buffer on a module that is never called, and the cell came back a full-looking
+    ``(13, 4096)`` of *exact zeros* -- scored against an eager reference of ``(13, 8, 4096)`` real
+    activations. A refusal is the only honest answer, and a silent all-zeros capture is a worse
+    failure than the ``AttributeError`` this replaced.
+    """
+    if name != "z" or layer is None:
+        return None
+    attn = next((getattr(layer, attr) for attr in _ATTN_ATTRS if hasattr(layer, attr)), None)
+    if attn is None or not callable(getattr(attn, _FUSED_O_PROJ_METHOD, None)):
+        return None
+    pair = facts.factored_projection(attn, "o")
+    if pair is None:
+        return None
+    return (
+        f"{type(attn).__name__} factors its output projection into {pair.down_attr}/{pair.up_attr} and "
+        f"computes both inside a fused {_FUSED_O_PROJ_METHOD} kernel, which is handed {pair.down_attr} "
+        f"rather than called on it. So the module whose input this point names is never called: a hook "
+        f"on it installs and never fires, and on the static backend its buffer stays at the zeros it "
+        f"was allocated with. Capture 'attn_out' for the projection's result, which is served here. The "
+        f"eager backend serves 'z' on this family, where the same pair is called as ordinary modules."
+    )
+
+
 def _split_feed_forward_reason(layer: torch.nn.Module | None, name: str) -> str | None:
     """Why ``mlp_out`` is refused on a block whose MLP is half its feed-forward, or None.
 
@@ -725,9 +768,10 @@ def absent_point_reason(model: torch.nn.Module, name: str, layer: torch.nn.Modul
     feed-forward and nothing else -- see :func:`_has_position_mixer`.
 
     The other shape it catches is a module that exists but is never *called*, because a fused kernel
-    took over its arithmetic and reads its weights directly -- see :func:`_fused_qk_norm_reason`.
-    ``layer`` is what those two need, and is optional because the parallel-block case is a property
-    of the model rather than of any one block.
+    took over its arithmetic and was handed the module itself or its weights -- see
+    :func:`_fused_qk_norm_reason` and :func:`_fused_o_proj_reason`. ``layer`` is what those two need,
+    and is optional because the parallel-block case is a property of the model rather than of any one
+    block.
 
     And the last is a module that is called, and returns a whole tensor, that is nonetheless a
     *fraction* of what the point names -- Gemma-4's dense MLP beside its experts, see
@@ -736,6 +780,8 @@ def absent_point_reason(model: torch.nn.Module, name: str, layer: torch.nn.Modul
     """
     if (fused := _fused_qk_norm_reason(layer, name)) is not None:
         return fused
+    if (fused_o := _fused_o_proj_reason(layer, name)) is not None:
+        return fused_o
     if (split := _split_feed_forward_reason(layer, name)) is not None:
         return split
     if (mhc := _absent_mhc_reason(layer, name)) is not None:

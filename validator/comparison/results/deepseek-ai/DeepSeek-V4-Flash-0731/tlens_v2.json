@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-08-19",
+  "captured_at": "2026-09-03",
   "device": "cuda",
   "dtype": "bfloat16",
   "engine": "tlens_v2",
@@ -8,105 +8,105 @@
   "points": {
     "attn_out.0": {
       "layer": 0,
-      "missing": "engine",
+      "missing": "both",
       "point": "attn_out",
       "status": "N/A"
     },
     "attn_out.21": {
       "layer": 21,
-      "missing": "engine",
+      "missing": "both",
       "point": "attn_out",
       "status": "N/A"
     },
     "attn_out.32": {
       "layer": 32,
-      "missing": "engine",
+      "missing": "both",
       "point": "attn_out",
       "status": "N/A"
     },
     "attn_out.42": {
       "layer": 42,
-      "missing": "engine",
+      "missing": "both",
       "point": "attn_out",
       "status": "N/A"
     },
     "attn_out_post.0": {
       "layer": 0,
-      "missing": "engine",
+      "missing": "both",
       "point": "attn_out_post",
       "status": "N/A"
     },
     "attn_out_post.21": {
       "layer": 21,
-      "missing": "engine",
+      "missing": "both",
       "point": "attn_out_post",
       "status": "N/A"
     },
     "attn_out_post.32": {
       "layer": 32,
-      "missing": "engine",
+      "missing": "both",
       "point": "attn_out_post",
       "status": "N/A"
     },
     "attn_out_post.42": {
       "layer": 42,
-      "missing": "engine",
+      "missing": "both",
       "point": "attn_out_post",
       "status": "N/A"
     },
     "mlp_out.0": {
       "layer": 0,
-      "missing": "engine",
+      "missing": "both",
       "point": "mlp_out",
       "status": "N/A"
     },
     "mlp_out.21": {
       "layer": 21,
-      "missing": "engine",
+      "missing": "both",
       "point": "mlp_out",
       "status": "N/A"
     },
     "mlp_out.32": {
       "layer": 32,
-      "missing": "engine",
+      "missing": "both",
       "point": "mlp_out",
       "status": "N/A"
     },
     "mlp_out.42": {
       "layer": 42,
-      "missing": "engine",
+      "missing": "both",
       "point": "mlp_out",
       "status": "N/A"
     },
     "mlp_out_post.0": {
       "layer": 0,
-      "missing": "engine",
+      "missing": "both",
       "point": "mlp_out_post",
       "status": "N/A"
     },
     "mlp_out_post.21": {
       "layer": 21,
-      "missing": "engine",
+      "missing": "both",
       "point": "mlp_out_post",
       "status": "N/A"
     },
     "mlp_out_post.32": {
       "layer": 32,
-      "missing": "engine",
+      "missing": "both",
       "point": "mlp_out_post",
       "status": "N/A"
     },
     "mlp_out_post.42": {
       "layer": 42,
-      "missing": "engine",
+      "missing": "both",
       "point": "mlp_out_post",
       "status": "N/A"
     }
   },
-  "reason": "MemoryError: deepseek-ai/DeepSeek-V4-Flash-0731 needs ~1084 GiB to load+convert into HookedTransformer (2x bfloat16 weights) but only 234 GiB of host memory is available",
+  "reason": "MemoryError: deepseek-ai/DeepSeek-V4-Flash-0731 needs ~1084 GiB to load+convert into HookedTransformer (2x bfloat16 weights) but only 351 GiB of host memory is available",
   "reference": "eager",
   "run": {
-    "date_utc": "2026-08-19T13:14:09+00:00",
+    "date_utc": "2026-09-03T22:47:15+00:00",
     "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
     "eager_only": false,
     "gpu": {
@@ -117,8 +117,8 @@
     "reference_status": {
       "device": "cuda",
       "dtype": "bfloat16",
-      "reason": "",
-      "status": "ok"
+      "reason": "RuntimeError: Kernel 'deep-gemm' variant 'torch214-cxx11-cu130-x86_64-linux' does not support the current device: CUDA capability 10.0 of the current device is not supported by the architectures of the build: 9.0a.",
+      "status": "skip"
     },
     "replicate": [
       "export HF_TOKEN=$(grep -m1 '^HF_TOKEN=' .env | cut -d= -f2- | tr -d '\"')",
@@ -133,13 +133,13 @@
   "verdict": "unsupported",
   "versions": {
     "torch": {
-      "version": "2.13.0"
+      "version": "2.14.0"
     },
     "transformer_lens": {
-      "version": "3.7.2"
+      "version": "3.8.1"
     },
     "transformers": {
-      "version": "5.15.0"
+      "version": "5.16.1"
     }
   }
 }

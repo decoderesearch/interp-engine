@@ -142,7 +142,7 @@ them:
   (`register_static_write`). An op outside that set is refused rather than silently skipped. Auto
   covers the write because the two halves are one decision: a read tap alone serves the lens
   read-out and refuses every steer, ablation and swap derived from it, at an address already tapped.
-  Pass `static_writes=[]` for the reads without the write buffers, and an explicit `static_points`
+  Pass `static_writes=[]` for the reads without the write sites, and an explicit `static_points`
   list to name both halves yourself — neither is filled in for a caller who said something.
   `static_points=[]` is refused, because an engine with no taps is the next one under another name.
 - **`backend="vllm-generate"`** — no taps, graphs and inductor both on. Generation only: every
@@ -164,10 +164,11 @@ What the static backend does not do, which is why `backend="vllm"` is still the 
   (`tests/test_static_dsv4_gpu.py`) rather than refusing it. The static set is fixed at engine
   build — a request's `points=` can only filter it, and a miss is refused on the client rather than
   served short.
-- **A narrower batch.** Static buffers have to fit alongside the graphs, so `max_num_batched_tokens`
-  is stepped down (16384 → 1024) to make room, and refuses rather than OOM-ing in graph capture.
-  `static_writes=[]` buys some of that width back when the write buffers are what stands between you
-  and a wide enough batch.
+- **A narrower batch.** Static *read* buffers are `max_num_batched_tokens` rows tall and have to fit
+  alongside the graphs, so the batch is stepped down (16384 → 1024) to make room, and refuses rather
+  than OOM-ing in graph capture. Only the reads: a write is the same constant vector on every token,
+  so since 1.6.0 its delta is one row and broadcasts. That halves what a read-and-write set costs and
+  is why `static_writes=[]` is now a capability switch rather than a way to buy batch width back.
 - **Four times the buffer on a hyper-connection trunk.** `deepseek-v4-flash-0731`'s block carries
   four parallel residual streams, so `"auto"` declares `resid_streams` — the whole stack per layer,
   four times the width and so four times the buffer. That is what its static row in the sweep prices.

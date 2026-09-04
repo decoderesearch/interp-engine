@@ -1,10 +1,17 @@
 {
-  "captured_at": "2026-08-29",
+  "captured_at": "2026-09-03",
   "device": "cuda",
   "dtype": "bfloat16",
   "engine": "vllm-static",
   "hf_id": "google/gemma-4-26B-A4B-it",
-  "known_bug": null,
+  "known_bug": {
+    "link": "https://github.com/vllm-project/vllm/issues/55238",
+    "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+    "points": [],
+    "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+    "url": "https://github.com/vllm-project/vllm/issues/55238",
+    "workaround": "`VLLM_BATCH_INVARIANT=1` converges the two arms enough to attribute the fault -- attn_in.22 reads 0.99300 rather than 0.00119 -- but does not fix it: that run still flips one position and 2.39 nats, further from self-consistent than either control model is untouched. It also costs throughput and vLLM refuses it on some trunks, so it is a diagnostic and not a setting (docs/COMPARISON.md)."
+  },
   "points": {
     "attn_in.0": {
       "cos": 1.0,
@@ -19,38 +26,53 @@
       "worst_token": 1
     },
     "attn_in.15": {
-      "cos": 0.9893171628102315,
-      "cos_worst_token": 0.9790409549106438,
+      "cos": 0.9780028772539481,
+      "cos_worst_token": 0.9642870115968227,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 15,
-      "max_abs_diff": 18.0,
+      "max_abs_diff": 41.0,
       "point": "attn_in",
-      "rel_diff": 0.14577949732197773,
-      "rel_worst_token": 0.20451603721729605,
+      "rel_diff": 0.21090407621462778,
+      "rel_worst_token": 0.3509805981388814,
       "status": "WARN",
       "tier": "fused",
-      "worst_token": 5
+      "worst_token": 10
     },
     "attn_in.22": {
-      "cos": 0.9931443735833408,
-      "cos_worst_token": 0.8396918560116552,
+      "cos": 0.0011923994034261256,
+      "cos_worst_token": -0.1940403155743656,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 22,
-      "max_abs_diff": 138.0,
+      "max_abs_diff": 493.375,
       "point": "attn_in",
-      "rel_diff": 0.2893988939495757,
-      "rel_worst_token": 0.5607852983657007,
-      "status": "PASS",
+      "rel_diff": 1.0619135953794645,
+      "rel_worst_token": 1.089861003256365,
+      "status": "FAIL",
       "tier": "fused",
-      "worst_token": 2
+      "worst_token": 10
     },
     "attn_in.29": {
-      "cos": 0.9915281773501249,
-      "cos_worst_token": 0.9757363037871141,
+      "cos": 0.9747216817336561,
+      "cos_worst_token": 0.9243275291881495,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 29,
-      "max_abs_diff": 4.625,
+      "max_abs_diff": 9.46875,
       "point": "attn_in",
-      "rel_diff": 0.13000686148551135,
-      "rel_worst_token": 0.22392684161125553,
-      "status": "PASS",
+      "rel_diff": 0.22517158724369196,
+      "rel_worst_token": 0.39769212300049567,
+      "status": "WARN",
       "tier": "fused",
       "worst_token": 10
     },
@@ -67,40 +89,50 @@
       "worst_token": 12
     },
     "attn_out.15": {
-      "cos": 0.9893363116702105,
-      "cos_worst_token": 0.9801257508459855,
+      "cos": 0.9874348142135662,
+      "cos_worst_token": 0.9628845645586791,
       "layer": 15,
-      "max_abs_diff": 5.0,
+      "max_abs_diff": 5.375,
       "point": "attn_out",
-      "rel_diff": 0.1493443293914151,
-      "rel_worst_token": 0.2421639023432893,
-      "status": "WARN",
+      "rel_diff": 0.15893625632544955,
+      "rel_worst_token": 0.31518685850713707,
+      "status": "PASS",
       "tier": "fused",
       "worst_token": 10
     },
     "attn_out.22": {
-      "cos": 0.9821864751971996,
-      "cos_worst_token": 0.9504452356653705,
+      "cos": 0.954579376814778,
+      "cos_worst_token": 0.8185769744410556,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 22,
-      "max_abs_diff": 3.0,
+      "max_abs_diff": 9.625,
       "point": "attn_out",
-      "rel_diff": 0.19228506661718128,
-      "rel_worst_token": 0.3431062818166926,
-      "status": "WARN",
-      "tier": "fused",
-      "worst_token": 2
-    },
-    "attn_out.29": {
-      "cos": 0.9750217641238688,
-      "cos_worst_token": 0.9212656097646026,
-      "layer": 29,
-      "max_abs_diff": 4.03125,
-      "point": "attn_out",
-      "rel_diff": 0.22336282472654093,
-      "rel_worst_token": 0.38966297936608996,
+      "rel_diff": 0.2996332913477539,
+      "rel_worst_token": 0.5754153907593281,
       "status": "WARN",
       "tier": "fused",
       "worst_token": 10
+    },
+    "attn_out.29": {
+      "cos": 0.9342641940064309,
+      "cos_worst_token": 0.7508794129863815,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
+      "layer": 29,
+      "max_abs_diff": 5.4296875,
+      "point": "attn_out",
+      "rel_diff": 0.3664419179289785,
+      "rel_worst_token": 0.7268606229738512,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 11
     },
     "attn_out_post.0": {
       "cos": 0.9999734230004904,
@@ -115,78 +147,103 @@
       "worst_token": 8
     },
     "attn_out_post.15": {
-      "cos": 0.9790124884270118,
-      "cos_worst_token": 0.9560414947641236,
+      "cos": 0.9767746944421183,
+      "cos_worst_token": 0.9630850444110646,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 15,
-      "max_abs_diff": 1.21875,
+      "max_abs_diff": 1.328125,
       "point": "attn_out_post",
-      "rel_diff": 0.20691766833122857,
-      "rel_worst_token": 0.3225445638173082,
+      "rel_diff": 0.21791361479547455,
+      "rel_worst_token": 0.30230531264842075,
       "status": "WARN",
       "tier": "fused",
-      "worst_token": 8
+      "worst_token": 10
     },
     "attn_out_post.22": {
-      "cos": 0.9655786428806238,
-      "cos_worst_token": 0.9105563262708037,
+      "cos": 0.9203583911320606,
+      "cos_worst_token": 0.6179746834398319,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 22,
-      "max_abs_diff": 0.93359375,
+      "max_abs_diff": 1.7890625,
       "point": "attn_out_post",
-      "rel_diff": 0.2625058755783657,
-      "rel_worst_token": 0.4168377526132579,
+      "rel_diff": 0.400381213838157,
+      "rel_worst_token": 0.801808423829271,
       "status": "WARN",
       "tier": "fused",
       "worst_token": 10
     },
     "attn_out_post.29": {
-      "cos": 0.9784962363046851,
-      "cos_worst_token": 0.9297407252225202,
+      "cos": 0.9411252267952949,
+      "cos_worst_token": 0.7692909329774341,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 29,
-      "max_abs_diff": 4.90625,
+      "max_abs_diff": 3.62109375,
       "point": "attn_out_post",
-      "rel_diff": 0.20729594780959504,
-      "rel_worst_token": 0.3837668213440791,
+      "rel_diff": 0.3419257145959651,
+      "rel_worst_token": 0.6668291885859854,
       "status": "WARN",
       "tier": "fused",
-      "worst_token": 10
+      "worst_token": 11
     },
     "attn_scores.0": {
-      "cos": 0.9999983345116982,
+      "cos": 0.9999983345052006,
       "layer": 0,
       "masked_out": 1248,
-      "max_abs_diff": 0.08937835693359375,
+      "max_abs_diff": 0.08937644958496094,
       "point": "attn_scores",
-      "rel_diff": 0.0018387590838880117,
+      "rel_diff": 0.0018387627818430858,
       "status": "PASS",
       "tier": "fused"
     },
     "attn_scores.15": {
-      "cos": 0.9932439188453119,
+      "cos": 0.9931089433770738,
       "layer": 15,
       "masked_out": 1248,
-      "max_abs_diff": 2.5611895322799683,
+      "max_abs_diff": 1.9502488374710083,
       "point": "attn_scores",
-      "rel_diff": 0.11733894225562194,
+      "rel_diff": 0.1174109016766498,
       "status": "PASS",
       "tier": "fused"
     },
     "attn_scores.22": {
-      "cos": 0.9806470809955296,
+      "cos": 0.9612700506568086,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 22,
       "masked_out": 1248,
-      "max_abs_diff": 5.9315062165260315,
+      "max_abs_diff": 7.502630233764648,
       "point": "attn_scores",
-      "rel_diff": 0.19726838060399451,
+      "rel_diff": 0.2758449397611749,
       "status": "WARN",
       "tier": "fused"
     },
     "attn_scores.29": {
-      "cos": 0.9894209285552057,
+      "cos": 0.9687964850593644,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 29,
       "masked_out": 1248,
-      "max_abs_diff": 1.8155550956726074,
+      "max_abs_diff": 3.91217303276062,
       "point": "attn_scores",
-      "rel_diff": 0.14793258313791252,
+      "rel_diff": 0.2528595768852423,
       "status": "WARN",
       "tier": "fused"
     },
@@ -203,37 +260,52 @@
       "worst_token": 6
     },
     "k_norm_in.15": {
-      "cos": 0.9904188245767084,
-      "cos_worst_token": 0.9800124655056397,
+      "cos": 0.9748685650337776,
+      "cos_worst_token": 0.9777425513712793,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 15,
-      "max_abs_diff": 16.5,
+      "max_abs_diff": 32.25,
       "point": "k_norm_in",
-      "rel_diff": 0.1386421041404982,
-      "rel_worst_token": 0.20478319324708025,
-      "status": "PASS",
-      "tier": "fused",
-      "worst_token": 5
-    },
-    "k_norm_in.22": {
-      "cos": 0.9804802496909067,
-      "cos_worst_token": 0.9404725975300305,
-      "layer": 22,
-      "max_abs_diff": 29.0,
-      "point": "k_norm_in",
-      "rel_diff": 0.25939522092763756,
-      "rel_worst_token": 0.35964170007559587,
+      "rel_diff": 0.22448981173701904,
+      "rel_worst_token": 0.3846070403658221,
       "status": "WARN",
       "tier": "fused",
-      "worst_token": 2
+      "worst_token": 10
+    },
+    "k_norm_in.22": {
+      "cos": 0.7177997783741755,
+      "cos_worst_token": 0.6023356567949425,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
+      "layer": 22,
+      "max_abs_diff": 106.5625,
+      "point": "k_norm_in",
+      "rel_diff": 0.7019002267688681,
+      "rel_worst_token": 0.8464368544009618,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 10
     },
     "k_norm_in.29": {
-      "cos": 0.9850638477738854,
-      "cos_worst_token": 0.9276207878116298,
+      "cos": 0.9561486567184259,
+      "cos_worst_token": 0.8283401536899062,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 29,
-      "max_abs_diff": 1.609375,
+      "max_abs_diff": 2.6953125,
       "point": "k_norm_in",
-      "rel_diff": 0.17224969462808098,
-      "rel_worst_token": 0.37837990555241513,
+      "rel_diff": 0.2944084670543939,
+      "rel_worst_token": 0.5745410952362923,
       "status": "WARN",
       "tier": "fused",
       "worst_token": 10
@@ -251,37 +323,47 @@
       "worst_token": 2
     },
     "k_norm_out.15": {
-      "cos": 0.9903198143121713,
-      "cos_worst_token": 0.9778487887714488,
+      "cos": 0.9898892714504717,
+      "cos_worst_token": 0.9779516828897858,
       "layer": 15,
-      "max_abs_diff": 0.16748046875,
+      "max_abs_diff": 0.2734375,
       "point": "k_norm_out",
-      "rel_diff": 0.13914560334925466,
-      "rel_worst_token": 0.21049848111070515,
+      "rel_diff": 0.14220849055084536,
+      "rel_worst_token": 0.2099850981480304,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 5
+      "worst_token": 10
     },
     "k_norm_out.22": {
-      "cos": 0.9865254050755707,
-      "cos_worst_token": 0.9282819651306607,
+      "cos": 0.9458320466424189,
+      "cos_worst_token": 0.6388585866752687,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 22,
-      "max_abs_diff": 0.3974609375,
+      "max_abs_diff": 2.19140625,
       "point": "k_norm_out",
-      "rel_diff": 0.16416112156888152,
-      "rel_worst_token": 0.3787122370433495,
+      "rel_diff": 0.32914222387426956,
+      "rel_worst_token": 0.849826628069667,
       "status": "WARN",
       "tier": "fused",
-      "worst_token": 2
+      "worst_token": 10
     },
     "k_norm_out.29": {
-      "cos": 0.9839226802699191,
-      "cos_worst_token": 0.9243919111006165,
+      "cos": 0.9515603764836816,
+      "cos_worst_token": 0.804531378768401,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 29,
-      "max_abs_diff": 0.1224365234375,
+      "max_abs_diff": 0.2939453125,
       "point": "k_norm_out",
-      "rel_diff": 0.17932055504583744,
-      "rel_worst_token": 0.3888635628509283,
+      "rel_diff": 0.3112453253267036,
+      "rel_worst_token": 0.6252538467248492,
       "status": "WARN",
       "tier": "fused",
       "worst_token": 10
@@ -299,133 +381,129 @@
       "worst_token": 11
     },
     "mlp_act.15": {
-      "cos": 0.9964907011983758,
-      "cos_worst_token": 0.9918258314816433,
+      "cos": 0.9930714914263878,
+      "cos_worst_token": 0.9913576707232623,
       "layer": 15,
-      "max_abs_diff": 0.390625,
+      "max_abs_diff": 0.5625,
       "point": "mlp_act",
-      "rel_diff": 0.08370581533430735,
-      "rel_worst_token": 0.1352849680695863,
+      "rel_diff": 0.11861776251369449,
+      "rel_worst_token": 0.14054650870981827,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 5
+      "worst_token": 10
     },
     "mlp_act.22": {
-      "cos": 0.9780231965486268,
-      "cos_worst_token": 0.9010831130220961,
+      "cos": 0.9177403053068851,
+      "cos_worst_token": 0.25097355202777943,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 22,
-      "max_abs_diff": 6.375,
+      "max_abs_diff": 16.19140625,
       "point": "mlp_act",
-      "rel_diff": 0.20925226091644505,
-      "rel_worst_token": 0.4855485425541768,
+      "rel_diff": 0.4004559790585789,
+      "rel_worst_token": 1.0973750832594842,
       "status": "WARN",
       "tier": "fused",
       "worst_token": 10
     },
     "mlp_act.29": {
-      "cos": 0.9874069600404909,
-      "cos_worst_token": 0.9312155927212235,
+      "cos": 0.9684613933006991,
+      "cos_worst_token": 0.8316594971608817,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 29,
-      "max_abs_diff": 5.03125,
+      "max_abs_diff": 12.21875,
       "point": "mlp_act",
-      "rel_diff": 0.15882290290174306,
-      "rel_worst_token": 0.36490607954658966,
+      "rel_diff": 0.2553435977416836,
+      "rel_worst_token": 0.7771137596087809,
       "status": "WARN",
       "tier": "fused",
-      "worst_token": 10
+      "worst_token": 11
     },
     "mlp_out.0": {
-      "cos": 0.9999865260529699,
-      "cos_worst_token": 0.9999511507470669,
       "layer": 0,
-      "max_abs_diff": 0.625,
+      "missing": "both",
       "point": "mlp_out",
-      "rel_diff": 0.005259364169562184,
-      "rel_worst_token": 0.010176624315472354,
-      "status": "PASS",
-      "tier": "fused",
-      "worst_token": 11
+      "status": "N/A"
     },
     "mlp_out.15": {
-      "cos": 0.9990332449297215,
-      "cos_worst_token": 0.9914351969243109,
       "layer": 15,
-      "max_abs_diff": 0.5625,
+      "missing": "both",
       "point": "mlp_out",
-      "rel_diff": 0.04529695963610842,
-      "rel_worst_token": 0.13448347871934688,
-      "status": "PASS",
-      "tier": "fused",
-      "worst_token": 5
+      "status": "N/A"
     },
     "mlp_out.22": {
-      "cos": 0.9893077567388014,
-      "cos_worst_token": 0.8873375074009114,
       "layer": 22,
-      "max_abs_diff": 1.30859375,
+      "missing": "both",
       "point": "mlp_out",
-      "rel_diff": 0.146953171979144,
-      "rel_worst_token": 0.48627032417199395,
-      "status": "WARN",
-      "tier": "fused",
-      "worst_token": 10
+      "status": "N/A"
     },
     "mlp_out.29": {
-      "cos": 0.9928761479870624,
-      "cos_worst_token": 0.966401153321797,
       "layer": 29,
-      "max_abs_diff": 5.3671875,
+      "missing": "both",
       "point": "mlp_out",
-      "rel_diff": 0.11920710690860682,
-      "rel_worst_token": 0.2882350849159889,
-      "status": "PASS",
-      "tier": "fused",
-      "worst_token": 11
+      "status": "N/A"
     },
     "mlp_out_post.0": {
-      "cos": 0.9999747411441783,
-      "cos_worst_token": 0.9999677962860308,
+      "cos": 0.9999795049964383,
+      "cos_worst_token": 0.999965113296829,
       "layer": 0,
       "max_abs_diff": 6.0,
       "point": "mlp_out_post",
-      "rel_diff": 0.007124747420562233,
-      "rel_worst_token": 0.008436064441379993,
+      "rel_diff": 0.006402770940919649,
+      "rel_worst_token": 0.008365260679233981,
       "status": "PASS",
       "tier": "fused",
       "worst_token": 11
     },
     "mlp_out_post.15": {
-      "cos": 0.9870052723979166,
-      "cos_worst_token": 0.9255159496391261,
+      "cos": 0.8710389165288224,
+      "cos_worst_token": 0.27458288745749304,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 15,
-      "max_abs_diff": 21.0,
+      "max_abs_diff": 75.125,
       "point": "mlp_out_post",
-      "rel_diff": 0.16069698469653232,
-      "rel_worst_token": 0.38020564236940196,
+      "rel_diff": 0.5034501450519332,
+      "rel_worst_token": 1.156351990937701,
       "status": "WARN",
       "tier": "fused",
-      "worst_token": 2
+      "worst_token": 10
     },
     "mlp_out_post.22": {
-      "cos": 0.929612148945985,
-      "cos_worst_token": 0.7587472747871725,
+      "cos": 0.8777749659114612,
+      "cos_worst_token": 0.06556387468417729,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 22,
-      "max_abs_diff": 24.6875,
+      "max_abs_diff": 28.6875,
       "point": "mlp_out_post",
-      "rel_diff": 0.3992848961851902,
-      "rel_worst_token": 1.013973658773586,
+      "rel_diff": 0.4921844409117901,
+      "rel_worst_token": 1.1895217642245781,
       "status": "WARN",
       "tier": "fused",
       "worst_token": 10
     },
     "mlp_out_post.29": {
-      "cos": 0.9955459555230616,
-      "cos_worst_token": 0.9815773602066499,
+      "cos": 0.9844985785323417,
+      "cos_worst_token": 0.9335090089542256,
       "layer": 29,
-      "max_abs_diff": 28.0,
+      "max_abs_diff": 88.0,
       "point": "mlp_out_post",
-      "rel_diff": 0.09569278839504758,
-      "rel_worst_token": 0.26102798955266415,
+      "rel_diff": 0.1777837184303066,
+      "rel_worst_token": 0.7682817578439182,
       "status": "PASS",
       "tier": "fused",
       "worst_token": 11
@@ -443,38 +521,48 @@
       "worst_token": 1
     },
     "q_norm_in.15": {
-      "cos": 0.9927131151239751,
-      "cos_worst_token": 0.9869626648430105,
+      "cos": 0.9845844562591749,
+      "cos_worst_token": 0.9813419785276093,
       "layer": 15,
-      "max_abs_diff": 15.0,
+      "max_abs_diff": 26.0,
       "point": "q_norm_in",
-      "rel_diff": 0.12095643732616582,
-      "rel_worst_token": 0.16124128857363168,
+      "rel_diff": 0.1752674801315021,
+      "rel_worst_token": 0.2672027262496534,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 5
+      "worst_token": 10
     },
     "q_norm_in.22": {
-      "cos": 0.976454792415262,
-      "cos_worst_token": 0.888611752330258,
+      "cos": 0.927233301103106,
+      "cos_worst_token": 0.46180602480261373,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 22,
-      "max_abs_diff": 10.59375,
+      "max_abs_diff": 15.5625,
       "point": "q_norm_in",
-      "rel_diff": 0.21585988915670884,
-      "rel_worst_token": 0.5117252024478816,
+      "rel_diff": 0.382156577755874,
+      "rel_worst_token": 0.9898929451471871,
       "status": "WARN",
       "tier": "fused",
       "worst_token": 10
     },
     "q_norm_in.29": {
-      "cos": 0.9906985204058544,
-      "cos_worst_token": 0.950036546380849,
+      "cos": 0.9740547619040854,
+      "cos_worst_token": 0.8900799220088431,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 29,
-      "max_abs_diff": 2.625,
+      "max_abs_diff": 4.9375,
       "point": "q_norm_in",
-      "rel_diff": 0.13616869090931683,
-      "rel_worst_token": 0.3175937179385096,
-      "status": "PASS",
+      "rel_diff": 0.22637936875590667,
+      "rel_worst_token": 0.47483086556437987,
+      "status": "WARN",
       "tier": "fused",
       "worst_token": 10
     },
@@ -491,40 +579,50 @@
       "worst_token": 0
     },
     "q_norm_out.15": {
-      "cos": 0.9927625171895089,
-      "cos_worst_token": 0.9859782065300866,
+      "cos": 0.9920121798370153,
+      "cos_worst_token": 0.9813721443600385,
       "layer": 15,
-      "max_abs_diff": 1.34375,
+      "max_abs_diff": 1.8125,
       "point": "q_norm_out",
-      "rel_diff": 0.1203057007741928,
-      "rel_worst_token": 0.1674547358870462,
+      "rel_diff": 0.12639497055436216,
+      "rel_worst_token": 0.19302881734823552,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 5
+      "worst_token": 10
     },
     "q_norm_out.22": {
-      "cos": 0.9810515175982026,
-      "cos_worst_token": 0.8729728762933909,
+      "cos": 0.9411723903791983,
+      "cos_worst_token": 0.4728641567300515,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 22,
-      "max_abs_diff": 4.93359375,
+      "max_abs_diff": 11.375,
       "point": "q_norm_out",
-      "rel_diff": 0.19466669235360518,
-      "rel_worst_token": 0.5040103893341442,
+      "rel_diff": 0.3430018759929985,
+      "rel_worst_token": 1.0266492265156772,
       "status": "WARN",
       "tier": "fused",
       "worst_token": 10
     },
     "q_norm_out.29": {
-      "cos": 0.9878464836990215,
-      "cos_worst_token": 0.9417515778409886,
+      "cos": 0.9672292907538211,
+      "cos_worst_token": 0.8744787945523725,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 29,
-      "max_abs_diff": 2.7265625,
+      "max_abs_diff": 4.51171875,
       "point": "q_norm_out",
-      "rel_diff": 0.15590656810205875,
-      "rel_worst_token": 0.34131980395943556,
+      "rel_diff": 0.2560018671064287,
+      "rel_worst_token": 0.5010369718825238,
       "status": "WARN",
       "tier": "fused",
-      "worst_token": 10
+      "worst_token": 11
     },
     "resid_mid.0": {
       "cos": 0.999974039306033,
@@ -539,86 +637,280 @@
       "worst_token": 8
     },
     "resid_mid.15": {
-      "cos": 0.9936393426924643,
-      "cos_worst_token": 0.9869540516469821,
+      "cos": 0.9920856199566548,
+      "cos_worst_token": 0.9720842909556748,
       "layer": 15,
-      "max_abs_diff": 4.125,
+      "max_abs_diff": 5.5,
       "point": "resid_mid",
-      "rel_diff": 0.11295665476309241,
-      "rel_worst_token": 0.16295360597936934,
+      "rel_diff": 0.12596318963246508,
+      "rel_worst_token": 0.23573624630501996,
       "status": "PASS",
       "tier": "fused",
-      "worst_token": 2
+      "worst_token": 10
     },
     "resid_mid.22": {
-      "cos": 0.965579216324982,
-      "cos_worst_token": 0.8448547822995435,
+      "cos": 0.8990813790392066,
+      "cos_worst_token": -0.05634826290563588,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 22,
-      "max_abs_diff": 37.5,
+      "max_abs_diff": 74.25,
       "point": "resid_mid",
-      "rel_diff": 0.27714971824313267,
-      "rel_worst_token": 0.7782583189533516,
+      "rel_diff": 0.4554577545507409,
+      "rel_worst_token": 1.3697536944730553,
       "status": "WARN",
       "tier": "fused",
       "worst_token": 10
     },
     "resid_mid.29": {
-      "cos": 0.9750138177770098,
-      "cos_worst_token": 0.9004225447744107,
+      "cos": 0.9411734936539388,
+      "cos_worst_token": 0.7965474732126308,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 29,
-      "max_abs_diff": 5.4375,
+      "max_abs_diff": 4.60546875,
       "point": "resid_mid",
-      "rel_diff": 0.225167104136725,
-      "rel_worst_token": 0.46018606043034016,
+      "rel_diff": 0.34401529990366875,
+      "rel_worst_token": 0.6383232015331899,
       "status": "WARN",
       "tier": "fused",
-      "worst_token": 10
+      "worst_token": 11
     },
     "resid_post.0": {
-      "cos": 0.9999755825418812,
-      "cos_worst_token": 0.9999659879796648,
+      "cos": 0.9999789078564156,
+      "cos_worst_token": 0.9999641554584419,
       "layer": 0,
       "max_abs_diff": 0.5,
       "point": "resid_post",
-      "rel_diff": 0.006990644570718164,
-      "rel_worst_token": 0.008726675353592929,
+      "rel_diff": 0.006495477610741386,
+      "rel_worst_token": 0.008773406241770225,
       "status": "PASS",
       "tier": "fused",
       "worst_token": 11
     },
     "resid_post.15": {
-      "cos": 0.9936136211910221,
-      "cos_worst_token": 0.9572160708174277,
+      "cos": 0.949710309470855,
+      "cos_worst_token": 0.4877122450693408,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 15,
-      "max_abs_diff": 9.25,
+      "max_abs_diff": 38.8125,
       "point": "resid_post",
-      "rel_diff": 0.11284331578907196,
-      "rel_worst_token": 0.28953421559055426,
-      "status": "PASS",
+      "rel_diff": 0.31685807917934383,
+      "rel_worst_token": 1.0477824110771659,
+      "status": "WARN",
       "tier": "fused",
-      "worst_token": 2
+      "worst_token": 10
     },
     "resid_post.22": {
-      "cos": 0.963714126764599,
-      "cos_worst_token": 0.7497237201922231,
+      "cos": 0.9140197755122543,
+      "cos_worst_token": 0.07168966651119546,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
       "layer": 22,
-      "max_abs_diff": 20.125,
+      "max_abs_diff": 46.625,
       "point": "resid_post",
-      "rel_diff": 0.2786049285477896,
-      "rel_worst_token": 0.9158466647330772,
+      "rel_diff": 0.4223383260210645,
+      "rel_worst_token": 1.4294346233527027,
       "status": "WARN",
       "tier": "fused",
       "worst_token": 10
     },
     "resid_post.29": {
-      "cos": 0.9946720456549593,
-      "cos_worst_token": 0.9774644545930776,
+      "cos": 0.9823636933802344,
+      "cos_worst_token": 0.9191411976978591,
       "layer": 29,
-      "max_abs_diff": 6.0,
+      "max_abs_diff": 17.875,
       "point": "resid_post",
-      "rel_diff": 0.10482753048441518,
-      "rel_worst_token": 0.2797836455588219,
+      "rel_diff": 0.1896611620102895,
+      "rel_worst_token": 0.7960081397106656,
       "status": "PASS",
+      "tier": "fused",
+      "worst_token": 11
+    },
+    "router_logits.0": {
+      "cos": 0.9999916479350454,
+      "cos_worst_token": 0.9999897463258417,
+      "layer": 0,
+      "max_abs_diff": 0.033203125,
+      "point": "router_logits",
+      "rel_diff": 0.004549572669864724,
+      "rel_worst_token": 0.0054586980052351705,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 12
+    },
+    "router_logits.15": {
+      "cos": 0.9985811393232575,
+      "cos_worst_token": 0.9946349659016541,
+      "layer": 15,
+      "max_abs_diff": 0.40993499755859375,
+      "point": "router_logits",
+      "rel_diff": 0.05356071598279747,
+      "rel_worst_token": 0.10420672557325514,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "router_logits.22": {
+      "cos": 0.9857659740313258,
+      "cos_worst_token": 0.8969378335021054,
+      "layer": 22,
+      "max_abs_diff": 4.71875,
+      "point": "router_logits",
+      "rel_diff": 0.17111539528492814,
+      "rel_worst_token": 1.6374313231830075,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "router_logits.29": {
+      "cos": 0.9764055614472381,
+      "cos_worst_token": 0.8857513173831568,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
+      "layer": 29,
+      "max_abs_diff": 1.14208984375,
+      "point": "router_logits",
+      "rel_diff": 0.21634258274227267,
+      "rel_worst_token": 0.4753521176399681,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 11
+    },
+    "value.0": {
+      "cos": 1.0,
+      "cos_worst_token": 1.0,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "value",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 0
+    },
+    "value.15": {
+      "cos": 0.9794526120415696,
+      "cos_worst_token": 0.9467632996543175,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
+      "layer": 15,
+      "max_abs_diff": 2.3125,
+      "point": "value",
+      "rel_diff": 0.20270791535935628,
+      "rel_worst_token": 0.326303705872177,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "value.22": {
+      "cos": 0.8335165525117343,
+      "cos_worst_token": -0.7265730513889556,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
+      "layer": 22,
+      "max_abs_diff": 31.75,
+      "point": "value",
+      "rel_diff": 0.5770466374481762,
+      "rel_worst_token": 1.858428072882368,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "value.29": {
+      "cos": 0.9515743915948089,
+      "cos_worst_token": 0.8044445579538011,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
+      "layer": 29,
+      "max_abs_diff": 4.78125,
+      "point": "value",
+      "rel_diff": 0.31121259488935227,
+      "rel_worst_token": 0.6253706789467504,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "z.0": {
+      "cos": 0.9999651291293715,
+      "cos_worst_token": 0.9999254063771409,
+      "layer": 0,
+      "max_abs_diff": 0.109375,
+      "point": "z",
+      "rel_diff": 0.008352604144612872,
+      "rel_worst_token": 0.012234326474173092,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 8
+    },
+    "z.15": {
+      "cos": 0.9844634005669693,
+      "cos_worst_token": 0.9751392960525772,
+      "layer": 15,
+      "max_abs_diff": 4.25,
+      "point": "z",
+      "rel_diff": 0.17674857359970095,
+      "rel_worst_token": 0.22497820390244497,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 5
+    },
+    "z.22": {
+      "cos": 0.9025992984883914,
+      "cos_worst_token": 0.1885391607984206,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
+      "layer": 22,
+      "max_abs_diff": 26.5,
+      "point": "z",
+      "rel_diff": 0.4564996045858032,
+      "rel_worst_token": 1.477097484618111,
+      "status": "WARN",
+      "tier": "fused",
+      "worst_token": 10
+    },
+    "z.29": {
+      "cos": 0.9591564419358495,
+      "cos_worst_token": 0.8384181768008249,
+      "engine_bug": {
+        "mechanism": "vLLM disagrees with itself on this checkpoint between its compiled and eager paths, with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, 7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same test, so it is neither bf16 nor MoE routing in general.",
+        "title": "gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        "url": "https://github.com/vllm-project/vllm/issues/55238"
+      },
+      "layer": 29,
+      "max_abs_diff": 4.35546875,
+      "point": "z",
+      "rel_diff": 0.28596969316559995,
+      "rel_worst_token": 0.5667662727817308,
+      "status": "WARN",
       "tier": "fused",
       "worst_token": 11
     }
@@ -626,7 +918,7 @@
   "reason": "",
   "reference": "eager",
   "run": {
-    "date_utc": "2026-08-29T06:53:58+00:00",
+    "date_utc": "2026-09-03T22:47:15+00:00",
     "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
     "eager_only": false,
     "gpu": {
@@ -650,11 +942,11 @@
   },
   "sae": {},
   "status": "ok",
-  "verdict": "\u26a0\ufe0f",
+  "verdict": "\ud83d\udc1e",
   "versions": {
     "interp_engine": {
-      "commit": "c619947c203103727068412fd02bc52b6e48e804",
-      "version": "1.3.6"
+      "commit": "4e2d977387c54401a8a0f7a319684ac82ee98b27",
+      "version": "1.6.0"
     },
     "torch": {
       "version": "2.13.0"

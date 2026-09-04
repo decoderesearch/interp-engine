@@ -473,9 +473,9 @@ export const VERIFIED_RUNS: VerifiedRun[] = [
     "maxNumBatchedTokens": 0,
     "seqLen": 2032,
     "outcome": "pass",
-    "peakBytes": 9835642880,
+    "peakBytes": 9781116928,
     "estimatedBytes": 11172090470,
-    "recordedAt": "2026-08-26T01:17:52Z"
+    "recordedAt": "2026-09-03T03:51:25Z"
   },
   {
     "modelId": "Qwen/Qwen3-4B",
@@ -487,8 +487,8 @@ export const VERIFIED_RUNS: VerifiedRun[] = [
     "seqLen": 0,
     "outcome": "pass",
     "peakBytes": 175458222080,
-    "estimatedBytes": 24451669318,
-    "recordedAt": "2026-08-26T01:17:29Z"
+    "estimatedBytes": 22941904198,
+    "recordedAt": "2026-09-03T03:51:06Z"
   },
   {
     "modelId": "Qwen/Qwen3-4B",
@@ -499,9 +499,9 @@ export const VERIFIED_RUNS: VerifiedRun[] = [
     "maxNumBatchedTokens": 2048,
     "seqLen": 0,
     "outcome": "pass",
-    "peakBytes": 174455783424,
+    "peakBytes": 174355120128,
     "estimatedBytes": 18210544966,
-    "recordedAt": "2026-08-26T01:16:23Z"
+    "recordedAt": "2026-09-03T03:50:18Z"
   },
   {
     "modelId": "Qwen/Qwen3-4B",
@@ -517,6 +517,45 @@ export const VERIFIED_RUNS: VerifiedRun[] = [
     "recordedAt": "2026-08-31T23:01:12Z"
   },
   {
+    "modelId": "Qwen/Qwen3-4B",
+    "gpu": "NVIDIA GeForce RTX 5090",
+    "backend": "vllm-static",
+    "dtype": "bfloat16",
+    "maxModelLen": 8192,
+    "maxNumBatchedTokens": 8192,
+    "seqLen": 0,
+    "outcome": "pass",
+    "peakBytes": 32231129088,
+    "estimatedBytes": 16618907032,
+    "recordedAt": "2026-09-03T01:17:46Z"
+  },
+  {
+    "modelId": "Qwen/Qwen3-4B",
+    "gpu": "NVIDIA GeForce RTX 5090",
+    "backend": "vllm",
+    "dtype": "bfloat16",
+    "maxModelLen": 8192,
+    "maxNumBatchedTokens": 2048,
+    "seqLen": 0,
+    "outcome": "pass",
+    "peakBytes": 31299993600,
+    "estimatedBytes": 11887547800,
+    "recordedAt": "2026-09-03T00:05:41Z"
+  },
+  {
+    "modelId": "Qwen/Qwen3-8B",
+    "gpu": "NVIDIA GeForce RTX 5090",
+    "backend": "vllm-static",
+    "dtype": "bfloat16",
+    "maxModelLen": 8192,
+    "maxNumBatchedTokens": 8192,
+    "seqLen": 0,
+    "outcome": "pass",
+    "peakBytes": 32388415488,
+    "estimatedBytes": 25861521816,
+    "recordedAt": "2026-09-03T01:18:35Z"
+  },
+  {
     "modelId": "RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8",
     "gpu": "NVIDIA B200",
     "backend": "vllm",
@@ -525,9 +564,9 @@ export const VERIFIED_RUNS: VerifiedRun[] = [
     "maxNumBatchedTokens": 2048,
     "seqLen": 0,
     "outcome": "pass",
-    "peakBytes": 174512406528,
+    "peakBytes": 174520795136,
     "estimatedBytes": 19112592582,
-    "recordedAt": "2026-08-26T01:20:38Z"
+    "recordedAt": "2026-09-03T03:56:45Z"
   },
   {
     "modelId": "google/gemma-3-12b-pt",
@@ -613,12 +652,12 @@ export const VERIFIED_RUNS: VerifiedRun[] = [
     "backend": "vllm-static",
     "dtype": "bfloat16",
     "maxModelLen": 8192,
-    "maxNumBatchedTokens": 262144,
+    "maxNumBatchedTokens": 8192,
     "seqLen": 0,
-    "outcome": "crash",
-    "peakBytes": 167294009344,
-    "estimatedBytes": 233048278566,
-    "recordedAt": "2026-08-26T01:25:35Z"
+    "outcome": "pass",
+    "peakBytes": 172411060224,
+    "estimatedBytes": 42795017766,
+    "recordedAt": "2026-09-03T04:01:52Z"
   },
   {
     "modelId": "google/gemma-3-12b-pt",
@@ -628,10 +667,10 @@ export const VERIFIED_RUNS: VerifiedRun[] = [
     "maxModelLen": 8192,
     "maxNumBatchedTokens": 2048,
     "seqLen": 0,
-    "outcome": "crash",
-    "peakBytes": 172530597888,
+    "outcome": "pass",
+    "peakBytes": 173184909312,
     "estimatedBytes": 36553524774,
-    "recordedAt": "2026-08-26T01:19:53Z"
+    "recordedAt": "2026-09-03T03:55:31Z"
   },
   {
     "modelId": "google/gemma-3-12b-pt",
@@ -668,9 +707,9 @@ export const VERIFIED_RUNS: VerifiedRun[] = [
     "maxNumBatchedTokens": 2048,
     "seqLen": 0,
     "outcome": "pass",
-    "peakBytes": 174778744832,
+    "peakBytes": 174665498624,
     "estimatedBytes": 11066473030,
-    "recordedAt": "2026-08-26T01:15:50Z"
+    "recordedAt": "2026-09-03T03:49:22Z"
   },
   {
     "modelId": "nvidia/Llama-3.3-70B-Instruct-FP4",
@@ -681,9 +720,9 @@ export const VERIFIED_RUNS: VerifiedRun[] = [
     "maxNumBatchedTokens": 2048,
     "seqLen": 0,
     "outcome": "pass",
-    "peakBytes": 175019917312,
+    "peakBytes": 175474999296,
     "estimatedBytes": 53008872134,
-    "recordedAt": "2026-08-29T06:34:50Z"
+    "recordedAt": "2026-09-03T04:00:08Z"
   },
   {
     "modelId": "openai-community/gpt2",
@@ -707,9 +746,22 @@ export const VERIFIED_RUNS: VerifiedRun[] = [
     "maxNumBatchedTokens": 1024,
     "seqLen": 0,
     "outcome": "pass",
-    "peakBytes": 174030061568,
+    "peakBytes": 174009090048,
     "estimatedBytes": 9269443398,
-    "recordedAt": "2026-08-26T01:15:02Z"
+    "recordedAt": "2026-09-03T03:48:33Z"
+  },
+  {
+    "modelId": "openai-community/gpt2",
+    "gpu": "NVIDIA GeForce RTX 5090",
+    "backend": "vllm",
+    "dtype": "bfloat16",
+    "maxModelLen": 1024,
+    "maxNumBatchedTokens": 1024,
+    "seqLen": 0,
+    "outcome": "pass",
+    "peakBytes": 30924603392,
+    "estimatedBytes": 2946446232,
+    "recordedAt": "2026-09-03T00:05:58Z"
   },
   {
     "modelId": "openai/gpt-oss-20b",
@@ -733,8 +785,21 @@ export const VERIFIED_RUNS: VerifiedRun[] = [
     "maxNumBatchedTokens": 2048,
     "seqLen": 0,
     "outcome": "pass",
-    "peakBytes": 173585465344,
+    "peakBytes": 173423984640,
     "estimatedBytes": 22920240582,
-    "recordedAt": "2026-08-26T01:18:39Z"
+    "recordedAt": "2026-09-03T03:53:02Z"
+  },
+  {
+    "modelId": "openai/gpt-oss-20b",
+    "gpu": "NVIDIA GeForce RTX 5090",
+    "backend": "vllm",
+    "dtype": "auto",
+    "maxModelLen": 4096,
+    "maxNumBatchedTokens": 2048,
+    "seqLen": 0,
+    "outcome": "pass",
+    "peakBytes": 30798774272,
+    "estimatedBytes": 16597243416,
+    "recordedAt": "2026-09-03T00:08:20Z"
   }
 ];

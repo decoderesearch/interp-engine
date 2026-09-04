@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-08-12",
+  "captured_at": "2026-09-03",
   "device": "cuda",
   "dtype": "bfloat16",
   "engine": "vllm",
@@ -28,7 +28,6 @@
       "rel_worst_token": 0.40265084106949384,
       "status": "PASS",
       "tier": "fused",
-      "waived": "Qwen2.5 massive activations in bf16: one residual coordinate dominates the norm, so RMSNorm propagates its rounding everywhere downstream. IE_FORCE_DTYPE=float32 collapses this to cos 0.999999, so it is checkpoint arithmetic, not capture",
       "worst_token": 12
     },
     "attn_in.21": {
@@ -65,7 +64,6 @@
       "rel_worst_token": 0.384979014208612,
       "status": "PASS",
       "tier": "fused",
-      "waived": "Qwen2.5 massive activations in bf16: one residual coordinate dominates the norm, so RMSNorm propagates its rounding everywhere downstream. IE_FORCE_DTYPE=float32 collapses this to cos 0.999999, so it is checkpoint arithmetic, not capture",
       "worst_token": 4
     },
     "attn_out.14": {
@@ -78,7 +76,6 @@
       "rel_worst_token": 0.47339891216491603,
       "status": "PASS",
       "tier": "fused",
-      "waived": "Qwen2.5 massive activations in bf16: one residual coordinate dominates the norm, so RMSNorm propagates its rounding everywhere downstream. IE_FORCE_DTYPE=float32 collapses this to cos 0.999999, so it is checkpoint arithmetic, not capture",
       "worst_token": 12
     },
     "attn_out.21": {
@@ -115,7 +112,6 @@
       "rel_worst_token": 0.384979014208612,
       "status": "PASS",
       "tier": "fused",
-      "waived": "Qwen2.5 massive activations in bf16: one residual coordinate dominates the norm, so RMSNorm propagates its rounding everywhere downstream. IE_FORCE_DTYPE=float32 collapses this to cos 0.999999, so it is checkpoint arithmetic, not capture",
       "worst_token": 4
     },
     "attn_out_post.14": {
@@ -128,7 +124,6 @@
       "rel_worst_token": 0.47339891216491603,
       "status": "PASS",
       "tier": "fused",
-      "waived": "Qwen2.5 massive activations in bf16: one residual coordinate dominates the norm, so RMSNorm propagates its rounding everywhere downstream. IE_FORCE_DTYPE=float32 collapses this to cos 0.999999, so it is checkpoint arithmetic, not capture",
       "worst_token": 12
     },
     "attn_out_post.21": {
@@ -229,7 +224,6 @@
       "rel_worst_token": 0.9327448666636361,
       "status": "PASS",
       "tier": "fused",
-      "waived": "Qwen2.5 massive activations in bf16: one residual coordinate dominates the norm, so RMSNorm propagates its rounding everywhere downstream. IE_FORCE_DTYPE=float32 collapses this to cos 0.999999, so it is checkpoint arithmetic, not capture",
       "worst_token": 12
     },
     "mlp_act.14": {
@@ -242,7 +236,6 @@
       "rel_worst_token": 0.54821472635135,
       "status": "PASS",
       "tier": "fused",
-      "waived": "Qwen2.5 massive activations in bf16: one residual coordinate dominates the norm, so RMSNorm propagates its rounding everywhere downstream. IE_FORCE_DTYPE=float32 collapses this to cos 0.999999, so it is checkpoint arithmetic, not capture",
       "worst_token": 12
     },
     "mlp_act.21": {
@@ -255,7 +248,6 @@
       "rel_worst_token": 0.32260906500850123,
       "status": "PASS",
       "tier": "fused",
-      "waived": "Qwen2.5 massive activations in bf16: one residual coordinate dominates the norm, so RMSNorm propagates its rounding everywhere downstream. IE_FORCE_DTYPE=float32 collapses this to cos 0.999999, so it is checkpoint arithmetic, not capture",
       "worst_token": 12
     },
     "mlp_act.27": {
@@ -292,7 +284,6 @@
       "rel_worst_token": 0.5559156416335156,
       "status": "PASS",
       "tier": "fused",
-      "waived": "Qwen2.5 massive activations in bf16: one residual coordinate dominates the norm, so RMSNorm propagates its rounding everywhere downstream. IE_FORCE_DTYPE=float32 collapses this to cos 0.999999, so it is checkpoint arithmetic, not capture",
       "worst_token": 12
     },
     "mlp_out.21": {
@@ -341,7 +332,6 @@
       "rel_worst_token": 0.5559156416335156,
       "status": "PASS",
       "tier": "fused",
-      "waived": "Qwen2.5 massive activations in bf16: one residual coordinate dominates the norm, so RMSNorm propagates its rounding everywhere downstream. IE_FORCE_DTYPE=float32 collapses this to cos 0.999999, so it is checkpoint arithmetic, not capture",
       "worst_token": 12
     },
     "mlp_out_post.21": {
@@ -378,7 +368,6 @@
       "rel_worst_token": 0.379129756925166,
       "status": "PASS",
       "tier": "fused",
-      "waived": "Qwen2.5 massive activations in bf16: one residual coordinate dominates the norm, so RMSNorm propagates its rounding everywhere downstream. IE_FORCE_DTYPE=float32 collapses this to cos 0.999999, so it is checkpoint arithmetic, not capture",
       "worst_token": 4
     },
     "resid_mid.14": {
@@ -427,7 +416,6 @@
       "rel_worst_token": 0.652075027978455,
       "status": "PASS",
       "tier": "fused",
-      "waived": "Qwen2.5 massive activations in bf16: one residual coordinate dominates the norm, so RMSNorm propagates its rounding everywhere downstream. IE_FORCE_DTYPE=float32 collapses this to cos 0.999999, so it is checkpoint arithmetic, not capture",
       "worst_token": 12
     },
     "resid_post.14": {
@@ -465,12 +453,108 @@
       "status": "PASS",
       "tier": "fused",
       "worst_token": 6
+    },
+    "value.0": {
+      "cos": 0.9999966609934042,
+      "cos_worst_token": 0.9999907634153118,
+      "layer": 0,
+      "max_abs_diff": 0.0078125,
+      "point": "value",
+      "rel_diff": 0.0025895813161476502,
+      "rel_worst_token": 0.004303967984574698,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 2
+    },
+    "value.14": {
+      "cos": 0.9859230609013175,
+      "cos_worst_token": 0.9342759835959126,
+      "layer": 14,
+      "max_abs_diff": 1.078125,
+      "point": "value",
+      "rel_diff": 0.1685042889839387,
+      "rel_worst_token": 0.3769063869464816,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 12
+    },
+    "value.21": {
+      "cos": 0.9906845890625919,
+      "cos_worst_token": 0.9551877640887005,
+      "layer": 21,
+      "max_abs_diff": 1.220703125,
+      "point": "value",
+      "rel_diff": 0.13662620629275357,
+      "rel_worst_token": 0.3009688999542935,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 12
+    },
+    "value.27": {
+      "cos": 0.9953332604675474,
+      "cos_worst_token": 0.9105478815229446,
+      "layer": 27,
+      "max_abs_diff": 2.3671875,
+      "point": "value",
+      "rel_diff": 0.0966467094513302,
+      "rel_worst_token": 0.41485889539328363,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 12
+    },
+    "z.0": {
+      "cos": 0.9853664830368236,
+      "cos_worst_token": 0.8833800439904395,
+      "layer": 0,
+      "max_abs_diff": 2.513671875,
+      "point": "z",
+      "rel_diff": 0.17198653050805554,
+      "rel_worst_token": 0.5160148260753896,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 4
+    },
+    "z.14": {
+      "cos": 0.9897634548944209,
+      "cos_worst_token": 0.9498736339190852,
+      "layer": 14,
+      "max_abs_diff": 1.353515625,
+      "point": "z",
+      "rel_diff": 0.14330186938204692,
+      "rel_worst_token": 0.340700435224,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 12
+    },
+    "z.21": {
+      "cos": 0.9934295111756873,
+      "cos_worst_token": 0.9650529082232783,
+      "layer": 21,
+      "max_abs_diff": 0.8125,
+      "point": "z",
+      "rel_diff": 0.11445364274504893,
+      "rel_worst_token": 0.26251919810902613,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 12
+    },
+    "z.27": {
+      "cos": 0.9932863468960385,
+      "cos_worst_token": 0.8882475855039148,
+      "layer": 27,
+      "max_abs_diff": 11.40625,
+      "point": "z",
+      "rel_diff": 0.11688255014311381,
+      "rel_worst_token": 0.4682276515963794,
+      "status": "PASS",
+      "tier": "fused",
+      "worst_token": 6
     }
   },
   "reason": "",
   "reference": "eager",
   "run": {
-    "date_utc": "2026-08-12T03:31:40+00:00",
+    "date_utc": "2026-09-03T22:47:15+00:00",
     "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
     "eager_only": false,
     "gpu": {
@@ -497,17 +581,17 @@
   "verdict": "\u2705",
   "versions": {
     "interp_engine": {
-      "commit": "c08e9f537dcf77f24d047e85c4637a797f46e6d8",
-      "version": "1.0.1"
+      "commit": "b74a69844215aa342cdaa8b3cfd07a63313ade4c",
+      "version": "1.6.0"
     },
     "torch": {
-      "version": "2.11.0"
+      "version": "2.13.0"
     },
     "transformers": {
-      "version": "5.15.0"
+      "version": "5.16.1"
     },
     "vllm": {
-      "version": "0.26.0"
+      "version": "0.28.0"
     }
   }
 }

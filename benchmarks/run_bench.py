@@ -256,6 +256,20 @@ def _load_kwargs(
     else:
         for name, value in m.extra_eager_kwargs.items():
             kwargs.setdefault(name, value)
+        # Asked of the library rather than declared per model, for the same reason the vLLM branch
+        # above asks: it is a fact about this GPU and this checkpoint together, so a spec entry would
+        # be right on the card it was written on and wrong on the next one. Empty everywhere but an
+        # FP8 checkpoint on a GPU the `deep-gemm` Hub build misses, where the cell would otherwise
+        # not run at all.
+        from interp_engine import deepgemm_fallback_kwargs
+
+        fallback = deepgemm_fallback_kwargs(m.hf_id)
+        if fallback:
+            declared_model_kwargs = kwargs.get("model_kwargs")
+            merged = dict(fallback)
+            if isinstance(declared_model_kwargs, dict):
+                merged.update(declared_model_kwargs)
+            kwargs["model_kwargs"] = merged
         # A device_map places the weights itself, and `load_model` drops `device` when one is given.
         # Setting it anyway would put a `device="cuda"` in the recorded kwargs that had no effect.
         if "device_map" not in kwargs:

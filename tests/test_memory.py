@@ -508,10 +508,10 @@ def test_a_sparse_trunk_trades_the_mlp_activation_for_the_router():
 def test_each_point_is_priced_at_its_own_width_not_at_d_model():
     """The whole reason the term is a sum over points rather than a count times one width."""
     model = facts(d_model=4096, n_heads=32, n_kv_heads=8, head_dim=128, intermediate_size=14336)
-    # Read plus write, so twice the tensor: `"auto"` declares both at every named point.
-    assert mem.static_point_elements("resid_post", model) == 2 * 4096
-    assert mem.static_point_elements("mlp_act", model) == 2 * 14336
-    assert mem.static_point_elements("z", model) == 2 * 32 * 128
+    # The read buffer, once: the write beside it is one row and is priced separately.
+    assert mem.static_point_elements("resid_post", model) == 4096
+    assert mem.static_point_elements("mlp_act", model) == 14336
+    assert mem.static_point_elements("z", model) == 32 * 128
     # Three buffers at q/k/v widths, and capture-only: there is no meaning to steering a copy of the
     # kernel's own inputs, so the engine refuses the write and no delta is allocated.
     assert mem.static_point_elements("attn", model) == (32 + 2 * 8) * 128
@@ -519,14 +519,41 @@ def test_each_point_is_priced_at_its_own_width_not_at_d_model():
     assert mem.static_point_buffers("resid_post") == 2
 
 
+def test_only_the_read_half_of_a_point_is_charged_per_token():
+    """A write delta is one constant vector, so the engine allocates `[1, width]` and broadcasts.
+
+    Two tensors are still allocated at a read/write point -- `static_point_buffers` says 2 -- but
+    only one of them grows with the batch, and pricing both at `max_num_batched_tokens` doubled the
+    single largest term a static engine has.
+    """
+    model = facts(d_model=4096, n_heads=32, n_kv_heads=8, head_dim=128)
+    assert mem.static_point_row_buffers("resid_post") == 1
+    assert mem.static_point_row_buffers("attn") == 3
+    assert mem.static_point_write_elements("resid_post", model) == 4096
+    # Capture-only, so there is no delta to charge for.
+    assert mem.static_point_write_elements("attn", model) == 0
+
+
+def test_the_write_deltas_are_a_rounding_error_beside_the_read_buffers():
+    """The claim the shape change rests on, in bytes rather than in prose."""
+    model = facts(n_layers=48, d_model=4096)
+    spec = mem.WorkloadSpec(backend="vllm-static", dtype="bfloat16", max_num_batched_tokens=8192)
+    assert spec.resolved_static_sites(model) == 96  # 48 reads + 48 writes, as before
+    assert spec.static_row_buffers(model) == 48  # of which 48 are per-token
+    reads = mem.static_tap_bytes(spec.static_elements(model), spec.max_num_batched_tokens)
+    writes = mem.static_tap_bytes(spec.static_write_elements(model), 1)
+    assert writes * spec.max_num_batched_tokens == reads
+    assert mem.estimate(model, H100, spec).term("static_buffers").bytes == reads + writes
+
+
 def test_the_router_logits_buffer_is_as_wide_as_the_expert_bank():
     model = facts(n_experts=256)
-    assert mem.static_point_elements("router_logits", model) == 2 * 256
+    assert mem.static_point_elements("router_logits", model) == 256
 
 
 def test_a_stream_stack_buffer_is_as_wide_as_the_streams_it_holds():
     model = facts(d_model=4096, n_residual_streams=4)
-    assert mem.static_point_elements("resid_streams", model) == 2 * 4 * 4096
+    assert mem.static_point_elements("resid_streams", model) == 4 * 4096
 
 
 def test_naming_the_default_point_prices_exactly_what_auto_priced():
@@ -560,6 +587,10 @@ def test_a_raw_site_count_still_prices_at_the_residual_width():
     spec = mem.WorkloadSpec(backend="vllm-static", static_sites=10)
     assert spec.resolved_static_sites(model) == 10
     assert spec.static_elements(model) == 10 * 4096
+    # A bare count cannot say which of the ten are cheap write deltas, so all ten are charged as
+    # full-height buffers and none as a delta. The conservative reading, and the only one available.
+    assert spec.static_row_buffers(model) == 10
+    assert spec.static_write_elements(model) == 0
 
 
 def test_the_kv_cache_shards_by_kv_head_rather_than_by_rank():

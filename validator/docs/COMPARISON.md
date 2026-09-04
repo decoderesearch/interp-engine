@@ -380,6 +380,56 @@ reference gets wrong rather than the checkpoint, so the rest of the model stays 
 cells read 🐞 and link the issue, the reference's own column reads `ref🐞`, and everything else in the row
 is judged normally.
 
+### Is a vLLM cell ours at all? `VLLM_BATCH_INVARIANT=1`
+
+`vllm` and `vllm-static` are the same capture code over the same weights; the one thing they disagree
+on is `enforce_eager`, which `load.py` forces on for the hooked backend and leaves off for static. So
+when those two columns split on a point, the split is either our taps or vLLM's own kernel selection,
+and `VLLM_BATCH_INVARIANT=1` tells you which in one run:
+
+```bash
+VLLM_BATCH_INVARIANT=1 JSON=<one-model.json> MODE=engine ENGINE="vllm vllm-static" \
+  EVICT=0 AGGREGATE=0 DUMPS=dumps-local bash comparison/run_all_models.sh
+```
+
+**If the two columns converge, the cell was never ours.** That is what happened to
+`gemma-4-26B-A4B-it`, whose `attn_in.22` read 0.00119 on static against 0.9993 on hooked: under batch
+invariance it reads 0.99300 and both backends land on the same worst point. The mechanism is upstream
+and reproduces with no interp-engine in the process at all — plain vLLM, greedy, `prompt_logprobs`,
+one ordinary sentence, `enforce_eager` the only thing changed, emits a *different token* and flips
+argmax at 6 of 12 prompt positions, 7.47 nats at worst. `Qwen2.5-7B-Instruct` and `Qwen3-30B-A3B` hold
+every position under that same test, so it is neither MoE in general nor anything we do.
+
+Converge is the word and not *fix*: batch invariance takes that same plain-vLLM run to one argmax flip
+and 2.39 nats, which is still further from self-consistent than either control model is with the
+variable unset. It buys enough agreement to answer the question being asked here — whose bug is this —
+and no more.
+
+**It is a diagnostic and not a setting**, for three reasons, all measured on the seven models that
+have any cell under 0.99:
+
+- It is not uniformly more accurate. It swaps in deterministic reductions rather than revealing a
+  truth, and against the same reference it moved `gemma-4-12B-it` from 26 sub-0.99 cells to 9 and
+  `phi-2` from 1 to 0, but `Phi-mini-MoE-instruct` from 2 to 7 and `Qwen3-30B-A3B`'s worst cell from
+  0.98178 to 0.96343.
+- vLLM refuses it on some trunks: `LFM2-8B-A1B` dies at engine start with `VLLM batch_invariant mode
+  is not supported for SHORT_CONV_ATTN`.
+- It is not the path anyone runs. The sweep's job is to say what a researcher's activations will
+  actually look like, and pinning the harness to kernels production does not use would answer a
+  question nobody asked.
+
+A converged cell is not a pass either. The divergence is real on the path researchers run and a reader
+steering through that layer will meet it, so the verdict is 🐞 rather than ✅: an `ENGINE_BUGS` row
+naming the upstream issue, on the same bar as every other row there — a runnable repro and a filed
+issue, with the batch-invariant run as the evidence that the fault is not ours. Until the issue exists
+the cell keeps whatever it scored, because 🐞 has to link somewhere.
+
+That is what happened here: the run above became
+[vllm#55238](https://github.com/vllm-project/vllm/issues/55238) and `gemma-4-26B-A4B-it`'s static cell
+reads 🐞. Note what the cell still says underneath — `attn_in.22` is recorded at 0.00119, the number
+the production path produces, not the 0.99300 the diagnostic produced. The glyph reassigns the fault
+and the metrics keep describing what a researcher will actually get.
+
 ### Bugs filed against the other engines
 
 Read this before concluding that a fresh disagreement is new. `mechanism` is the part to test a suspect

@@ -8,18 +8,18 @@ Generated from the `<engine>.json` files beside this one, which hold the same nu
 
 | engine | verdict | capture | dtype | version | agreed | differs | failed | not compared |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| [interp-engine eager](eager.json) *(reference)* | ref | ok | float32 | v1.1.0+dirty | — | — | — | — |
-| [interp-engine vllm](vllm.json) | ✅ | ok | float32 | v0.26.0 | 34 | 0 | 0 | 4 |
-| [interp-engine vllm-static](vllm-static.json) | ✅ | ok | float32 | v0.27.1 | 32 | 0 | 0 | 0 |
-| [tlens_v2](tlens_v2.json) | ✅ | ok | float32 | v3.7.0 | 28 | 0 | 0 | 4 |
-| [tlens_v3](tlens_v3.json) | ✅ | ok | float32 | v3.7.0 | 28 | 0 | 0 | 4 |
+| [interp-engine eager](eager.json) *(reference)* | ref | ok | float32 | v1.6.0 | — | — | — | — |
+| [interp-engine vllm](vllm.json) | ✅ | ok | float32 | v0.28.0 | 42 | 0 | 0 | 4 |
+| [interp-engine vllm-static](vllm-static.json) | ✅ | ok | float32 | v0.28.0 | 40 | 0 | 0 | 4 |
+| [tlens_v2](tlens_v2.json) | ✅ | ok | float32 | v3.8.1 | 28 | 0 | 0 | 4 |
+| [tlens_v3](tlens_v3.json) | ✅ | ok | float32 | v3.8.1 | 28 | 0 | 0 | 4 |
 | [nnsight](nnsight.json) | ✅ | ok | float32 | v0.7.0 | 24 | 0 | 0 | 4 |
 
 ### Point by point
 
 ✅ agrees · ⚠️ differs in value · ❌ structurally wrong, or the engine did not deliver it · 🐞 differs because the reference is wrong here, with an issue filed against it (`ref🐞` marks the reference's own column) · `ref` the reference produced this point (nothing scores it — it *is* the baseline) · `n/a` this engine declines the point · `no ref` the reference declined it · `—` no comparison here — the point is not asked of this engine, or it is listed under *Not compared* · † a waiver carried the pass (listed below)
 
-| point<br>layer | interp-engine eager<br>[v1.1.0+dirty](eager.json) | interp-engine vllm<br>[v0.26.0](vllm.json) | interp-engine vllm-static<br>[v0.27.1](vllm-static.json) | tlens_v2<br>[v3.7.0](tlens_v2.json) | tlens_v3<br>[v3.7.0](tlens_v3.json) | nnsight<br>[v0.7.0](nnsight.json) |
+| point<br>layer | interp-engine eager<br>[v1.6.0](eager.json) | interp-engine vllm<br>[v0.28.0](vllm.json) | interp-engine vllm-static<br>[v0.28.0](vllm-static.json) | tlens_v2<br>[v3.8.1](tlens_v2.json) | tlens_v3<br>[v3.8.1](tlens_v3.json) | nnsight<br>[v0.7.0](nnsight.json) |
 | --- | --- | --- | --- | --- | --- | --- |
 | `resid_post`<br>layer 0 | ref | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `resid_post`<br>layer 16 | ref | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -57,6 +57,14 @@ Generated from the `<engine>.json` files beside this one, which hold the same nu
 | `mlp_act`<br>layer 16 | ref | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `mlp_act`<br>layer 24 | ref | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `mlp_act`<br>layer 31 | ref | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `value`<br>layer 0 | ref | ✅ | ✅ | — | — | — |
+| `value`<br>layer 16 | ref | ✅ | ✅ | — | — | — |
+| `value`<br>layer 24 | ref | ✅ | ✅ | — | — | — |
+| `value`<br>layer 31 | ref | ✅ | ✅ | — | — | — |
+| `z`<br>layer 0 | ref | ✅ | ✅ | — | — | — |
+| `z`<br>layer 16 | ref | ✅ | ✅ | — | — | — |
+| `z`<br>layer 24 | ref | ✅ | ✅ | — | — | — |
+| `z`<br>layer 31 | ref | ✅ | ✅ | — | — | — |
 | `embeddings` | ref | ✅ | — | — | — | — |
 | `final_norm` | ref | ✅ | — | — | — | — |
 | `attn_scores`<br>layer 0 | ref | ✅ | ✅ | — | — | — |
@@ -74,8 +82,10 @@ Nothing: every point every engine captured agreed with the reference.
 | --- | --- | --- | --- | --- | --- | --- |
 | interp-engine vllm | `attn_out` | 31 | 0.999049 | 0.962386 | 12 | 0.2717 |
 | interp-engine vllm | `attn_out_post` | 31 | 0.999049 | 0.962386 | 12 | 0.2717 |
+| interp-engine vllm | `z` | 31 | 0.986358 | 0.905924 | 12 | 0.4244 |
 | interp-engine vllm-static | `attn_out` | 31 | 0.999031 | 0.960951 | 12 | 0.2768 |
 | interp-engine vllm-static | `attn_out_post` | 31 | 0.999031 | 0.960951 | 12 | 0.2768 |
+| interp-engine vllm-static | `z` | 31 | 0.986271 | 0.903271 | 12 | 0.4307 |
 
 These cells pass: the scored cosine is over the whole tensor, and it clears the tier. The column beside it is the same measurement on the single worst token, and it does not -- so a reader who takes one token's activations out of this capture is not getting the agreement the verdict promises. Nothing here is re-scored on that number (the tiers were calibrated against whole-tensor metrics), but a sublayer point that warns while the residual around it passes is usually this, arriving where the massive coordinates are no longer there to average it away.
 
@@ -83,5 +93,5 @@ These cells pass: the scored cosine is over the whole tensor, and it clears the 
 
 | point | layers | engines | why |
 | --- | --- | --- | --- |
-| `resid_mid` | 0, 16, 24, 31 | tlens_v2, tlens_v3, interp-engine vllm | neither engine captured it |
+| `resid_mid` | 0, 16, 24, 31 | tlens_v2, tlens_v3, interp-engine vllm, interp-engine vllm-static | neither engine captured it |
 | `resid_mid` | 0, 16, 24, 31 | nnsight | the `eager` reference declined the point, so there is nothing to score against — parallel block: attention and the MLP both read the layer input, so no residual exists *between* them. The module a resid_mid would be read from is still there -- GPT-NeoX and phi-2 keep `post_attention_layernorm` -- but it is applied to resid_pre, so an engine that hooks it returns resid_pre under this name: vLLM's came back bit-identical to the embeddings before interp-engine refused the point on that backend too. Read resid_pre or resid_post; nnterp still hands one back |

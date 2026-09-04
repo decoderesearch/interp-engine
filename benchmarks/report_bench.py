@@ -123,6 +123,19 @@ def _columns(cells: list[dict[str, Any]]) -> list[str]:
     return [k for k in COLUMNS if k in present] + [k for k in present if k not in COLUMNS]
 
 
+def _rendered(cells: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The cells this report actually shows, which is what its header has to be about.
+
+    Dropping :data:`EXCLUDED` from the columns was not enough: the cell count, the run's date range
+    and the environment table were all still computed over everything on disk, so a dspark cell left
+    over from an older stack described the whole report. It really happened -- a table whose figures
+    were all measured on vLLM 0.28 carried an environment block reading 0.26, because the stalest
+    cell in the directory sorted first and the block takes the first one it is given.
+    """
+    shown = set(_columns(cells))
+    return [c for c in cells if c["variant"]["key"] in shown]
+
+
 def _variant_specs(cells: list[dict[str, Any]]) -> list[Any]:
     """The specs behind :func:`_columns`, in the same order, for the report's variant table."""
     by_key = {v.key: v for v in VARIANTS}
@@ -350,6 +363,9 @@ def _steering_overhead(cells: list[dict[str, Any]]) -> list[str]:
 
 
 def build_report(cells: list[dict[str, Any]], sweep_command: str) -> str:
+    if not cells:
+        return "# interp-engine speed benchmarks\n\nNo results found.\n"
+    cells = _rendered(cells)
     if not cells:
         return "# interp-engine speed benchmarks\n\nNo results found.\n"
 

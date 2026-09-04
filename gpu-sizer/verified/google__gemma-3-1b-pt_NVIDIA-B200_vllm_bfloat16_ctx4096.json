@@ -12,6 +12,7 @@
     "gpu_memory_utilization": 0.9,
     "num_gpus": 1,
     "static_sites": 0,
+    "static_points": [],
     "enforce_eager": null,
     "batch_size": 1,
     "seq_len": 0,
@@ -69,14 +70,18 @@
   },
   "measured": {
     "baseline_bytes": 0,
-    "post_load_bytes": 174778744832,
-    "post_warmup_bytes": 174778744832,
-    "peak_bytes": 174778744832,
+    "post_load_bytes": 174665498624,
+    "post_reserve_bytes": 0,
+    "post_warmup_bytes": 174665498624,
+    "peak_bytes": 174665498624,
+    "per_device_peak_bytes": [
+      174665498624
+    ],
     "pool_claimed_bytes": 172556078284,
-    "outside_measured_bytes": 2222666548,
+    "outside_measured_bytes": 2109420340,
     "torch_peak_bytes": 0,
     "kv_cache_tokens": 5892717,
-    "samples": 139
+    "samples": 165
   },
   "stress": {
     "max_concurrency_passed": 4,
@@ -85,10 +90,10 @@
     "requests_ok": 4,
     "requests_failed": 0,
     "latencies_ms": [
-      423.46811201423407,
-      475.36639403551817,
-      572.159931063652,
-      624.2984756827354
+      699.8850179370493,
+      735.6355380034074,
+      800.5677280016243,
+      827.4292349815369
     ],
     "failure_kind": "",
     "failure_detail": ""
@@ -96,7 +101,8 @@
   "reservations": {
     "per_rank_bytes": 0,
     "host_bytes": 0,
-    "note": "--reserve-gib / --host-reserve-gib"
+    "before_engine": false,
+    "note": "--reserve-gib / --host-reserve-gib, held for real by the harness process; a per-rank share above rank 0 carries this process's extra CUDA context with it"
   },
   "engine_env": {},
   "engine_env_note": "",
@@ -106,11 +112,11 @@
   "error": "",
   "versions": {
     "torch": "2.13.0+cu130",
-    "transformers": "5.14.1",
-    "vllm": "0.27.1",
-    "interp_engine": "1.3.4",
-    "driver": "580.126.09"
+    "transformers": "5.16.1",
+    "vllm": "0.28.0",
+    "interp_engine": "1.6.0",
+    "driver": "580.167.08"
   },
-  "duration_s": 46.4,
-  "recorded_at": "2026-08-26T01:15:50Z"
+  "duration_s": 47.0,
+  "recorded_at": "2026-09-03T03:49:22Z"
 }
