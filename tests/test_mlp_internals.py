@@ -29,7 +29,7 @@ from types import SimpleNamespace
 import pytest
 import torch
 from harness import GEMMA_IT, GPT2, QWEN_THINKING, ModelSpec, load_model, require_hf_token
-from synthetic_families import shrunk_opt, shrunk_phi3
+from synthetic_families import shrunk_glm4, shrunk_opt, shrunk_phi3
 
 from interp_engine import run_with_cache
 from interp_engine.capture import AddressLike
@@ -176,8 +176,9 @@ def test_a_plain_mlp_refuses_the_multiplied_branch():
         model.resolve_point("mlp_pre_linear", 0)
 
 
-def test_a_fused_gate_up_is_sliced_into_its_two_branches():
-    """Phi-3's shape: one projection holding both branches, so neither is a module output.
+@pytest.mark.parametrize("build", [shrunk_phi3, shrunk_glm4], ids=["phi3", "glm4"])
+def test_a_fused_gate_up_is_sliced_into_its_two_branches(build):
+    """Phi-3's and GLM-4's shape: one projection holding both branches, so neither is a module output.
 
     Served rather than refused, because a dense MLP's neuron basis exists whether or not the
     checkpoint stores the two matrices concatenated -- and this is a read plus a last-axis slice, the
@@ -186,9 +187,10 @@ def test_a_fused_gate_up_is_sliced_into_its_two_branches():
     Checked by the identity the branches exist to satisfy: `act(mlp_pre) * mlp_pre_linear` is the
     down projection's input, which arrives independently as `mlp_act`. That is what says the halves
     were cut the right way round, and it is exact -- swapping them changes the answer on any
-    non-symmetric activation, which SiLU is.
+    non-symmetric activation, which SiLU is. Run per family rather than once, because the packing is
+    a property of the family: both of these chunk gate-first, and nothing but running them says so.
     """
-    model = shrunk_phi3()
+    model = build()
     ids = torch.arange(7).unsqueeze(0) % 128
     cache = run_with_cache(model, ids, [("mlp_pre", 1), ("mlp_pre_linear", 1), ("mlp_act", 1)])
     pre, linear, act = (cache.get(name, 1) for name in ("mlp_pre", "mlp_pre_linear", "mlp_act"))

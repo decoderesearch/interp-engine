@@ -34,5 +34,6 @@
  "Qwen/Qwen3-32B": "Qwen3ForCausalLM",
  "Qwen/Qwen3-Next-80B-A3B-Instruct": "Qwen3NextForCausalLM",
  "Qwen/Qwen3.6-35B-A3B": "Qwen3_5MoeForConditionalGeneration",
- "Qwen/Qwen3.8-27B": "Qwen3_5ForConditionalGeneration"
+ "Qwen/Qwen3.8-27B": "Qwen3_5ForConditionalGeneration",
+ "zai-org/GLM-4-9B-0414": "Glm4ForCausalLM"
 }
