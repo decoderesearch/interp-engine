@@ -281,8 +281,19 @@ const FAMILIES: Architecture[] = [
     released: "2024-04",
     significance:
       "Phi-3 made the case that curriculum beats scale, training on heavily filtered textbook-grade and synthetic data rather than more of the web. It packed roughly GPT-3.5 ability into 3.8B parameters and made on-device models credible, which shifted a lot of the field's effort from bigger to cleaner.",
-    traits: ["gqa", "gated_mlp", "fused_qkv", "sliding_window"],
+    traits: ["gqa", "gated_mlp", "fused_qkv", "fused_gate_up", "sliding_window"],
     exampleModels: ["microsoft/Phi-3-mini-4k-instruct"],
+    note: "Fuses both of the block's multi-branch projections — qkv_proj on the attention side, gate_up_proj on the MLP side. Neither packing follows from the other: each is read off the family's own forward.",
+  },
+  {
+    id: "Glm4ForCausalLM",
+    label: "GLM-4",
+    released: "2025-04",
+    significance:
+      "GLM-4 norms each sublayer on the way out as well as on the way in, a stabilisation the Gemma line is better known for, and rotates only half of every head's dimensions instead of all of them. Z.ai released the 9B and 32B under MIT, which put a bilingual family at that quality inside reach of anyone who wanted to build on the weights rather than call an API.",
+    traits: ["gqa", "gated_mlp", "fused_gate_up", "sandwich_norms"],
+    exampleModels: ["zai-org/GLM-4-9B-0414", "zai-org/GLM-4-32B-0414"],
+    note: "Sandwich norms, but not spelled the way Gemma spells them. The extra pair is post_self_attn_layernorm and post_mlp_layernorm, which leaves post_attention_layernorm free to mean what it means on Llama — the pre-MLP norm, not the post-attention one.",
   },
   {
     id: "DeepseekV3ForCausalLM",

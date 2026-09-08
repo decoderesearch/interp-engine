@@ -159,6 +159,18 @@ export const TRAITS: Trait[] = [
     ],
   },
   {
+    id: "fused_gate_up",
+    label: "Fused gate/up",
+    group: "mlp",
+    description:
+      "The gate and up projections share one matrix, so neither branch is a module output and both have to be sliced back out with the family's exact layout. Splitting on a guess returns the right shape holding the other branch, so the split is offered only where the packing is known.",
+    exampleModels: [
+      "microsoft/Phi-3-mini-4k-instruct",
+      "zai-org/GLM-4-9B-0414",
+    ],
+    implies: ["gated_mlp"],
+  },
+  {
     id: "moe",
     label: "MoE",
     group: "mlp",

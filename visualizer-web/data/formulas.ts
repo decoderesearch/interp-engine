@@ -167,12 +167,19 @@ export function formulaFor(
       return has("gated_mlp")
         ? {
             expr: "mlp_pre = W_gate @ mlp_in",
-            note: "HF's gate_proj. Do not translate by weight name: TransformerLens' W_in is HF's up_proj, the other branch.",
+            note: has("fused_gate_up")
+              ? "The gate branch, sliced out of the fused gate_up_proj with the family's exact layout — there is no gate_proj module. Do not translate by weight name either: TransformerLens' W_in is the up branch."
+              : "HF's gate_proj. Do not translate by weight name: TransformerLens' W_in is HF's up_proj, the other branch.",
           }
         : { expr: "mlp_pre = W_in @ mlp_in" };
 
     case "mlp_pre_linear":
-      return { expr: "mlp_pre_linear = W_up @ mlp_in" };
+      return {
+        expr: "mlp_pre_linear = W_up @ mlp_in",
+        note: has("fused_gate_up")
+          ? "There is no standalone up_proj: this is the other half of the fused projection, and slicing it the wrong way round returns the gate branch."
+          : undefined,
+      };
 
     case "mlp_act":
       return {
@@ -369,6 +376,12 @@ const TRAIT_IMPACTS: Partial<
       "This is the gate branch, HF's gate_proj. The up branch is its own point, and TransformerLens names the two weights the other way round.",
     mlp_act:
       "The activation runs on the gate branch and is multiplied into the up branch, rather than applied to one projection.",
+  },
+  fused_gate_up: {
+    mlp_pre:
+      "There is no gate_proj module; the gate branch is sliced out of the shared projection.",
+    mlp_pre_linear:
+      "There is no up_proj module either. Both branches come out of one matrix, and slicing it the wrong way round swaps them.",
   },
   moe: {
     mlp_out:
