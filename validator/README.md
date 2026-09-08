@@ -93,14 +93,14 @@ maintained list:
 
 |  | architectures | what has been shown |
 | --- | --- | --- |
-| **verified** | 32 | captured on real weights and checked point-by-point against other engines |
-| **resolves** | 60 | every point resolves and the arithmetic invariants hold; no independent engine has reproduced it |
+| **verified** | 33 | captured on real weights and checked point-by-point against other engines |
+| **resolves** | 59 | every point resolves and the arithmetic invariants hold; no independent engine has reproduced it |
 | **unaudited** | 45 | not probed: transformers has no class for the family, or its own config defaults do not build |
 | **broken** | 2 | a module tree the `(point, layer)` addressing cannot express, with the reason |
 
-Verified today, on 34 checkpoints between them:
+Verified today, on 35 checkpoints between them:
 
-`BloomForCausalLM`, `DeepseekV2ForCausalLM`, `GPT2LMHeadModel`, `GPTBigCodeForCausalLM`, `GPTNeoXForCausalLM`, `Gemma2ForCausalLM`, `Gemma3ForCausalLM`, `Gemma3ForConditionalGeneration`, `Gemma4ForConditionalGeneration`, `Gemma4UnifiedForConditionalGeneration`, `GptOssForCausalLM`, `GraniteForCausalLM`, `GraniteMoeForCausalLM`, `Lfm2ForCausalLM`, `Lfm2MoeForCausalLM`, `LlamaForCausalLM`, `MistralForCausalLM`, `NemotronHForCausalLM`, `OPTForCausalLM`, `Olmo2ForCausalLM`, `Olmo3ForCausalLM`, `Phi3ForCausalLM`, `PhiForCausalLM`, `PhiMoEForCausalLM`, `Qwen2ForCausalLM`, `Qwen3ForCausalLM`, `Qwen3MoeForCausalLM`, `Qwen3NextForCausalLM`, `Qwen3_5ForConditionalGeneration`, `Qwen3_5MoeForConditionalGeneration`, `SmolLM3ForCausalLM`, `Starcoder2ForCausalLM`.
+`BloomForCausalLM`, `DeepseekV2ForCausalLM`, `GPT2LMHeadModel`, `GPTBigCodeForCausalLM`, `GPTNeoXForCausalLM`, `Gemma2ForCausalLM`, `Gemma3ForCausalLM`, `Gemma3ForConditionalGeneration`, `Gemma4ForConditionalGeneration`, `Gemma4UnifiedForConditionalGeneration`, `Glm4ForCausalLM`, `GptOssForCausalLM`, `GraniteForCausalLM`, `GraniteMoeForCausalLM`, `Lfm2ForCausalLM`, `Lfm2MoeForCausalLM`, `LlamaForCausalLM`, `MistralForCausalLM`, `NemotronHForCausalLM`, `OPTForCausalLM`, `Olmo2ForCausalLM`, `Olmo3ForCausalLM`, `Phi3ForCausalLM`, `PhiForCausalLM`, `PhiMoEForCausalLM`, `Qwen2ForCausalLM`, `Qwen3ForCausalLM`, `Qwen3MoeForCausalLM`, `Qwen3NextForCausalLM`, `Qwen3_5ForConditionalGeneration`, `Qwen3_5MoeForConditionalGeneration`, `SmolLM3ForCausalLM`, `Starcoder2ForCausalLM`.
 
 Unverified is the absence of a *cross-engine* run, not a prediction of failure: an architecture in the
 second tier resolves every hook point against its real module tree and satisfies three arithmetic

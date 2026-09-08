@@ -11,8 +11,8 @@ transformers backend rather than a native implementation count too -- vLLM serve
 
 The tiers are **what has been shown**, not a forecast:
 
-- **verified** -- captured on real weights and checked point-by-point against other engines (32 architectures)
-- **resolves** -- every point resolves and the arithmetic invariants hold; no independent engine has reproduced it (60 architectures)
+- **verified** -- captured on real weights and checked point-by-point against other engines (33 architectures)
+- **resolves** -- every point resolves and the arithmetic invariants hold; no independent engine has reproduced it (59 architectures)
 - **unaudited** -- not probed: transformers has no class for the family, or its own config defaults do not build (45 architectures)
 - **broken** -- a module tree the `(point, layer)` addressing cannot express, with the reason (2 architectures)
 
@@ -43,6 +43,7 @@ family. The full matrix, with per-point cosines and the command to reproduce any
 | `Gemma3ForConditionalGeneration` | `google/gemma-3-27b-it` | nnsight, tlens_v2, tlens_v3, vllm, vllm-static |
 | `Gemma4ForConditionalGeneration` | `google/gemma-4-26B-A4B-it`<br>`google/gemma-4-31B` | nnsight, tlens_v3 |
 | `Gemma4UnifiedForConditionalGeneration` | `google/gemma-4-12B-it` | nnsight, tlens_v3 |
+| `Glm4ForCausalLM` | `zai-org/GLM-4-9B-0414` | nnsight, tlens_v3, vllm, vllm-static |
 | `GptOssForCausalLM` | `openai/gpt-oss-20b` | nnsight, tlens_v2, tlens_v3, vllm, vllm-static |
 | `GraniteForCausalLM` | `ibm-granite/granite-3.3-2b-instruct` | nnsight, tlens_v3, vllm, vllm-static |
 | `GraniteMoeForCausalLM` | `ibm-granite/granite-3.0-1b-a400m-base` | nnsight, tlens_v3, vllm, vllm-static |
@@ -118,7 +119,6 @@ the legend below before reading them as gaps.
 | `Gemma3nForCausalLM` | -- | not checked: its `layer_types` list is per-layer and validated against the full 35-layer pattern |
 | `Gemma4ForCausalLM` | -- | not checked: same per-layer validation as Gemma-3n |
 | `GemmaForCausalLM` | -- | hold |
-| `Glm4ForCausalLM` | -- | hold |
 | `Glm4MoeForCausalLM` | -- | hold |
 | `Glm4MoeLiteForCausalLM` | `value` | hold |
 | `GlmForCausalLM` | `mlp_pre`, `mlp_pre_linear` | hold |
