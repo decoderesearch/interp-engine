@@ -437,6 +437,44 @@ def shrunk_phi3(*, seed: int = 0) -> Any:
         return EagerModel("Phi3ForCausalLM", hf_model=model, tokenizer=NoTokenizer(), device=None, dtype="float32")
 
 
+#: Dims for :func:`shrunk_glm4`. Same subject as :data:`_PHI3_SHRUNK` -- the MLP's single
+#: ``gate_up_proj`` -- so the only constraint is an even ``intermediate_size``. GLM-4 rotates half
+#: its head dimension, so ``head_dim`` stays a multiple of four.
+_GLM4_SHRUNK: dict[str, Any] = {
+    "hidden_size": 32,
+    "intermediate_size": 64,
+    "num_hidden_layers": 2,
+    "num_attention_heads": 4,
+    "num_key_value_heads": 2,
+    "head_dim": 8,
+    "vocab_size": 128,
+    "max_position_embeddings": 64,
+    "pad_token_id": 0,
+    "eos_token_id": 1,
+}
+
+
+def shrunk_glm4(*, seed: int = 0) -> Any:
+    """A tiny real GLM-4 with float32 weights on CPU, as an ``EagerModel``.
+
+    The second family to fuse its two pre-activation projections into one ``gate_up_proj``, and the
+    reason the packing is a table rather than a default: ``Glm4MLP`` chunks gate-first exactly as
+    Phi-3 does, but that is a fact about the family, established by running it, not one the shared
+    attribute name implies.
+    """
+    from transformers import Glm4Config, Glm4ForCausalLM
+
+    from interp_engine import EagerModel
+
+    config = Glm4Config(**_GLM4_SHRUNK)
+    config.architectures = ["Glm4ForCausalLM"]
+    torch.manual_seed(seed)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = Glm4ForCausalLM(config).to(torch.float32).eval()
+        return EagerModel("Glm4ForCausalLM", hf_model=model, tokenizer=NoTokenizer(), device=None, dtype="float32")
+
+
 def shrunk_lfm2_moe(*, seed: int = 0) -> Any:
     """A tiny LFM2-MoE with real float32 weights on CPU, as an ``EagerModel``.
 

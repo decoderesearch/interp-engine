@@ -478,6 +478,7 @@ class GateUpLayout(StrEnum):
 
     #: ``[all_gate | all_up]``, two contiguous halves, gate first. Phi-3's ``gate_up_proj``, whose
     #: forward is ``gate, up = self.gate_up_proj(x).chunk(2, dim=-1); down(up * act(gate))``.
+    #: GLM-4's ``Glm4MLP`` performs the identical chunk.
     GATE_FIRST = "gate_first"
     #: ``[gate_0 up_0 | gate_1 up_1 | ...]``, the two branches interleaved per neuron. gpt-oss's
     #: MXFP4 expert weights, where the kernel reads ``[..., ::2]`` and ``[..., 1::2]``.
@@ -488,8 +489,10 @@ class GateUpLayout(StrEnum):
 #: packed. Absent means the refusal in ``ArchSpec.mlp_projection`` stands: a family may fuse and pack
 #: either way, and "probably gate first" is exactly the guess that produces silent garbage.
 #: Verified by the identity the branches exist to satisfy -- ``act(mlp_pre) * mlp_pre_linear`` is the
-#: down projection's input, which is captured independently as ``mlp_act`` (tests/test_fused_mlp.py).
+#: down projection's input, which is captured independently as ``mlp_act``
+#: (tests/test_mlp_internals.py).
 FUSED_GATE_UP_LAYOUTS: dict[str, GateUpLayout] = {
+    "Glm4ForCausalLM": GateUpLayout.GATE_FIRST,
     "Phi3ForCausalLM": GateUpLayout.GATE_FIRST,
 }
 

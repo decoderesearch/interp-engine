@@ -118,7 +118,7 @@ the legend below before reading them as gaps.
 | `Gemma3nForCausalLM` | -- | not checked: its `layer_types` list is per-layer and validated against the full 35-layer pattern |
 | `Gemma4ForCausalLM` | -- | not checked: same per-layer validation as Gemma-3n |
 | `GemmaForCausalLM` | -- | hold |
-| `Glm4ForCausalLM` | `mlp_pre`, `mlp_pre_linear` | hold |
+| `Glm4ForCausalLM` | -- | hold |
 | `Glm4MoeForCausalLM` | -- | hold |
 | `Glm4MoeLiteForCausalLM` | `value` | hold |
 | `GlmForCausalLM` | `mlp_pre`, `mlp_pre_linear` | hold |
