@@ -43,6 +43,7 @@ export type TraitId =
   | "no_pre_attn_norm"
   | "parallel_attn_mlp"
   | "gated_mlp"
+  | "fused_gate_up"
   | "moe"
   | "dense_mlp_beside_experts"
   | "shared_experts"
