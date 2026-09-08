@@ -23,7 +23,7 @@ import importlib
 import traceback
 
 from comparison.aggregate import compute_results
-from comparison.dumpio import CaptureMeta, read_inputs, write_capture
+from comparison.dumpio import CaptureMeta, classify_failure, read_inputs, write_capture
 from comparison.engine_versions import engine_versions
 from comparison.report import (
     NO_REFERENCE,
@@ -60,7 +60,12 @@ def main() -> None:
                 hf_id=hf_id,
                 input_ids=inputs.input_ids,
                 layers=inputs.layers,
-                points=_points_for(engine),
+                # Narrowed by the checkpoint, exactly as the sweep does it. Without the `hf_id` the
+                # stream rows are asked for on a conventional trunk, where TransformerLens answers
+                # `hook_out` -- the plain residual under the stack's name -- against a reference that
+                # correctly refuses the point. That reads as a `ref*` gap in this check and in no
+                # other, so a model the sweep scores clean fails its own gate.
+                points=_points_for(engine, hf_id),
                 saes=(),
                 device=args.device,
                 dtype=dtype,
@@ -79,13 +84,21 @@ def main() -> None:
             )
             print(f"[check_model] {engine}: ok {sorted(arrays)}")
         except Exception as exc:  # noqa: BLE001 - record, keep checking the others
-            traceback.print_exc()
+            # Classified the way the sweep classifies it, not recorded as an error outright: a
+            # reference engine that declines the checkpoint says nothing about whether `eager` read
+            # the architecture correctly, and calling that a failure here makes the gate contradict
+            # the table the same capture would produce. TransformerLens v2 declining anything outside
+            # its model registry is the common case, and it is the whole reason `UNSUPPORTED` is one
+            # of the verdicts the check below accepts.
+            status = classify_failure(f"{type(exc).__name__}: {exc}")
+            if status == "error":
+                traceback.print_exc()
             write_capture(
                 dumps,
                 CaptureMeta(
                     engine,
                     hf_id,
-                    "error",
+                    status,
                     reason=f"{type(exc).__name__}: {str(exc)[:200]}",
                     dtype=dtype,
                     device=args.device,
@@ -93,7 +106,7 @@ def main() -> None:
                 ),
                 {},
             )
-            print(f"[check_model] {engine}: ERROR {exc}")
+            print(f"[check_model] {engine}: {status.upper()} {exc}")
 
     results = compute_results(dumps, models=[ModelSpec(hf_id=hf_id)])
     entry = results["models"][hf_id]
