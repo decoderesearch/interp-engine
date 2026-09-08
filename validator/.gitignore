@@ -3,6 +3,7 @@
 # Capture dumps: the intermediate activations a run scores. Only the scored cells under
 # comparison/results/ are committed -- the raw tensors are gigabytes and reproducible.
 dumps/
+dumps-check/
 dumps-merged/
 dumps-old/
 dumps.tar

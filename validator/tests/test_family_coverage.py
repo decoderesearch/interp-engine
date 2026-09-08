@@ -536,6 +536,45 @@ def test_the_two_mlp_norm_vocabularies_stay_disjoint() -> None:
     assert not pre & set(facts.POST_MLP_NORM_ATTRS)
 
 
+def _frame_in(module: str, source: str):
+    """A function `f` defined in `source` whose frame reports `module` as its module.
+
+    The audit reads the traceback's module names, so a test of that reading has to produce real
+    frames under chosen names rather than a stubbed traceback.
+    """
+    namespace: dict = {"__name__": module}
+    exec(source, namespace)  # noqa: S102 - the source is this file's own, three lines below
+    return namespace["f"]
+
+
+def test_a_failure_raised_inside_the_fetcher_is_read_as_a_download() -> None:
+    """`kernels` raises a bare ValueError for an uncached *version*, which no message can identify."""
+    from family_coverage import _reached_the_hub
+
+    fetch = _frame_in("kernels.layer.layer", "def f():\n    raise ValueError('no revision for 0.3.0')")
+    with pytest.raises(ValueError) as excinfo:
+        fetch()
+    assert _reached_the_hub(excinfo.value)
+
+
+def test_a_fetcher_frame_merely_wrapping_the_init_is_not_a_download() -> None:
+    """`kernels` wraps every attention `__init__` transformers hands it, so its frame sits on the
+    stack of failures it had no part in -- HunYuan's `head_dim` being `None` in its own config, which
+    is `not_buildable` and not a network verdict.
+
+    Worth a test of its own because getting it wrong is invisible: `needs_download` makes
+    `test_the_tier_a_family_is_in_is_the_tier_the_audit_puts_it_in` skip, so a misread here disables
+    the only check that a generated MODELS_STATUS.md is not stale, and every suite still passes.
+    """
+    from family_coverage import _reached_the_hub
+
+    inner = _frame_in("transformers.models.hunyuan_v1_dense", "def f():\n    raise TypeError('NoneType ** float')")
+    wrapper = _frame_in("kernels.layer.layer", "def f(inner):\n    return inner()")
+    with pytest.raises(TypeError) as excinfo:
+        wrapper(inner)
+    assert not _reached_the_hub(excinfo.value)
+
+
 def _model(arch: str):
     """The meta-device model for one architecture, built the way the audit builds it."""
     import warnings

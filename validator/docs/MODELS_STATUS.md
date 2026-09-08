@@ -10,7 +10,7 @@ transformers backend rather than a native implementation count too -- vLLM serve
 
 The tiers are **what has been shown**, not a forecast:
 
-- **verified** -- captured on real weights and checked point-by-point against other engines (31 architectures)
+- **verified** -- captured on real weights and checked point-by-point against other engines (32 architectures)
 - **resolves** -- every point resolves and the arithmetic invariants hold; no independent engine has reproduced it (59 architectures)
 - **unaudited** -- not probed: transformers has no class for the family, or its own config defaults do not build (46 architectures)
 - **broken** -- a module tree the `(point, layer)` addressing cannot express, with the reason (2 architectures)
@@ -33,25 +33,26 @@ family. The full matrix, with per-point cosines and the command to reproduce any
 | architecture | checkpoints | agreeing engines |
 | --- | --- | --- |
 | `BloomForCausalLM` | `bigscience/bloom-560m` | tlens_v2, vllm, vllm-static |
-| `DeepseekV2ForCausalLM` | `deepseek-ai/DeepSeek-V2-Lite` | nnsight, vllm, vllm-static |
+| `DeepseekV2ForCausalLM` | `deepseek-ai/DeepSeek-V2-Lite` | nnsight, tlens_v3, vllm, vllm-static |
 | `GPT2LMHeadModel` | `openai-community/gpt2` | nnsight, tlens_v2, tlens_v3, vllm, vllm-static |
 | `GPTBigCodeForCausalLM` | `bigcode/gpt_bigcode-santacoder` | nnsight, tlens_v3, vllm, vllm-static |
 | `GPTNeoXForCausalLM` | `EleutherAI/pythia-70m-deduped` | nnsight, vllm, vllm-static |
 | `Gemma2ForCausalLM` | `google/gemma-2-27b` | nnsight, tlens_v2, tlens_v3, vllm, vllm-static |
 | `Gemma3ForCausalLM` | `google/gemma-3-1b-it` | nnsight, tlens_v2, tlens_v3, vllm, vllm-static |
-| `Gemma3ForConditionalGeneration` | `google/gemma-3-27b-it` | nnsight, tlens_v3, vllm, vllm-static |
-| `Gemma4ForConditionalGeneration` | `google/gemma-4-31B` | nnsight |
+| `Gemma3ForConditionalGeneration` | `google/gemma-3-27b-it` | nnsight, tlens_v2, tlens_v3, vllm, vllm-static |
+| `Gemma4ForConditionalGeneration` | `google/gemma-4-26B-A4B-it`<br>`google/gemma-4-31B` | nnsight, tlens_v3 |
+| `Gemma4UnifiedForConditionalGeneration` | `google/gemma-4-12B-it` | nnsight, tlens_v3 |
 | `GptOssForCausalLM` | `openai/gpt-oss-20b` | nnsight, tlens_v2, tlens_v3, vllm, vllm-static |
-| `GraniteForCausalLM` | `ibm-granite/granite-3.3-2b-instruct` | nnsight, vllm, vllm-static |
-| `GraniteMoeForCausalLM` | `ibm-granite/granite-3.0-1b-a400m-base` | nnsight, vllm, vllm-static |
+| `GraniteForCausalLM` | `ibm-granite/granite-3.3-2b-instruct` | nnsight, tlens_v3, vllm, vllm-static |
+| `GraniteMoeForCausalLM` | `ibm-granite/granite-3.0-1b-a400m-base` | nnsight, tlens_v3, vllm, vllm-static |
 | `Lfm2ForCausalLM` | `LiquidAI/LFM2.5-230M` | nnsight, tlens_v3, vllm, vllm-static |
 | `Lfm2MoeForCausalLM` | `LiquidAI/LFM2-8B-A1B` | nnsight, tlens_v3, vllm, vllm-static |
 | `LlamaForCausalLM` | `meta-llama/Llama-3.1-8B`<br>`meta-llama/Llama-3.3-70B-Instruct` | nnsight, tlens_v2, tlens_v3, vllm, vllm-static |
 | `MistralForCausalLM` | `mistralai/Mistral-7B-v0.1` | nnsight, tlens_v2, tlens_v3, vllm, vllm-static |
 | `NemotronHForCausalLM` | `nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16` | nnsight, tlens_v3, vllm, vllm-static |
 | `OPTForCausalLM` | `facebook/opt-125m` | nnsight, tlens_v2, tlens_v3, vllm, vllm-static |
-| `Olmo2ForCausalLM` | `allenai/OLMo-2-0425-1B` | nnsight, vllm, vllm-static |
-| `Olmo3ForCausalLM` | `allenai/Olmo-3-1125-32B` | nnsight, vllm, vllm-static |
+| `Olmo2ForCausalLM` | `allenai/OLMo-2-0425-1B` | nnsight, tlens_v2, tlens_v3, vllm, vllm-static |
+| `Olmo3ForCausalLM` | `allenai/Olmo-3-1125-32B` | nnsight, tlens_v2, tlens_v3, vllm, vllm-static |
 | `Phi3ForCausalLM` | `microsoft/Phi-3-mini-4k-instruct` | nnsight, tlens_v2, tlens_v3, vllm, vllm-static |
 | `PhiForCausalLM` | `microsoft/phi-2` | nnsight, tlens_v2, tlens_v3, vllm, vllm-static |
 | `PhiMoEForCausalLM` | `microsoft/Phi-mini-MoE-instruct` | nnsight, tlens_v3, vllm, vllm-static |
@@ -60,7 +61,7 @@ family. The full matrix, with per-point cosines and the command to reproduce any
 | `Qwen3MoeForCausalLM` | `Qwen/Qwen3-30B-A3B` | nnsight, tlens_v3, vllm, vllm-static |
 | `Qwen3NextForCausalLM` | `Qwen/Qwen3-Next-80B-A3B-Instruct` | nnsight, tlens_v3, vllm, vllm-static |
 | `Qwen3_5ForConditionalGeneration` | `Qwen/Qwen3.8-27B` | nnsight, tlens_v3, vllm, vllm-static |
-| `Qwen3_5MoeForConditionalGeneration` | `Qwen/Qwen3.6-35B-A3B` | nnsight, tlens_v3, vllm |
+| `Qwen3_5MoeForConditionalGeneration` | `Qwen/Qwen3.6-35B-A3B` | nnsight, tlens_v3, vllm, vllm-static |
 | `SmolLM3ForCausalLM` | `HuggingFaceTB/SmolLM3-3B` | nnsight, tlens_v3, vllm, vllm-static |
 | `Starcoder2ForCausalLM` | `bigcode/starcoder2-3b` | nnsight, tlens_v3, vllm, vllm-static |
 

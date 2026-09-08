@@ -431,12 +431,19 @@ def _refresh_architectures() -> None:
     Deliberately the raw file rather than ``AutoConfig``: all that is wanted is the class *name*, and
     ``AutoConfig`` on a remote-code family (EXAONE) refuses without ``trust_remote_code``, which would
     mean executing a checkpoint's code to generate documentation.
+
+    The names are regenerated; the ``_comment`` is not. It carries the curation rationale for the
+    sweep -- why a class has two checkpoints, which classes look like duplicates and are not -- which
+    is hand-written and has no source to be rebuilt from. Overwriting it made the refresh this
+    docstring recommends delete the reasoning behind the file it refreshes.
     """
     import huggingface_hub
 
     ids = json.loads(SWEEP.read_text())
+    committed = json.loads(ARCHITECTURES.read_text()) if ARCHITECTURES.exists() else {}
     payload: dict[str, str] = {
-        "_comment": (
+        "_comment": committed.get("_comment")
+        or (
             "Architecture each comparison-sweep checkpoint declares, so docs/MODELS_STATUS.md can attribute "
             "numeric verification to a family. Regenerate with "
             "`PYTHONPATH=. .venv-cmp/bin/python tests/models_status.py --refresh-architectures`."

@@ -276,15 +276,25 @@ def _reached_the_hub(exc: BaseException) -> bool:
     By frame, because the fetch is several libraries deep and raises whatever suits it -- ``kernels``
     raises a bare ``ValueError`` when a version is uncached and the hub is offline, which is
     indistinguishable from a config error by type or text.
+
+    The frame that has to be a fetcher's is the *deepest* one, not any of them. ``kernels`` also
+    wraps every attention ``__init__`` transformers hands it (``kernels.layer.new_init``), so its
+    frame sits on the stack of failures it had no part in: HunYuan dies on ``self.head_dim**-0.5``
+    with ``head_dim`` left ``None`` by its own config, several frames below that wrapper. Counting
+    any frame read that as a download, and the cost was not a wrong row -- it was
+    ``test_the_tier_a_family_is_in_is_the_tier_the_audit_puts_it_in`` skipping itself, since it
+    stands down when anything reports ``needs_download``. The one check that catches a stale
+    MODELS_STATUS.md turned itself off, and the suite stayed green.
     """
     fetchers = ("kernels", "huggingface_hub")
     for err in (exc, exc.__cause__, exc.__context__):
         tb = getattr(err, "__traceback__", None)
+        deepest = ""
         while tb is not None:
-            module = tb.tb_frame.f_globals.get("__name__", "")
-            if module.split(".", 1)[0] in fetchers:
-                return True
+            deepest = tb.tb_frame.f_globals.get("__name__", "")
             tb = tb.tb_next
+        if deepest.split(".", 1)[0] in fetchers:
+            return True
     return False
 
 
