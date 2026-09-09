@@ -11,6 +11,8 @@ from interp_engine.address import Address
 from interp_engine.points import steer_refusal_reason
 from interp_engine.vllm_capture.static import (
     BREAKABLE_ENV,
+    SM100_CUDAGRAPH_ISSUE,
+    SM100_CUDAGRAPH_WORKAROUND,
     STATIC_SKIP_ABSENT_ENV,
     StaticState,
     _activation_width,
@@ -41,6 +43,7 @@ from interp_engine.vllm_capture.static import (
     multi_stream_refusal_reason,
     resid_stream_aliases,
     resolve_static_points,
+    sm100_cudagraph_refusal_reason,
     static_buffer_bytes,
     static_unsupported_reason,
     steer_write_for_sae_point,
@@ -601,6 +604,38 @@ def test_unknown_layer_types_are_not_a_hybrid_claim():
     down and change the graph mode of the whole dense sweep."""
     assert decode_only_graphs_reason(None, 12) is None
     assert decode_only_graphs_reason([], 12) is None
+
+
+def test_the_checkpoint_vllm_reads_wrong_on_sm100_is_refused_rather_than_captured():
+    """A static set on this pair would report vLLM's own wrong forward as an interp result.
+
+    The refusal names the workaround and the issue, because a caller who hits this needs to decide
+    between `VLLM_BATCH_INVARIANT=1` and different hardware, and cannot do that from "unsupported".
+    """
+    reason = sm100_cudagraph_refusal_reason("google/gemma-4-26B-A4B-it", (10, 0))
+    assert reason is not None
+    assert SM100_CUDAGRAPH_WORKAROUND in reason
+    assert SM100_CUDAGRAPH_ISSUE in reason
+    assert sm100_cudagraph_refusal_reason("google/gemma-4-26B-A4B-it", (10, 3)) is not None
+
+
+def test_the_sm100_refusal_lifts_for_each_setting_measured_to_remove_the_defect():
+    """`VLLM_BATCH_INVARIANT=1` was bit-identical at every prompt length, and without replay there is
+    no padding to be wrong about. Both are the caller's call to make, so neither is refused."""
+    args = ("google/gemma-4-26B-A4B-it", (10, 0))
+    assert sm100_cudagraph_refusal_reason(*args, batch_invariant=True) is None
+    assert sm100_cudagraph_refusal_reason(*args, cudagraph_mode="NONE") is None
+    assert sm100_cudagraph_refusal_reason(*args, cudagraph_mode="none") is None
+
+
+def test_the_sm100_refusal_does_not_reach_hardware_or_checkpoints_it_was_not_measured_on():
+    """Capability 9.0 and 12.0 were measured bit-identical across all 60 points, and no other
+    checkpoint was measured at all -- refusing those would trade a wrong answer for a wrong refusal."""
+    assert sm100_cudagraph_refusal_reason("google/gemma-4-26B-A4B-it", (9, 0)) is None
+    assert sm100_cudagraph_refusal_reason("google/gemma-4-26B-A4B-it", (12, 0)) is None
+    assert sm100_cudagraph_refusal_reason("google/gemma-4-26B-A4B-it", None) is None
+    assert sm100_cudagraph_refusal_reason("google/gemma-4-12B-it", (10, 0)) is None
+    assert sm100_cudagraph_refusal_reason(None, (10, 0)) is None
 
 
 def test_every_recurrent_kind_upstream_leaves_unbroken_is_pinned():
@@ -1237,6 +1272,76 @@ def test_capturing_attn_wrap_weak_refs_qkv_before_add_eager(monkeypatch):
     assert torch.equal(q_site.buf[:3], q)
     assert torch.equal(k_site.buf[:3], k)
     assert torch.equal(v_site.buf[:3], v)
+
+
+class _ReplayableBreakableCapture(_FakeBreakableCapture):
+    """:class:`_FakeBreakableCapture`, plus the replays a real graph runs after recording.
+
+    The base class stops at capture time. That is what the weak-ref tests above need -- and it is
+    also why they cannot see this: a recorded eager segment runs again on *every* replay, reading
+    whatever the weak-reffed addresses hold then, and :func:`_harvest` reads the site buffer after
+    the replay rather than after the recording.
+    """
+
+    def replay(self) -> None:
+        for fn in self.fns:
+            fn()
+
+
+class _KwargAttn(torch.nn.Module):
+    """An attention module called the way vLLM calls it on a Gemma-shaped block."""
+
+    def forward(self, positions=None, hidden_states=None):  # noqa: ANN001
+        return hidden_states * 0.5
+
+
+def _tap_attn_in(monkeypatch) -> tuple[_ReplayableBreakableCapture, _Site, torch.Tensor]:
+    """An ``attn_in`` read tapped on a recording graph, with the trunk tensor it was called with."""
+    import interp_engine.vllm_capture.static as static_mod
+
+    cap = _ReplayableBreakableCapture()
+    monkeypatch.setattr(static_mod, "_breakable_capture", lambda: cap)
+    attn = _KwargAttn()
+    site = _Site(address=Address("attn_in", 22), buf=torch.zeros(4, 2), module=attn)
+    _wrap_module(attn, [(site, "read")])
+    hidden = torch.full((3, 2), 22.0)
+    attn(positions=torch.arange(3), hidden_states=hidden)
+    return cap, site, hidden
+
+
+def test_replay_recopies_the_same_rows_when_nothing_overwrites_the_tapped_buffer(monkeypatch):
+    """Replaying the segment is harmless by itself -- it recopies what it copied at capture.
+
+    Read with the test below: deferral alone is safe, and only a reused block moves the rows. That
+    separates the two candidate explanations whenever a static column disagrees with a hooked one.
+    """
+    cap, site, _ = _tap_attn_in(monkeypatch)
+    assert torch.equal(site.buf[:3], torch.full((3, 2), 22.0))
+    cap.replay()
+    assert torch.equal(site.buf[:3], torch.full((3, 2), 22.0))
+
+
+def test_a_replayed_read_follows_the_address_so_vllms_callback_order_is_load_bearing(monkeypatch):
+    """The recorded read holds an address, so its correctness rests on vLLM's callback order.
+
+    The weak ref handed to ``add_eager`` is deliberate: a strong Python ref pins the capture-time
+    cudagraph-pool slot, and replay then recopies the profile run into the site buffer instead of the
+    live request (:func:`_cuda_weak_ref`). Materialising a copy at registration would instead cost a
+    copy and its VRAM per site per step, on every model. So the tap reads an address and depends on
+    vLLM running the callback where it was registered, ahead of anything that writes that block.
+
+    Overwrite the block first and the read follows the address. That is the shape to watch for if a
+    future vLLM stops ordering eager segments this way, and this test is here to catch that.
+
+    It is not the explanation for ``attn_in.22`` on capability 10.x. Plain vLLM moves by 6.8 nats on
+    that hardware with no tap in the process, and a fresh engine and a reversed run order return the
+    same wrong numbers, which a reused block would not
+    (validator/docs/VLLM_SM100_CUDAGRAPH.md).
+    """
+    cap, site, hidden = _tap_attn_in(monkeypatch)
+    hidden.copy_(torch.full((3, 2), 23.0))  # a later layer reusing the block
+    cap.replay()
+    assert torch.equal(site.buf[:3], torch.full((3, 2), 23.0))
 
 
 class _FusedQKV(torch.nn.Module):

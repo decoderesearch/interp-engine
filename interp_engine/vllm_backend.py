@@ -60,12 +60,29 @@ from interp_engine.vllm_capture.static import (
     kv_cache_width,
     resid_stream_aliases,
     resolve_static_points,
+    sm100_cudagraph_refusal_reason,
     static_read_width,
     static_unsupported_reason,
 )
 from interp_engine.vllm_plugin import WORKER_EXTENSION_CLS
 
 logger = logging.getLogger(__name__)
+
+
+def _device_capability() -> tuple[int, int] | None:
+    """This GPU's compute capability, or None when there is no CUDA device to ask.
+
+    None rather than a default, because callers gate refusals on it: a guess would either refuse a
+    machine nobody measured or wave through the one that is known wrong.
+    """
+    try:
+        if not torch.cuda.is_available():
+            return None
+        major, minor = torch.cuda.get_device_capability(0)
+        return int(major), int(minor)
+    except Exception:  # noqa: BLE001 - no driver, or a torch without the call
+        return None
+
 
 # Residual-width sites the warmup sentinel can prove. ``mlp_act`` / ``z`` need a different
 # vector length than ``d_model``, which this process does not know until a worker wrap exists.
@@ -1099,6 +1116,7 @@ class VLLMModel:
         # Same condition as `apply_breakable_env`: only a non-empty static set turns torch.compile
         # off, and it is that combination a linear-attention trunk cannot survive.
         if reads or writes:
+            self._refuse_static_where_vllm_reads_wrong()
             self._pin_decode_only_graphs_on_hybrid_trunk()
         # Reads only. A write allocates a `[1, width]` delta (see `static._alloc_site`), so it does
         # not scale with `max_num_batched_tokens` and has no business in a budget whose whole job is
@@ -1143,6 +1161,23 @@ class VLLMModel:
         if fitted != max_n:
             logger.warning("lowering max_num_batched_tokens %s -> %s so static buffers fit", max_n, fitted)
             self._engine_kwargs["max_num_batched_tokens"] = fitted
+
+    def _refuse_static_where_vllm_reads_wrong(self) -> None:
+        """Refuse a static set that would report a forward pass vLLM itself gets wrong.
+
+        Raised here rather than after the engine exists, because it is decided by the checkpoint and
+        the device: building 26B of weights first only delays the same answer. See
+        :func:`~interp_engine.vllm_capture.static.sm100_cudagraph_refusal_reason`.
+        """
+        compilation = self._engine_kwargs.get("compilation_config")
+        reason = sm100_cudagraph_refusal_reason(
+            getattr(self, "hf_model_id", None),
+            _device_capability(),
+            cudagraph_mode=str(compilation.get("cudagraph_mode") or "") if isinstance(compilation, dict) else "",
+            batch_invariant=os.environ.get("VLLM_BATCH_INVARIANT") == "1",
+        )
+        if reason:
+            raise ValueError(reason)
 
     def _pin_decode_only_graphs_on_hybrid_trunk(self) -> None:
         """Capture graphs for decode only when the trunk is linear attention.
