@@ -33,6 +33,7 @@ from comparison import (
 )
 from comparison import engine_versions as engine_versions_mod  # noqa: E402
 from comparison.aggregate import (  # noqa: E402
+    _flag_contradicted,
     _mask_floor,
     _metrics,
     _metrics_for,
@@ -49,7 +50,15 @@ from comparison.dumpio import (  # noqa: E402
     write_inputs,
     write_meta,
 )
-from comparison.engine_bugs import ENGINE_BUGS, REFERENCE_BUGS, ReferenceBug, unfiled  # noqa: E402
+from comparison.engine_bugs import (  # noqa: E402
+    ENGINE_BUGS,
+    REFERENCE_BUGS,
+    EngineBug,
+    ReferenceBug,
+    bug_for,
+    engine_bug_for,
+    unfiled,
+)
 from comparison.report import (  # noqa: E402
     BUG,
     END,
@@ -69,11 +78,14 @@ from comparison.report import (  # noqa: E402
 )
 from comparison.spec import (  # noqa: E402
     ALL_ENGINES,
+    CONTRADICTION_GAP,
+    DERIVED_FROM,
     PAUSED_ENGINES,
     POINTS,
     REPORTED_ENGINES,
     UNRELATED_COS,
     ModelSpec,
+    descendants,
     dump_key,
     engine_gap,
     layers_for,
@@ -689,6 +701,57 @@ def test_every_engine_bug_is_filed_upstream_and_says_what_the_mechanism_is():
         # A reference bug excuses named tensors, not a checkpoint: without this, one row would swallow
         # every unrelated disagreement on the model it names.
         assert bug.points, f"reference/{bug.model} excuses no particular point"
+
+
+def test_a_bug_scoped_to_one_hardware_family_stays_off_the_boxes_that_measure_clean():
+    """`gemma-4-26B-A4B-it` under `vllm-static` is wrong on compute capability 10.x and bit-identical on
+    9.x and 12.x, so an unscoped row would excuse a genuine failure on two thirds of the fleet."""
+    bug = EngineBug(
+        engine="vllm-static",
+        model="m/x",
+        url="https://example.invalid/1",
+        title="t",
+        mechanism="m",
+        capabilities=("10",),
+    )
+    assert bug.applies_to("10.0") and bug.applies_to("10.3")
+    assert not bug.applies_to("9.0")
+    assert not bug.applies_to("12.0")
+    # 12.0 must not match "10" on a prefix, and 1.0 must not match on a substring.
+    assert not bug.applies_to("1.0")
+
+
+def test_an_unrecorded_capability_keeps_the_annotation_rather_than_reading_as_fixed():
+    """Captures predating the field, and CPU runs, say nothing about hardware. Dropping the row there
+    would present a known bug as this engine's own failure."""
+    bug = EngineBug(
+        engine="vllm-static",
+        model="m/x",
+        url="https://example.invalid/1",
+        title="t",
+        mechanism="m",
+        capabilities=("10",),
+    )
+    assert bug.applies_to("")
+
+
+def test_an_unscoped_bug_applies_everywhere():
+    """Most rows are about software, not silicon, so no `capabilities` has to keep meaning every box."""
+    bug = EngineBug(engine="e", model="m/x", url="https://example.invalid/1", title="t", mechanism="m")
+    assert bug.applies_to("9.0") and bug.applies_to("10.0") and bug.applies_to("")
+
+
+def test_both_lookups_honour_the_scope_so_the_cell_and_its_points_agree():
+    """`engine_bug_for` annotates individual points and `bug_for` the whole cell. If only one consulted
+    the capability, one box would show 🐞 points inside a cell scored as this engine's failure."""
+    row = next((b for b in ENGINE_BUGS if b.capabilities), None)
+    assert row is not None, "no capability-scoped row left to check"
+    inside, outside = f"{row.capabilities[0]}.0", "9.0"
+    assert bug_for(row.engine, row.model, inside) is row
+    assert bug_for(row.engine, row.model, outside) is None
+    point = row.points[0] if row.points else "resid_post"
+    assert engine_bug_for(row.engine, row.model, point, inside) is row
+    assert engine_bug_for(row.engine, row.model, point, outside) is None
 
 
 # --- when the reference is the one that is wrong -----------------------------
@@ -1775,3 +1838,147 @@ def test_the_injected_hook_ignores_a_non_tensor_second_argument():
     hidden = torch.randn(3, 4)
     assert _sglang_hooks()._resid_from_input((hidden, None)) is hidden
     assert _sglang_hooks()._resid_from_input(()) is None
+
+
+# --- a cell its own descendants contradict -------------------------------------
+#
+# Everything in `spec.DERIVED_FROM` is a deterministic function of the point above it inside one
+# layer, so the error at a parent travels into its children. A failing parent under a well-agreeing
+# child is therefore not a fact about the model, and `aggregate._flag_contradicted` is what stops the
+# strongest number on a page being the one nobody checked. The case that motivated it is
+# `gemma-4-26B-A4B-it`'s `attn_in.22` on `vllm-static`, which reached an upstream issue as evidence
+# while `q_norm_in.22` -- one projection downstream -- sat at 0.92723 in the same capture.
+
+
+def _cells(*specs):
+    """``(point, cos, status)`` triples into the cells dict `_flag_contradicted` walks."""
+    return {
+        f"{point}.7|vllm-static": {
+            "point": point,
+            "layer": 7,
+            "engine": "vllm-static",
+            "cos": cos,
+            "status": status,
+        }
+        for point, cos, status in specs
+    }
+
+
+def test_a_failing_point_its_own_projection_disagrees_with_is_flagged():
+    cells = _cells(("attn_in", 0.001192, "FAIL"), ("q_norm_in", 0.927233, "WARN"))
+    _flag_contradicted(cells)
+    against = cells["attn_in.7|vllm-static"]["contradicted_by"]
+    assert against["point"] == "q_norm_in"
+    assert "not a measurement of this engine's forward pass" in against["note"]
+
+
+def test_the_child_that_agrees_is_not_itself_flagged():
+    """The contradiction is asymmetric on purpose: the arithmetic runs downstream, so the parent is
+    the one whose number cannot be right, and demoting the child would invent a disagreement."""
+    cells = _cells(("attn_in", 0.001192, "FAIL"), ("q_norm_in", 0.927233, "WARN"))
+    _flag_contradicted(cells)
+    assert "contradicted_by" not in cells["q_norm_in.7|vllm-static"]
+
+
+def test_the_strongest_witness_is_named_rather_than_the_nearest():
+    """`descendants` is transitive, so `q_norm_out` -- a norm past `q_norm_in` -- can be the better
+    aligned of the two and is the one worth quoting against the parent."""
+    cells = _cells(
+        ("attn_in", 0.001192, "FAIL"),
+        ("q_norm_in", 0.30, "FAIL"),
+        ("q_norm_out", 0.941172, "WARN"),
+    )
+    _flag_contradicted(cells)
+    assert cells["attn_in.7|vllm-static"]["contradicted_by"]["point"] == "q_norm_out"
+
+
+def test_a_point_whose_descendants_are_equally_wrong_is_left_alone():
+    """The ordinary case for a real divergence: the error travelled, which is what it should do, and
+    there is nothing here to disbelieve."""
+    cells = _cells(("attn_in", 0.62, "FAIL"), ("q_norm_in", 0.64, "FAIL"))
+    _flag_contradicted(cells)
+    assert "contradicted_by" not in cells["attn_in.7|vllm-static"]
+
+
+def test_a_passing_point_is_never_flagged():
+    """A cell that already agrees with the reference has nothing for a descendant to contradict, and
+    a gap over a PASS is the tiers doing their job -- same rule `engine_bug` attachment follows."""
+    cells = _cells(("attn_in", 0.9994, "PASS"), ("q_norm_in", 1.0, "PASS"))
+    cells.update(_cells(("z", 0.70, "PASS")))
+    cells["z.7|vllm-static"]["cos"] = 0.70
+    _flag_contradicted(cells)
+    assert not any("contradicted_by" in c for c in cells.values())
+
+
+def test_the_verdict_survives_the_flag():
+    """Annotated, never re-scored: a contradiction says one of the two cells is wrong and not which,
+    so promoting this one would hide a disagreement a reader of that layer still meets."""
+    cells = _cells(("attn_in", 0.001192, "FAIL"), ("q_norm_in", 0.927233, "WARN"))
+    _flag_contradicted(cells)
+    assert cells["attn_in.7|vllm-static"]["status"] == "FAIL"
+    assert cells["attn_in.7|vllm-static"]["cos"] == 0.001192
+
+
+def test_a_contradiction_is_read_within_one_layer_and_one_engine():
+    """Both scopes matter and for different reasons: the derivation only holds inside a layer, and
+    two engines' captures are two different forward passes."""
+    cells = {
+        "attn_in.7|vllm-static": {
+            "point": "attn_in",
+            "layer": 7,
+            "engine": "vllm-static",
+            "cos": 0.001192,
+            "status": "FAIL",
+        },
+        "q_norm_in.8|vllm-static": {
+            "point": "q_norm_in",
+            "layer": 8,
+            "engine": "vllm-static",
+            "cos": 0.999,
+            "status": "PASS",
+        },
+        "q_norm_in.7|vllm": {
+            "point": "q_norm_in",
+            "layer": 7,
+            "engine": "vllm",
+            "cos": 0.999,
+            "status": "PASS",
+        },
+    }
+    _flag_contradicted(cells)
+    assert "contradicted_by" not in cells["attn_in.7|vllm-static"]
+
+
+def test_a_cell_with_no_cosine_is_skipped_rather_than_compared():
+    """An N/A cell (nothing captured, or a structural mismatch reported instead of metrics) has no
+    number to contradict or be contradicted by."""
+    cells = {
+        "attn_in.7|vllm-static": {
+            "point": "attn_in",
+            "layer": 7,
+            "engine": "vllm-static",
+            "status": "N/A",
+            "missing": "engine",
+        },
+        **_cells(("q_norm_in", 0.999, "PASS")),
+    }
+    _flag_contradicted(cells)
+    assert "contradicted_by" not in cells["attn_in.7|vllm-static"]
+
+
+def test_the_derivation_graph_is_acyclic_and_names_only_real_points():
+    """A parent added the wrong way round would make `descendants` a loop over the whole sweep rather
+    than a failing assertion, so the shape is pinned here instead."""
+    for child, parents in DERIVED_FROM.items():
+        assert child in POINTS, child
+        for parent in parents:
+            assert parent in POINTS, parent
+            assert child not in descendants(child), child
+            assert child in descendants(parent)
+
+
+def test_the_gap_still_separates_the_two_populations_it_was_measured_against():
+    """`CONTRADICTION_GAP` is calibrated to sit above every benign parent/child gap the sweep has
+    produced and below the two reads known to be wrong. Both bounds are the measurement, so a change
+    to either should fail here rather than quietly re-label 1980 pairs."""
+    assert 0.2280 < CONTRADICTION_GAP < 0.3472

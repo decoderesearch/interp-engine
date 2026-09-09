@@ -182,15 +182,18 @@ def _verdict(model_entry: dict, engine: str) -> str:
 def gpu_info() -> dict:
     try:
         out = subprocess.run(
-            ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"],
+            ["nvidia-smi", "--query-gpu=name,memory.total,compute_cap", "--format=csv,noheader"],
             capture_output=True,
             text=True,
             timeout=10,
         )
-        name, mem = (x.strip() for x in out.stdout.strip().splitlines()[0].split(","))
-        return {"name": name, "memory_total": mem}
+        name, mem, cap = (x.strip() for x in out.stdout.strip().splitlines()[0].split(","))
+        # Capability, not just the marketing name: kernel gates are written against it, and it is what
+        # makes two boxes comparable (a B200 and a B300 are both 10.x and agree bitwise; an RTX PRO 6000
+        # is also Blackwell and does not).
+        return {"name": name, "memory_total": mem, "capability": cap}
     except Exception:  # noqa: BLE001
-        return {"name": "unknown", "memory_total": "unknown"}
+        return {"name": "unknown", "memory_total": "unknown", "capability": "unknown"}
 
 
 # How each engine is invoked, for the `replicate` block. vLLM and SGLang go through their published

@@ -13,11 +13,13 @@ from comparison.dumpio import read_arrays, read_inputs, read_meta
 from comparison.engine_bugs import bug_for, engine_bug_for, reference_bug_for, reference_bugs_for
 from comparison.spec import (
     ALL_ENGINES,
+    CONTRADICTION_GAP,
     GLOBAL_POINTS,
     MODELS,
     POINTS,
     TOLERANCES,
     UNRELATED_COS,
+    descendants,
     dump_key,
     engine_gap,
     load_sweep,
@@ -281,6 +283,61 @@ def _scored(tier: str, m: dict, model: str, point: str = "", layer: int | None =
     return {"status": "PASS", "waived": waiver["reason"]}
 
 
+def _flag_contradicted(cells: dict) -> None:
+    """Mark a failing cell whose own descendants say its tensor cannot be what it reads as.
+
+    Every point in :data:`spec.DERIVED_FROM` is computed from the point above it inside the same
+    layer, so an engine that has the parent wrong has the child wrong too. When the child is
+    instead well aligned by :data:`spec.CONTRADICTION_GAP` or more, the two cannot both be
+    measurements of this engine's forward pass, and the parent is the one to disbelieve: the child
+    agreeing with the reference is positive evidence that the arithmetic between them ran on a
+    tensor the parent's number does not describe.
+
+    Why this exists rather than being left to a reader: a FAIL is the strongest thing a cell can
+    say, so it is the number that ends up quoted in a bug report, and one read from a broken tap
+    outranks fifty correct ones in an argument. `gemma-4-26B-A4B-it`'s `attn_in.22` reached
+    `docs/COMPARISON.md` and an upstream issue as evidence about vLLM before anyone noticed that
+    `q_norm_in.22` -- a linear projection of it -- was sitting at 0.92723 in the same capture. This
+    is the check that would have said so first.
+
+    Annotated, never re-scored. What a contradiction establishes is that one of the two cells is
+    lying, not which: `tlens_v3` on BLOOM is a genuine upstream bug at the parent (#1639), and the
+    static `attn_in` above is very likely ours, and no threshold tells those apart. Promoting the
+    cell to PASS would hide a real disagreement and demoting the child would invent one, so the
+    cell keeps its verdict and gains a sentence saying what disputes it.
+
+    Only over a WARN or FAIL, for the same reason `engine_bug` is: a point that already agrees with
+    the reference has nothing for its descendants to contradict.
+    """
+    by_engine_layer: dict[tuple[str, int | None], dict[str, dict]] = {}
+    for cell in cells.values():
+        if cell.get("cos") is None:
+            continue
+        by_engine_layer.setdefault((cell["engine"], cell.get("layer")), {})[cell["point"]] = cell
+    for group in by_engine_layer.values():
+        for point, cell in group.items():
+            if cell.get("status") not in ("WARN", "FAIL"):
+                continue
+            witnesses = [
+                (group[d]["cos"], d) for d in descendants(point) if d in group and group[d].get("cos") is not None
+            ]
+            if not witnesses:
+                continue
+            best, name = max(witnesses)
+            if best - cell["cos"] < CONTRADICTION_GAP:
+                continue
+            cell["contradicted_by"] = {
+                "point": name,
+                "cos": best,
+                "note": (
+                    f"{name} is computed from {point} and scores {best:.6f} here, against this cell's "
+                    f"{cell['cos']:.6f}. One of the two is not a measurement of this engine's forward pass, "
+                    f"and the arithmetic runs downstream -- so this cell is the one to check before quoting "
+                    f"it as evidence about the engine."
+                ),
+            }
+
+
 def _meta_date(dumps: str, engine: str, hf_id: str) -> str:
     """When this capture's meta was written, for dumps from before ``captured_at`` was recorded."""
     path = os.path.join(dumps, engine, f"{hf_id}.meta.json")
@@ -338,8 +395,13 @@ def compute_results(dumps: str, models=MODELS) -> dict:
         model_entry: dict = {"hf_id": m.hf_id, "cells": {}, "engine_status": {}, "saes": {}}
         # per-engine capture status (ok/skip/error/absent) + dtype/device + SAE summaries
         arrays_by_engine: dict[str, dict[str, np.ndarray]] = {}
+        # Compute capability per engine, kept for the point loop below: a bug row scoped to one
+        # hardware family has to be consulted with the capability of the capture it would annotate,
+        # and `meta` is out of scope by then.
+        caps: dict[str, str] = {}
         for engine in ALL_ENGINES:
             meta = read_meta(dumps, engine, m.hf_id)
+            caps[engine] = getattr(meta, "capability", "") if meta else ""
             model_entry["engine_status"][engine] = {
                 "status": meta.status if meta else "absent",
                 "reason": meta.reason if meta else "",
@@ -364,7 +426,7 @@ def compute_results(dumps: str, models=MODELS) -> dict:
             # engine has since fixed reads ✅ and can be deleted, rather than papering over the fix.
             # `mechanism`/`workaround` ride along so the cell JSON answers "is my disagreement this bug?"
             # without a second lookup.
-            bug = bug_for(engine, m.hf_id)
+            bug = bug_for(engine, m.hf_id, caps[engine])
             if bug:
                 model_entry["engine_status"][engine]["known_bug"] = {
                     "title": bug.title,
@@ -475,9 +537,14 @@ def compute_results(dumps: str, models=MODELS) -> dict:
                     # The engine-side twin, for a bug filed against *these points* rather than the
                     # whole cell. Same rule: only over a cell that is actually failing, so the row
                     # stops mattering the moment the engine agrees again.
-                    if cell["status"] in ("WARN", "FAIL") and (ebug := engine_bug_for(engine, m.hf_id, point)):
+                    if cell["status"] in ("WARN", "FAIL") and (
+                        ebug := engine_bug_for(engine, m.hf_id, point, caps.get(engine, ""))
+                    ):
                         cell["engine_bug"] = {"title": ebug.title, "url": ebug.url, "mechanism": ebug.mechanism}
                     model_entry["cells"][cell_id] = cell
+        # After every cell of this model is scored, because a contradiction is a statement about one
+        # cell against another and neither is known while the pair loop is still running.
+        _flag_contradicted(model_entry["cells"])
         results["models"][m.hf_id] = model_entry
     return results
 

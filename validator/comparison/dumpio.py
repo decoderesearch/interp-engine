@@ -68,6 +68,12 @@ class CaptureMeta:
     # in a different venv and cannot see vLLM's or SGLang's packages). Empty on a crash record, which is
     # written by a bare python3 that has none of them, and on any meta predating the field.
     versions: dict = field(default_factory=dict)
+    # CUDA compute capability as "major.minor", recorded in the engine's process for the same reason
+    # `versions` is. Kernel selection is gated on it, so a disagreement can belong to one architecture
+    # family and not to the engine: gemma-4-26B-A4B-it moves under CUDA graphs on 10.x and is
+    # bit-identical on 9.0 and 12.0 (see engine_bugs.py). Empty on CPU, and on any meta predating the
+    # field, where the honest reading is "not recorded" rather than "every device".
+    capability: str = ""
 
 
 # Failure signatures that mean "this comparison engine legitimately can't run this checkpoint" (a

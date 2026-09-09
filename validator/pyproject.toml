@@ -157,6 +157,9 @@ exclude = [
     # Imports sae_lens, which is one of the reference backends CI deselects (see validator-tests.yml)
     # and which no venv running this check installs. Same reason as comparison/engines above.
     "comparison/sae_check.py",
+    # Imports vllm, and deliberately imports nothing else from this repo: it is the standalone repro a
+    # vLLM maintainer pastes and runs (see docs/VLLM_SM100_CUDAGRAPH.md). Same reason as the two above.
+    "comparison/vllm_cudagraph_repro.py",
     "tests",
 ]
 venvPath = "."
