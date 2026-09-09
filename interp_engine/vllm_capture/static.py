@@ -142,6 +142,54 @@ def decode_only_graphs_reason(layer_types: Sequence[str] | None, n_layers: int) 
     )
 
 
+#: The upstream issue behind :func:`sm100_cudagraph_refusal_reason`.
+SM100_CUDAGRAPH_ISSUE = "https://github.com/vllm-project/vllm/issues/55238"
+
+#: The one setting measured to make that capture correct again.
+SM100_CUDAGRAPH_WORKAROUND = "VLLM_BATCH_INVARIANT=1"
+
+#: Checkpoints measured wrong under a static set on compute capability 10.x. Exact ids rather than a
+#: glob over MoE Gemma 4: this is the one that was measured, and refusing a checkpoint nobody has
+#: tested trades a silent wrong answer for a wrong refusal.
+SM100_CUDAGRAPH_MODELS = ("google/gemma-4-26B-A4B-it",)
+
+
+def sm100_cudagraph_refusal_reason(
+    hf_id: str | None,
+    capability: tuple[int, int] | None,
+    *,
+    cudagraph_mode: str = "",
+    batch_invariant: bool = False,
+) -> str | None:
+    """Why this checkpoint cannot be captured under a static set on this GPU, or None.
+
+    A static set needs graph replay with torch.compile off, and on compute capability 10.x (B200,
+    B300) vLLM's own greedy output moves under exactly that: up to 6.8 nats of logprob and a different
+    token, deterministic, and bit-identical on 9.x and 12.x. It follows CUDA-graph padding rather than
+    the prompt, so no choice of prompt avoids it, and the taps sit downstream -- they would report a
+    forward pass vLLM itself gets wrong, at every point of the affected layers.
+
+    Refused rather than worked around quietly. ``VLLM_BATCH_INVARIANT=1`` fixes it but changes kernel
+    selection for the whole run, which is a decision about what the captured numbers mean, and that
+    belongs to the caller. See :data:`SM100_CUDAGRAPH_ISSUE` and validator/comparison/engine_bugs.py.
+    """
+    if not hf_id or hf_id not in SM100_CUDAGRAPH_MODELS:
+        return None
+    if capability is None or capability[0] != 10:
+        return None
+    # Either of these removes the defect: the flag was measured bit-identical at every prompt length,
+    # and without replay there is no padding to be wrong about.
+    if batch_invariant or str(cudagraph_mode).upper() == "NONE":
+        return None
+    return (
+        f"{hf_id} on compute capability {capability[0]}.{capability[1]}: vLLM's own output moves under "
+        "CUDA-graph replay with torch.compile off, which is what a static set requires -- up to 6.8 nats "
+        "of logprob and a different greedy token -- so these taps would read a forward pass vLLM itself "
+        f"gets wrong ({SM100_CUDAGRAPH_ISSUE}). Set {SM100_CUDAGRAPH_WORKAROUND} to capture anyway, or "
+        "use the hooked `vllm` backend, or capture on capability 9.x/12.x."
+    )
+
+
 def multi_stream_refusal_reason(name: str, n_streams: int) -> str | None:
     """Why ``name`` cannot be declared as a static tap on a trunk carrying ``n_streams`` residual streams, or None.
 
