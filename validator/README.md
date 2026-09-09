@@ -94,8 +94,8 @@ maintained list:
 |  | architectures | what has been shown |
 | --- | --- | --- |
 | **verified** | 32 | captured on real weights and checked point-by-point against other engines |
-| **resolves** | 59 | every point resolves and the arithmetic invariants hold; no independent engine has reproduced it |
-| **unaudited** | 46 | not probed: transformers has no class for the family, or its own config defaults do not build |
+| **resolves** | 60 | every point resolves and the arithmetic invariants hold; no independent engine has reproduced it |
+| **unaudited** | 45 | not probed: transformers has no class for the family, or its own config defaults do not build |
 | **broken** | 2 | a module tree the `(point, layer)` addressing cannot express, with the reason |
 
 Verified today, on 34 checkpoints between them:

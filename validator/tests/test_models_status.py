@@ -86,6 +86,24 @@ def _tier_sections(doc: str) -> dict[str, str]:
     return {chunk.split("\n", 1)[0].strip(): chunk for chunk in parts[1:]}
 
 
+def test_the_doc_names_the_transformers_it_was_built_against(doc: str) -> None:
+    """Which venv wrote the doc, said in the doc rather than inferred from a tier that moved.
+
+    Every tier below is a fact about an installed transformers as much as about a family: a release
+    that adds a modeling class moves one out of *unaudited* on its own. So a doc generated in one
+    venv and checked in another disagrees for a reason no row names. Built under 5.16.1 and checked
+    under the locked 5.14.1, `AXK1ForCausalLM` alone moved, and the test below reported a stale doc
+    -- true, but it sent the reader to the tier table instead of to the interpreter.
+    """
+    import transformers
+
+    recorded = ms.doc_transformers_version(doc)
+    assert recorded == transformers.__version__, (
+        f"docs/MODELS_STATUS.md was built against transformers {recorded}, this venv has "
+        f"{transformers.__version__}. Regenerate it in the locked venv, which is the one CI runs."
+    )
+
+
 def test_the_tier_a_family_is_in_is_the_tier_the_audit_puts_it_in(doc: str, coverage: dict[str, fc.Coverage]) -> None:
     """The doc is generated, so this catches an *edited* doc and a stale one alike."""
     stalled = [arch for arch, report in coverage.items() if report.status == "needs_download"]
@@ -107,7 +125,10 @@ def test_the_tier_a_family_is_in_is_the_tier_the_audit_puts_it_in(doc: str, cove
         # the tier's *own* table rows -- the lines that name exactly one architecture first.
         if arch not in _table_subjects(sections[headings[expected]]):
             misplaced.append((arch, expected))
-    assert not misplaced, f"regenerate docs/MODELS_STATUS.md; these are in the wrong tier: {misplaced[:8]}"
+    assert not misplaced, (
+        f"regenerate docs/MODELS_STATUS.md; these are in the wrong tier: {misplaced[:8]} "
+        f"(doc built against transformers {ms.doc_transformers_version(doc)})"
+    )
 
 
 def _table_subjects(section: str) -> set[str]:
