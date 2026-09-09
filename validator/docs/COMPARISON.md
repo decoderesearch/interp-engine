@@ -382,28 +382,43 @@ is judged normally.
 
 ### Is a vLLM cell ours at all? `VLLM_BATCH_INVARIANT=1`
 
-`vllm` and `vllm-static` are the same capture code over the same weights; the one thing they disagree
-on is `enforce_eager`, which `load.py` forces on for the hooked backend and leaves off for static. So
-when those two columns split on a point, the split is either our taps or vLLM's own kernel selection,
-and `VLLM_BATCH_INVARIANT=1` tells you which in one run:
+`vllm` and `vllm-static` are the same capture code over the same weights, and the effective variable
+between them is CUDA-graph replay alone: `load.py` forces `enforce_eager` on for the hooked backend and
+off for static, but inductor is off on *both* — the hooked column via `enforce_eager`, static via the
+`VLLM_USE_BREAKABLE_CUDAGRAPH=1` its taps require, which sets `compilation_config.mode` to `NONE`. That
+is a cleaner comparison than toggling `enforce_eager` in a bare vLLM script, which moves compile and
+graphs together. So when those two columns split on a point, the split is either our taps or vLLM's own
+kernel selection, and `VLLM_BATCH_INVARIANT=1` tells you which in one run:
 
 ```bash
 VLLM_BATCH_INVARIANT=1 JSON=<one-model.json> MODE=engine ENGINE="vllm vllm-static" \
   EVICT=0 AGGREGATE=0 DUMPS=dumps-local bash comparison/run_all_models.sh
 ```
 
-**If the two columns converge, the cell was never ours.** That is what happened to
-`gemma-4-26B-A4B-it`, whose `attn_in.22` read 0.00119 on static against 0.9993 on hooked: under batch
-invariance it reads 0.99300 and both backends land on the same worst point. The mechanism is upstream
-and reproduces with no interp-engine in the process at all — plain vLLM, greedy, `prompt_logprobs`,
-one ordinary sentence, `enforce_eager` the only thing changed, emits a *different token* and flips
-argmax at 6 of 12 prompt positions, 7.47 nats at worst. `Qwen2.5-7B-Instruct` and `Qwen3-30B-A3B` hold
-every position under that same test, so it is neither MoE in general nor anything we do.
+**If the two columns converge, the cell was probably not ours — but the flag names a variable, not a
+culprit.** `gemma-4-26B-A4B-it` taught that both ways. Its `attn_in.22` reads 0.00119 on static against
+0.99233 on hooked and recovers to 0.99300 under the flag, which reads as a clean upstream attribution.
+It is one, and it took two more boxes to establish: on compute capability 10.x, plain vLLM moves its own
+greedy output by up to 6.8 nats with nothing of this package in the process, holding compilation off and
+changing only `cudagraph_mode`, and it changes the token. On 9.x and 12.x the same script is
+bit-identical at every position and this column pair moves by at most 1e-6 across all 60 points. Same
+weights, same engine build, same layer plan. See [VLLM_SM100_CUDAGRAPH.md](VLLM_SM100_CUDAGRAPH.md) and
+the `ENGINE_BUGS` row, which is scoped to `capabilities=("10",)` for exactly that reason.
 
-Converge is the word and not *fix*: batch invariance takes that same plain-vLLM run to one argmax flip
-and 2.39 nats, which is still further from self-consistent than either control model is with the
-variable unset. It buys enough agreement to answer the question being asked here — whose bug is this —
-and no more.
+The other direction is that a split localises a *variable*, and the taps are downstream of it too — so
+read a point against its neighbours before quoting it. In that same capture `q_norm_in.22`, a linear map
+out of `attn_in`, reads 0.92723, and no such map takes near-orthogonal vectors to near-parallel ones.
+What reconciles them is that 0.00119 is a whole-tensor cosine carrying one outlier position: at row 10
+eager's norm is 479 against about 34 for its neighbours, and that row alone is anticorrelated at -0.194
+while every other row sits between 0.95 and 0.996. The cell is not wrong and a researcher would meet
+that number, but it describes one position rather than the tensor the point names. `aggregate` now flags
+pairs like this without being asked — see `spec.CONTRADICTION_GAP`.
+
+Converge is the word and not *fix*. Under the flag the `cudagraph_mode` comparison above is
+bit-identical at every prompt length, but the older `enforce_eager` script still moves by 2.39 nats and
+one argmax flip, because `enforce_eager` also flips `custom_ops` from `all` to `none` — trading vLLM's
+fused RMSNorm and activation kernels for the native ones — and batch invariance does not touch that. The
+flag buys enough agreement to answer the question being asked here, whose bug is this, and no more.
 
 **It is a diagnostic and not a setting**, for three reasons, all measured on the seven models that
 have any cell under 0.99:

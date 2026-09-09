@@ -55,6 +55,12 @@ class EngineBug:
     # hook points swallows every other disagreement in that cell, including one that arrives later
     # and is nothing to do with this bug.
     points: tuple[str, ...] = ()
+    # CUDA compute capabilities this bug can fire on, as prefixes of the recorded "major.minor":
+    # ("10",) is the 10.x family, ("9.0",) one capability. Empty means every device, which is right for
+    # a bug in engine code. Kernel selection is gated on capability, so a bug that lives in a kernel
+    # does not: annotating a cell that is measured clean on other hardware would hide a real regression
+    # there behind a known-bug label.
+    capabilities: tuple[str, ...] = ()
 
     @property
     def link(self) -> str:
@@ -62,6 +68,16 @@ class EngineBug:
 
     def covers(self, point: str) -> bool:
         return not self.points or point in self.points
+
+    def applies_to(self, capability: str) -> bool:
+        """Whether this bug can fire on a device of this capability.
+
+        An empty ``capability`` matches: a capture from before the field existed, or on CPU, says
+        nothing about hardware, and dropping the annotation on "not recorded" would read as "fixed".
+        """
+        if not self.capabilities or not capability:
+            return True
+        return any(capability == c or capability.startswith(f"{c}.") for c in self.capabilities)
 
 
 ENGINE_BUGS: tuple[EngineBug, ...] = (
@@ -174,32 +190,91 @@ ENGINE_BUGS: tuple[EngineBug, ...] = (
         "!= resid_mid, off by a full residual (rel 0.90-1.00) -- while TL2's HookedTransformer is exact.",
         workaround="tlens_v2 (HookedTransformer) is correct on this family.",
     ),
+    # Real, but only on compute capability 10.x, which is why it took four boxes to believe. The filed
+    # repro toggled `enforce_eager`, which moves torch.compile and CUDA graphs together, so it never
+    # separated them. Held at equal compilation mode with `cudagraph_mode` as the only variable, plain
+    # vLLM 0.28.0 -- no interp-engine in the process at all -- diverges by 6.77 nats at a prompt position
+    # whose top1-top2 margin is 2.375, flips 3 of 13 argmax positions, and moves the greedy token. Each
+    # arm is bit-identical to itself across two passes, so this is deterministic and not replay noise.
+    # The same comparison on an H200 (capability 9.0) and an RTX PRO 6000 (12.0) is bit-identical at every
+    # position, which is what the first three boxes were measuring when they said there was nothing here.
+    #
+    # The split follows vLLM's own architecture families rather than "Blackwell":
+    # `is_device_capability_family(100)` is a major-version match, so 10.0 and 10.3 group and 9.0 and 12.0
+    # do not join them. Which kernel is responsible is not established -- and not FlashAttention, which
+    # was the first guess: on this checkpoint the B300 logs FA4 disabled at both head sizes (256
+    # temporarily, 512 for TMEM capacity) and settles on TRITON_ATTN with the TRITON MoE backend. What
+    # makes this the family and not one sick machine: a B200 and a B300, different hosts five days apart,
+    # agree *bitwise* on all 62 `vllm` points and all 60 `vllm-static` points here, this degradation
+    # included, where any two boxes from different families share 4 points at most.
+    #
+    # Every degraded point is in `points`, including `attn_in.22`, because the per-point view was
+    # misleading us: this is one prompt *position*, not a set of points. Broken down by row, 12 of the 13
+    # positions of `attn_in.22` agree with eager at 0.95-0.996 and position 10 alone is anticorrelated;
+    # eager's norm at that row is 479 against ~33 everywhere else, so a 14x outlier drags the whole-tensor
+    # cosine to 0.001. Thirteen points fail worst at that row and six at row 11, and away from it the
+    # static column tracks the hooked one to ~0.01 -- so "`attn_in.22` is special" was an artifact of the
+    # metric, and scoping the row around it was the wrong cut.
+    #
+    # The position is not a property of its token either, which is where a sweep of prompt lengths on a
+    # B300 lands this: the divergence follows CUDA-graph padding. Lengths 9-15 (padded to a captured size
+    # of 16) and 25-31 (padded to 32) move by up to 6.8 nats; 8, 16, 20, 24 and every length from 33 to 64
+    # are bit-identical. Dropping 16 from `cudagraph_capture_sizes` moves the failure instead of removing
+    # it -- length 16 then breaks and length 20 stays clean -- so it follows the real token count and the
+    # padded size together rather than either alone.
+    #
+    # Ruled out, so nobody re-treads it: three capture warmups instead of zero; a restricted capture set;
+    # reversed run order; a fresh engine running only the failing length (all three return bit-identical
+    # *wrong* numbers, so nothing stale is being read); batch composition with graphs off (bit-identical,
+    # so this is not plain batch-size sensitivity); and the MoE router GEMM pinned to `torch.mm`.
+    # `VLLM_BATCH_INVARIANT=1` removes it at every length, which puts the responsible code among the
+    # fixed-reduction ops that flag installs rather than in graph memory management. Which kernel it is
+    # remains open; see docs/VLLM_SM100_CUDAGRAPH.md.
     EngineBug(
-        # `vllm-static` alone, because the eager arm is the one that holds still: plain vLLM returns the
-        # same greedy token from `enforce_eager=True` whether or not batch invariance is on, and it is the
-        # CUDA-graph arm that moves. The hooked column forces eager, so whatever it disagrees with `eager`
-        # about on this checkpoint is the unfiled question in the comment above, not this.
-        #
-        # Whole-cell rather than a `points` list, unusually, and only because a list would say the same
-        # thing at more length: all fourteen point names are below tolerance at layers 22 and 29, so there
-        # is no subset to name. What the scope wants to express is "layer 15 and deeper", which `covers`
-        # cannot say -- it is handed the bare point name with the layer stripped. Layer 0 is unaffected
-        # (worst 0.99997) and keeps its ✅ on its own, since a 🐞 is only ever consulted for a cell that is
-        # already WARN or FAIL.
         engine="vllm-static",
         model="google/gemma-4-26B-A4B-it",
         url="https://github.com/vllm-project/vllm/issues/55238",
-        title="gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
-        mechanism="vLLM disagrees with itself on this checkpoint between its compiled and eager paths, "
-        "with no capture code involved: one ordinary prompt, greedy, `enforce_eager` the only thing "
-        "changed, gives a different sampled token and a different argmax at 6 of 12 prompt positions, "
-        "7.47 nats at worst. Qwen2.5-7B-Instruct and Qwen3-30B-A3B hold every position under the same "
-        "test, so it is neither bf16 nor MoE routing in general.",
-        workaround="`VLLM_BATCH_INVARIANT=1` converges the two arms enough to attribute the fault -- "
-        "attn_in.22 reads 0.99300 rather than 0.00119 -- but does not fix it: that run still flips one "
-        "position and 2.39 nats, further from self-consistent than either control model is untouched. It "
-        "also costs throughput and vLLM refuses it on some trunks, so it is a diagnostic and not a "
-        "setting (docs/COMPARISON.md).",
+        title="[Bug]: gemma-4-26B-A4B-it produces different greedy output with CUDA graphs than with enforce_eager",
+        mechanism="With inductor off in both arms, `cudagraph_mode=FULL` diverges from NONE by up to 6.8 "
+        "nats on this MoE plus hybrid sliding/full attention checkpoint. It tracks CUDA-graph padding "
+        "rather than prompt content: bit-identical at lengths that fill a captured size, several nats at "
+        "lengths padded into 16 or 32. Deterministic, and absent on capability 9.x and 12.x.",
+        workaround="`VLLM_BATCH_INVARIANT=1`, bit-identical at every length tested; or cudagraph_mode=NONE; "
+        "or capture on capability 9.x/12.x hardware.",
+        capabilities=("10",),
+        points=(
+            "attn_in.22",
+            "attn_in.29",
+            "attn_out.22",
+            "attn_out.29",
+            "attn_out_post.22",
+            "attn_out_post.29",
+            "attn_scores.22",
+            "attn_scores.29",
+            "k_norm_in.15",
+            "k_norm_in.22",
+            "k_norm_in.29",
+            "k_norm_out.22",
+            "k_norm_out.29",
+            "mlp_act.22",
+            "mlp_act.29",
+            "mlp_out_post.15",
+            "mlp_out_post.22",
+            "q_norm_in.22",
+            "q_norm_in.29",
+            "q_norm_out.22",
+            "q_norm_out.29",
+            "resid_mid.22",
+            "resid_mid.29",
+            "resid_post.15",
+            "resid_post.22",
+            "router_logits.22",
+            "router_logits.29",
+            "value.22",
+            "value.29",
+            "z.22",
+            "z.29",
+        ),
     ),
     EngineBug(
         # Only 27b: it is the gemma-2 whose query_pre_attn_scalar (144) differs from its head_dim (128),
@@ -247,17 +322,25 @@ class ReferenceBug:
 REFERENCE_BUGS: tuple[ReferenceBug, ...] = ()
 
 
-def bug_for(engine: str, model: str) -> EngineBug | None:
-    """The filed bug for this cell, or None. First match wins."""
+def bug_for(engine: str, model: str, capability: str = "") -> EngineBug | None:
+    """The filed bug for this cell, or None. First match wins.
+
+    ``capability`` is the capture's compute capability (``dumpio.CaptureMeta.capability``); pass it to
+    skip rows scoped to other hardware.
+    """
     return next(
-        (b for b in ENGINE_BUGS if fnmatch.fnmatch(engine, b.engine) and fnmatch.fnmatch(model, b.model)),
+        (
+            b
+            for b in ENGINE_BUGS
+            if fnmatch.fnmatch(engine, b.engine) and fnmatch.fnmatch(model, b.model) and b.applies_to(capability)
+        ),
         None,
     )
 
 
-def engine_bug_for(engine: str, model: str, point: str) -> EngineBug | None:
+def engine_bug_for(engine: str, model: str, point: str, capability: str = "") -> EngineBug | None:
     """The filed bug covering this point of this cell, or None. First match wins."""
-    bug = bug_for(engine, model)
+    bug = bug_for(engine, model, capability)
     return bug if bug is not None and bug.covers(point) else None
 
 

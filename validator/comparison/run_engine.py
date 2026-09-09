@@ -42,6 +42,23 @@ _ENGINE_MODULE = {
 }
 
 
+def _compute_capability(device: str) -> str:
+    """This GPU's compute capability as ``"major.minor"``, or ``""`` when there is not one.
+
+    Torch is present in every engine venv, so this needs no extra dependency and no subprocess. Empty
+    rather than a guess when the device is CPU or the query fails: `engine_bugs` treats an unrecorded
+    capability as "applies", and a wrong value would scope a bug to the wrong hardware.
+    """
+    if not device.startswith("cuda"):
+        return ""
+    try:
+        import torch
+
+        return ".".join(str(v) for v in torch.cuda.get_device_capability(0))
+    except Exception:  # noqa: BLE001 - no CUDA, no driver, or a torch too old for the call
+        return ""
+
+
 def _points_for(engine: str, hf_id: str = "") -> list[str]:
     """The points this engine's column claims, narrowed to the ones this checkpoint has.
 
@@ -161,6 +178,7 @@ def run_one(
     # checkpoint" is as much a version claim as "which SGLang disagreed".
     versions = engine_versions(engine)
     captured_at = datetime.now(UTC).strftime("%Y-%m-%d")
+    capability = _compute_capability(device)
 
     def _meta(status: str, reason: str = "", **kw) -> CaptureMeta:
         return CaptureMeta(
@@ -172,6 +190,7 @@ def run_one(
             device=device,
             captured_at=captured_at,
             versions=versions,
+            capability=capability,
             **kw,
         )
 

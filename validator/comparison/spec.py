@@ -345,6 +345,82 @@ GLOBAL_POINTS = frozenset(name for name, meta in POINTS.items() if meta.get("glo
 # way, and for the same reason: the flag sits beside the row it describes and the set is read off it.
 STREAM_POINTS = frozenset(name for name, meta in POINTS.items() if meta.get("streams_only"))
 
+# Within one layer, which point each point is computed *from*. The parent is an input to a
+# deterministic function that produces the child, so an engine that disagrees with the reference at
+# the parent cannot then agree with it at the child: whatever went wrong upstream is still in the
+# tensor. A cell that claims otherwise is describing a tensor nobody computed, and
+# `aggregate._flag_contradicted` is what says so -- see :data:`CONTRADICTION_GAP`.
+#
+# Only edges that hold for *every* architecture in the sweep are listed, which is why the graph is
+# thinner than the forward pass:
+#
+# - `attn_in -> k_norm_in` and `attn_in -> value` are left out. On a KV-shared layer (Gemma 4's
+#   `is_kv_shared_layer`, `num_kv_shared_layers`) K and V come from another layer's cache rather
+#   than from this layer's projection, so the edge is false exactly where it would matter.
+# - `resid_mid -> mlp_act` / `-> router_logits` are left out. A parallel block (GPT-J, Phi-2) runs
+#   its MLP off `resid_pre`, so the MLP's input is not this point on those families.
+# - `q_norm_out`/`k_norm_out` -> `attn_scores` is left out: the scores are a function of *both*,
+#   and a contradiction test wants a single parent it can name.
+#
+# The edges that remain are the ones the module tree guarantees: a projection (`attn_in ->
+# q_norm_in`, `z -> attn_out`, `mlp_act -> mlp_out`), a norm (`q_norm_in -> q_norm_out`, `attn_out
+# -> attn_out_post`), or an attention-weighted average (`value -> z`).
+DERIVED_FROM: dict[str, tuple[str, ...]] = {
+    "q_norm_in": ("attn_in",),
+    "q_norm_out": ("q_norm_in",),
+    "k_norm_out": ("k_norm_in",),
+    "z": ("value",),
+    "attn_out": ("z",),
+    "attn_out_post": ("attn_out",),
+    "mlp_out": ("mlp_act",),
+    "mlp_out_post": ("mlp_out",),
+}
+
+# How much better than a failing point its own descendant has to score before the point is called
+# contradicted rather than merely wrong.
+#
+# Measured, not chosen: across the 1980 parent/descendant pairs the 09/03/26 sweep produced, the
+# gaps are bimodal. Nine sit above 0.34 -- eight of them BLOOM's `attn_out`/`mlp_out` on `tlens_v3`,
+# which is TransformerLens#1639 (the bridge returns the residual-added state, so the parent is a
+# whole residual stream off while the post-norm child beside it is exact at 1.000000), and the ninth
+# `gemma-4-26B-A4B-it`'s `attn_in.22` on `vllm-static` at 0.94. Everything else is at or below
+# 0.2280. So this catches two reads already known to be wrong and nothing else, which is the bar a
+# flag like this has to clear to be worth reading.
+#
+# The closest pair it deliberately does *not* fire on is that same checkpoint's `k_norm_in.22` at
+# 0.2280 (0.717800 against `k_norm_out.22`'s 0.945832). A norm is entitled to recover cosine that
+# way -- it divides out a scale error its input still carries -- so the gap has a benign reading
+# there that `attn_in -> q_norm_in`, a linear projection, does not have. Anyone moving this number
+# is choosing whether to call that one contradicted, and should say which way and why.
+CONTRADICTION_GAP = 0.25
+
+
+def descendants(point: str) -> frozenset[str]:
+    """Every point computed from ``point``, transitively, within the same layer.
+
+    Transitive because the nearest child is not always the informative one: `attn_in`'s child
+    `q_norm_in` is one projection away, but `q_norm_out` is a norm further on and can be the better
+    aligned of the two, and a contradiction wants the *strongest* witness against the parent rather
+    than the closest.
+
+    :data:`DERIVED_FROM` is child -> parents, so this inverts it. Cycle-safe by construction (the
+    graph is a forward pass) and by the ``seen`` guard, which is what keeps a future edge added the
+    wrong way round from hanging the aggregator instead of failing a test.
+    """
+    children: dict[str, list[str]] = {}
+    for child, parents in DERIVED_FROM.items():
+        for parent in parents:
+            children.setdefault(parent, []).append(child)
+    seen: set[str] = set()
+    stack = list(children.get(point, ()))
+    while stack:
+        nxt = stack.pop()
+        if nxt in seen:
+            continue
+        seen.add(nxt)
+        stack.extend(children.get(nxt, ()))
+    return frozenset(seen)
+
 
 def points_for_streams(points: Sequence[str], n_streams: int) -> list[str]:
     """``points``, minus the stream rows when the checkpoint's trunk carries a single residual.

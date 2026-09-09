@@ -384,6 +384,58 @@ def _per_token(by_engine: dict[str, dict], engines: list[str]) -> list[str]:
     ]
 
 
+def _contradicted(by_engine: dict[str, dict], engines: list[str]) -> list[str]:
+    """Cells a point computed *from* them disagrees with, flagged by `aggregate._flag_contradicted`.
+
+    The one section here that is about the measurement rather than about the model. Everything in
+    `spec.DERIVED_FROM` is a deterministic function of the point above it within a layer, so a cell
+    cannot be far off while a cell downstream of it is close: the error would have travelled. When
+    both numbers are on the page anyway, the pair is worth naming, because the failing one is what
+    gets quoted and the agreeing one is what makes it doubtful.
+
+    Not a verdict about which of the two is wrong -- both readings happen. On BLOOM the parent is
+    genuinely broken upstream (`attn_out` comes back as `resid_mid`, TransformerLens#1639) and the
+    child beside it is exact; on `gemma-4-26B-A4B-it`'s static `attn_in.22` the parent is far more
+    likely our own tap. So this says "check this before citing it" and stops there.
+    """
+    rows = []
+    for engine in engines:
+        cells = _points_of(by_engine[engine])
+        for cell_id in sorted(cells, key=lambda k: (cells[k]["point"], cells[k].get("layer") or -1)):
+            cell = cells[cell_id]
+            if not (against := cell.get("contradicted_by")):
+                continue
+            rows.append(
+                [
+                    engine_label(engine),
+                    f"`{cell['point']}`",
+                    _layer_label(cell),
+                    _fmt(cell.get("cos")),
+                    f"`{against['point']}`",
+                    _fmt(against.get("cos")),
+                ]
+            )
+    if not rows:
+        return []
+    header = ["engine", "point", "layer", "its cos", "contradicted by", "which scores"]
+    return [
+        "",
+        "### Reads its own descendants contradict",
+        "",
+        *_table(header, rows),
+        "",
+        _text(
+            "The right-hand point is computed from the left-hand one inside the same layer, so an engine "
+            "that had the left one wrong could not have the right one right -- the error travels with the "
+            "tensor. One of each pair is therefore not a measurement of this engine's forward pass. These "
+            "cells keep their verdicts, because a contradiction says one of the two is wrong and not which: "
+            "the fault can sit upstream in the engine, or in the tap that read the point. What it does mean "
+            "is that the failing number is the weakest thing on this page to cite as evidence about the "
+            "engine, and the agreeing one beside it is why."
+        ),
+    ]
+
+
 def _waived(by_engine: dict[str, dict], engines: list[str]) -> list[str]:
     """Passes that a per-checkpoint waiver carried, and the measurement behind each.
 
@@ -533,6 +585,9 @@ def render_details(hf_id: str, by_engine: dict[str, dict], *, readme_rel: str = 
             "### What differs",
             "",
             *_differences(by_engine, engines, reference),
+            # Directly after `What differs`, because it is about the rows in it: a reader who has just
+            # met the worst number on the page is the one who needs to know it is disputed.
+            *_contradicted(by_engine, engines),
             *_per_token(by_engine, engines),
             *_waived(by_engine, engines),
             *_not_compared(by_engine, engines, reference),
