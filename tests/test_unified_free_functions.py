@@ -8,6 +8,7 @@ checked against these same shapes by ``scripts/vllm_capture_generation_check.py`
 
 import asyncio
 
+import pytest
 import torch
 
 from interp_engine import (
@@ -73,6 +74,29 @@ def test_capture_attention_returns_scores_probs_and_per_head_value(gpt2: EagerMo
         assert got[layer]["scores"].shape == (gpt2.n_heads, seq, seq)
         assert got[layer]["probs"].shape == (gpt2.n_heads, seq, seq)
         assert got[layer]["value"].shape == (seq, gpt2.n_kv_heads, gpt2.head_dim)
+
+
+def test_every_eager_entry_point_takes_a_plain_list_of_ids(gpt2: EagerModel, prompt: str):
+    """A list of ints is a documented input, and it is the one that used to reach the device wrong.
+
+    The tests around this one all pass ``to_tokens`` output, a tensor already on the model's device,
+    so the host tensor a list builds was never exercised and both functions below raised on any
+    accelerator. ``EagerModel.capture`` hid it by placing its own tensor. On a CPU box both arms are
+    the same tensor and this only pins the signature; the device half is the gpu test below.
+    """
+    ids = [int(t) for t in gpt2.to_tokens(prompt)[0]]
+    assert sorted(capture_attention(gpt2, ids, [0])) == [0]
+    assert run_with_cache(gpt2, ids, [("resid_post", 0)]).get("resid_post", 0).shape[1] == len(ids)
+
+
+@pytest.mark.gpu
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="a host tensor only misplaces on an accelerator")
+def test_a_list_of_ids_reaches_the_accelerator(prompt: str):
+    """The regression itself: ids built off-device must be moved before they reach ``hf_model``."""
+    model = EagerModel("openai-community/gpt2", device="cuda", attn_implementation="eager")
+    ids = [int(t) for t in model.to_tokens(prompt)[0]]
+    assert capture_attention(model, ids, [0])[0]["scores"].device.type == "cuda"
+    assert run_with_cache(model, ids, [("resid_post", 0)]).get("resid_post", 0).device.type == "cuda"
 
 
 def test_capture_attention_agrees_with_the_points_it_is_built_from(gpt2: EagerModel, prompt: str):

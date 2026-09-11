@@ -224,7 +224,10 @@ def _run_with_cache_eager(
     attention_mask: torch.Tensor | None = None,
 ) -> Cache:
     """Capture in-process off the live module tree. See :func:`run_with_cache`."""
-    input_ids = as_batched_tokens(tokens)
+    # Placed here rather than by each caller: these ids go straight into `hf_model`, so a list or a
+    # host tensor -- both documented inputs -- fails on every accelerator otherwise, through either
+    # entry point that shares this body. A tensor already on the device is unmoved.
+    input_ids = as_batched_tokens(tokens, device=model.device)
     addresses = _normalize_points(points)
     cache = Cache()
 
