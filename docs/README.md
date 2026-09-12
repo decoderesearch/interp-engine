@@ -10,6 +10,7 @@ Which doc answers which question. Start at [USAGE.md](USAGE.md) if you have not 
 | [PORTING.md](PORTING.md)                           | translating code from TransformerLens, nnsight or nnterp                                       |
 | [AGENT_INTEGRATION.md](AGENT_INTEGRATION.md)       | porting code onto the engine: recipes, hard rules, error-to-fix (written for a coding agent)   |
 | [ARCHITECTURE_QUIRKS.md](ARCHITECTURE_QUIRKS.md)   | every architecture quirk the engine knows about, and where a per-model fact is allowed to live |
+| [VALIDATING_A_NEW_MODEL.md](VALIDATING_A_NEW_MODEL.md) | adding a model or an architecture: the order, and the gates that stop wasted work           |
 | [GRADIENTS.md](GRADIENTS.md)                       | what is differentiable, on which backend, and what is silently not                             |
 | [PERFORMANCE.md](PERFORMANCE.md)                   | vLLM speed/feature tradeoffs and quantization support                                          |
 | [COMPATIBILITY.md](COMPATIBILITY.md)               | which transformers versions are tested, and the ones known to compute a model wrongly          |

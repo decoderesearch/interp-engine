@@ -82,6 +82,12 @@ export const ENGINE_DOCS = [
     kind: "markdown",
   },
   {
+    path: "docs/VALIDATING_A_NEW_MODEL.md",
+    title: "Validating a new model",
+    why: "The order to add a model or an architecture in, and the gates that stop wasted work -- starting with whether any software can load the checkpoint at all. Reach for it when the question is 'how do I add X'.",
+    kind: "markdown",
+  },
+  {
     path: "docs/GRADIENTS.md",
     title: "Gradients",
     why: "What is differentiable on which backend, and why gradient support never gates loading.",

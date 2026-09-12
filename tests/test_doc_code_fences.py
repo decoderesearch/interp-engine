@@ -39,6 +39,7 @@ DOC_FILES = (
     "docs/SUPPORTED_POINTS.md",
     "docs/AGENT_INTEGRATION.md",
     "docs/PORTING.md",
+    "docs/VALIDATING_A_NEW_MODEL.md",
     "docs/GRADIENTS.md",
     "docs/PERFORMANCE.md",
     "docs/ARCHITECTURE_QUIRKS.md",

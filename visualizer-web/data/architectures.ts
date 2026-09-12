@@ -331,6 +331,23 @@ const FAMILIES: Architecture[] = [
     note: "Hyper-connections: no single tensor between blocks is the residual stream.",
   },
   {
+    id: "DeepseekV41ForCausalLM",
+    label: "DeepSeek V4.1 Flash",
+    released: "2026-09",
+    significance:
+      "DeepSeek V4.1 Flash splits the stack into a causal encoder and a decoder that projects its keys and values from the encoder's final states rather than from its own. Most layers therefore own no K or V at all, and the ones that do are named in the config — so the per-layer key/value every hooking library assumes is not a property of this architecture. It cuts the resident KV cache to 890 bytes per token.",
+    traits: [
+      "mla",
+      "gated_mlp",
+      "moe",
+      "shared_experts",
+      "multi_residual_streams",
+      "sliding_window",
+    ],
+    exampleModels: ["deepseek-ai/DeepSeek-V4.1-Flash"],
+    note: "Not yet loadable: no released transformers or vLLM supports `deepseek_v41`. Traits here are read from config.json; the diagram cannot yet draw cross-layer KV reuse, sparse top-k attention, or the n-gram memory that writes into the residual.",
+  },
+  {
     id: "CohereForCausalLM",
     label: "Cohere Command",
     released: "2024-03",

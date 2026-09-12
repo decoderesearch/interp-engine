@@ -231,7 +231,9 @@ in a different position). Keeping the foreign vocabulary in one module keeps tho
 module too.
 
 Related invariants that are documented rather than repeated here: every architecture quirk the engine
-knows about and where per-model config may live (`docs/ARCHITECTURE_QUIRKS.md`).
+knows about and where per-model config may live (`docs/ARCHITECTURE_QUIRKS.md`), and the order to add
+a model or an architecture in (`docs/VALIDATING_A_NEW_MODEL.md`) — whose first gate is whether any
+released software can load the checkpoint, asked before hardware is rented.
 
 ## Agent instruction files
 
