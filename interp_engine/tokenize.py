@@ -371,6 +371,10 @@ class Tokenize:
         - Within a message block, ``header`` / ``content`` / ``footer`` are separated by rendering
           the same message with EMPTY content and diffing (common prefix = header wrapper, common
           suffix = footer wrapper); the middle is the real content.
+        - A system turn the template injects on its own (Llama's knowledge-cutoff preamble, Qwen2.5's
+          default persona) when the caller sent no system message is tagged ``role="system"`` with
+          ``message_index=None``, so the frontend can show it as its own turn instead of folding it
+          into the first message's header. See :meth:`_injected_system_split`.
         - The trailing ``add_generation_prompt`` scaffold is attributed to the (pending) assistant
           turn as an ``assistant`` ``header`` so the assistant bubble opens before any content.
 
@@ -409,8 +413,8 @@ class Tokenize:
         prefix_end: list[int] = []
         for j in range(0, n + 1):
             if j == 0:
-                # Empty message list: leave any leading scaffold (BOS / system preamble) as part
-                # of message 0's block. Rendering [] would also make some templates raise.
+                # Empty message list: the leading scaffold (BOS / injected system turn) is split
+                # off message 0's block below. Rendering [] would also make some templates raise.
                 prefix_end.append(0)
                 continue
             if rendered is not None:
@@ -437,6 +441,18 @@ class Tokenize:
         channels: list[str | None] = [None] * total
         msg_idx: list[int | None] = [None] * total
         sections: list[str] = ["scaffold"] * total
+
+        # A system turn the template injected itself sits at the head of message 0's block.
+        # Tag it as its own turn (no message index) and start message 0 after it.
+        injected = None
+        if rendered is None and n > 0:
+            injected = self._injected_system_split(messages, full_ids, prefix_end[1], **template_kwargs)
+        if injected is not None:
+            hdr, cnt, ftr = injected
+            for pos in range(hdr + cnt + ftr):
+                roles[pos] = "system"
+                sections[pos] = "header" if pos < hdr else ("content" if pos < hdr + cnt else "footer")
+            prefix_end[0] = hdr + cnt + ftr
 
         for k in range(n):
             start, end = prefix_end[k], prefix_end[k + 1]
@@ -483,6 +499,66 @@ class Tokenize:
             )
             for pos, tid in enumerate(full_ids)
         ]
+
+    def _injected_system_split(
+        self,
+        messages: list[dict[str, str]],
+        full_ids: list[int],
+        block_end: int,
+        **template_kwargs: Any,
+    ) -> tuple[int, int, int] | None:
+        """Return ``(header_len, content_len, footer_len)`` of a system turn the template injected
+        at the head of ``full_ids``, or ``None`` when there is none.
+
+        Only applies when the caller sent no system message. The template is asked to render the
+        same first message behind an explicit system message holding a probe string, and that
+        render is aligned against message 0's real block ``full_ids[:block_end]``:
+
+        - The common prefix is the system header (Llama's knowledge-cutoff preamble lands here,
+          since the template writes it before any system content).
+        - The common suffix is the system footer plus the whole first-message block, which is
+          identical in both renders. The block's own length comes from rendering the system
+          message alone, so the footer is what remains.
+        - Whatever sits between in the real block is the injected content (Qwen2.5's default
+          persona); in the probe render it must be the probe itself, which is what proves the
+          alignment found the system slot and not some other shared token.
+
+        Templates that do not inject a system turn (Qwen3), fold the system message into the
+        first user turn (Gemma-3, Mistral) or reject the system role (Gemma-2) fail one of these
+        checks and get ``None``, leaving message 0's block as it was.
+        """
+        if messages[0].get("role") == "system":
+            return None
+        probe = "system-content-probe"
+        system = {"role": "system", "content": probe}
+        try:
+            sys_only = self._render_ids(
+                [system], add_generation_prompt=False, continue_final_message=False, **template_kwargs
+            )
+            probed = self._render_ids(
+                [system, messages[0]], add_generation_prompt=False, continue_final_message=False, **template_kwargs
+            )
+        except Exception:  # noqa: BLE001 - some templates reject the system role
+            return None
+        if not sys_only or len(sys_only) >= len(probed) or probed[: len(sys_only)] != sys_only:
+            return None
+        block = full_ids[:block_end]
+        first_len = len(probed) - len(sys_only)
+        sys_end = len(block) - first_len
+        if sys_end <= 0:
+            return None
+        suffix = _common_suffix_len(probed, block)
+        if suffix < first_len:
+            return None
+        footer_len = suffix - first_len
+        header_len = min(_common_prefix_len(probed, block), sys_end - footer_len)
+        content_len = sys_end - footer_len - header_len
+        if content_len < 0:
+            return None
+        slot = probed[header_len : len(probed) - suffix]
+        if probe not in self.tokenizer.decode(slot, clean_up_tokenization_spaces=False):
+            return None
+        return header_len, content_len, footer_len
 
     def _header_footer_split(
         self,
