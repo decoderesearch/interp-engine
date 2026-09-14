@@ -26,6 +26,8 @@ answer too.
 | `model`          | **required**                     | a Hugging Face repo id, e.g. `Qwen/Qwen3-8B`                    |
 | `backend`        | `vllm`                           | `vllm`, `vllm-static`, `vllm-generate`, `eager`                 |
 | `dtype`          | `bfloat16`, or `auto` if quantized | `auto`, `bfloat16`, `float16`, `float32`                       |
+| `quantization`   | none                             | `fp8` (vLLM backends), `bnb-4bit`, `bnb-8bit` (`eager`)          |
+| `kv_cache_dtype` | `auto`                           | `auto`, `fp8`; vLLM backends only                               |
 | `max_model_len`  | the model's advertised context    | a non-negative integer; `0` searches down from the model's own |
 | `static_point`   | `auto`                           | repeatable, `vllm-static` only; see `model.staticPoints`        |
 | `reserve_gib`    | `0`                              | per-GPU VRAM to leave for your own tensors                     |
@@ -47,6 +49,16 @@ Three defaults are derived from the model rather than fixed, and they are the pa
 point this model has no tap for is refused rather than dropped, and the error names the ones it
 does have — an MoE trunk has `router_logits` and no `mlp_act`, and a hyper-connection trunk has
 `resid_streams` and no `resid_post`.
+
+`quantization` and `kv_cache_dtype` are the two arguments of the same name on `load_model`, and
+they are refused exactly where `load_model` refuses them: `fp8` on `eager`, `bnb-8bit` on a vLLM
+backend, or any `kv_cache_dtype` but `auto` on `eager` is a `400` that names the alternative. A
+quantizer on a checkpoint that already ships quantized is accepted and priced as stored, with a
+warning saying it changed nothing.
+
+```bash
+curl 'https://interp-engine.org/api/sizer?model=meta-llama/Llama-3.3-70B-Instruct&quantization=fp8&kv_cache_dtype=fp8'
+```
 
 Two notes on `backend`. `vllm-generate` is accepted here and deliberately absent from the page: it
 replays CUDA graphs with no taps at all, so every capture, steer and lens call refuses, and beside
@@ -81,6 +93,8 @@ And `vllm` is the *cheapest* of the three on memory, not the dearest, because it
   "request": {
     "backend": "vllm",
     "dtype": "bfloat16",
+    "quantization": "",
+    "kvCacheDtype": "auto",
     "maxModelLen": 8192,
     "staticPoints": [],
     "reserveGib": 0,
@@ -103,6 +117,8 @@ And `vllm` is the *cheapest* of the three on memory, not the dearest, because it
       "spec": {
         "backend": "vllm",
         "dtype": "bfloat16",
+        "quantization": "",
+        "kvCacheDtype": "auto",
         "numGpus": 1,
         "maxModelLen": 8192,
         "maxNumBatchedTokens": 2048,
