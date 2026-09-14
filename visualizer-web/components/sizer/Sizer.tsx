@@ -1478,12 +1478,15 @@ function Results({
   }
 
   return (
-    /* `shrink-0`: this is a flex item in a column that scrolls, and `overflow-hidden` gives it a
-       min-height of zero. Without it the table shrinks to one row and clips the rest while the
-       column, seeing nothing overflow, never scrolls. */
-    <div className="shrink-0 overflow-hidden rounded-md border border-slate-200 bg-white">
+    /* From `xl` the column is the height of the window and the panels below this table keep their
+       size, so the table is the one thing that gives: it shrinks to what is left and its rows scroll
+       under a header that stays put, with a floor so a short window still shows a few rows before
+       the column itself scrolls. Below `xl` the knobs sit above it in one scroller, and there it
+       keeps its full height -- `shrink-0`, because `overflow-hidden` would otherwise let it shrink
+       to a row and clip the rest. */
+    <div className="flex shrink-0 flex-col overflow-hidden rounded-md border border-slate-200 bg-white xl:min-h-40 xl:shrink">
       <div
-        className={`${COLUMNS} border-b border-slate-200 px-3 py-1.5 text-[9px] text-slate-400`}
+        className={`${COLUMNS} shrink-0 border-b border-slate-200 px-3 py-1.5 text-[9px] text-slate-400`}
       >
         <span>GPU Config</span>
         <span className="text-right">utilization</span>
@@ -1495,7 +1498,7 @@ function Results({
         </span>
       </div>
 
-      <ul className="divide-y divide-slate-100">
+      <ul className="thin-scrollbar min-h-0 divide-y divide-slate-100 overflow-y-auto">
         {tiers.map((tier) => {
           const est = tier.result.estimate;
           const evidence = tierEvidence(facts, tier);
@@ -1627,8 +1630,8 @@ const COLUMNS =
  * column is the only one on the slate page background and three bordered cards
  * on slate read as a single grey field with lines through it.
  */
-/* `shrink-0` for the same reason the results table has it: the snippet inside scrolls sideways,
-   which lets the panel shrink in a scrolling column instead of making the column scroll. */
+/* `shrink-0`: the panels keep their size and the GPU table above them gives. Without it the
+   snippet's sideways scroll would let a panel shrink and clip instead. */
 const PANEL =
   "flex shrink-0 flex-col gap-y-3 rounded-md border border-slate-200 bg-white px-3 py-3";
 
