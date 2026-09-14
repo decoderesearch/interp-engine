@@ -28,8 +28,15 @@ configs that will fit without OOMing — copy the code instantly. There's also a
 metadata and `config.json`, a few hundred KB, never a shard.
 
 **2. Set speed and configs.** The backend is the choice that matters most, because it decides both
-what you can read and what it costs. Context length, dtype, a Jacobian lens read-out, and VRAM for
-your own tensors are the rest.
+what you can read and what it costs. Context length, dtype, quantization on load, the KV cache dtype,
+a Jacobian lens read-out, and VRAM for your own tensors are the rest.
+
+A model stored in bf16 can be narrowed two ways, and the page offers both. Under the model's facts it
+lists the **quantized exports** the Hub knows for it — `RedHatAI/...-FP8-dynamic`, an AWQ int4, an
+NVFP4 — as chips; click one and that repo is sized instead, from its own headers. Those schemes needed
+a calibration run, so they only exist as repos. Under the controls, **quantize on load** applies a
+scheme that needs none: `fp8` on the vLLM backends, `bnb-4bit` on either, `bnb-8bit` on eager. Each
+is one argument to `load_model`, and the snippet carries it.
 
 **3. Read the GPU configs.** Rows are VRAM tiers, largest first, each naming every card on that
 rung and the settings that fit it. Rows backed by a real run on real hardware are marked
@@ -58,6 +65,8 @@ model = load_model(
 | `vllm-static`      | 4–11x decode throughput                      | a ~3 GiB graph pool plus a buffer per tap |
 | `eager`            | every point, including the eager-only ones    | slowest by far                            |
 | context length     | longer prompts, more concurrent requests     | KV cache, linearly                        |
+| `quantization`     | half (`fp8`) or a quarter (`bnb-4bit`) of the linear weights | embeddings stay wide; `fp8` is vLLM-only, and slower below compute 8.9 |
+| `kv_cache_dtype`   | half the cache at `fp8`, on any card         | nothing else; a checkpoint declaring an fp8 cache already gets it under `auto` |
 | Jacobian lens      | a lens read-out held on each worker          | `n_layers × d_model² × 4` bytes per rank  |
 
 Two of these surprise people. `backend="vllm"` runs `enforce_eager=True`, because CUDA graph replay

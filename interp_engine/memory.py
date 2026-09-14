@@ -44,6 +44,8 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from interp_engine.facts import FP16_EAGER_OVERFLOW_ARCHS
+
 GIB = 1024**3
 
 #: The backends :func:`estimate` understands. Mirrors ``load.BACKENDS`` deliberately rather than
@@ -660,7 +662,7 @@ _SCHEME_WIDTH: tuple[tuple[tuple[str, ...], float], ...] = (
 )
 
 
-def _scheme_width(quant_method: str) -> float | None:
+def scheme_width(quant_method: str) -> float | None:
     """Bytes per logical parameter for a quantization scheme, or None when it is not recognized.
 
     ``awq`` and ``gptq`` are listed at 4-bit because that is what they are in practice; an 8-bit GPTQ
@@ -674,6 +676,143 @@ def _scheme_width(quant_method: str) -> float | None:
         if any(tag in text for tag in tags):
             return width
     return None
+
+
+# ------------------------------------------------------------ on-load quantization
+
+
+@dataclass(frozen=True)
+class OnLoadQuantization:
+    """A scheme a backend can apply to a wider checkpoint **at load**, with no calibration step.
+
+    This is what separates the rows below from AWQ, GPTQ, NVFP4 and MXFP4: those need a calibration
+    run and arrive as a repo, which :class:`WeightBytes` already prices from its headers. A row here is
+    one argument to ``load_model``, so a sizer can offer it on any bf16 checkpoint and the snippet it
+    prints still runs.
+    """
+
+    name: str
+    #: Bytes per **linear** weight once quantized, scales included. Embeddings and the unembed are not
+    #: linear layers to either quantizer and stay at the model dtype -- see :func:`on_load_weight_bytes`.
+    width: float
+    #: The backends that apply it. A backend missing here is refused, with the reason in :attr:`refusals`.
+    backends: tuple[str, ...]
+    #: What vLLM calls it in ``quantization=``; empty when no vLLM backend applies it.
+    vllm_name: str
+    #: The ``BitsAndBytesConfig`` arguments transformers needs; empty when eager does not apply it.
+    eager_config: dict[str, Any]
+    #: Why each absent backend cannot, and what to do instead. ``"*"`` covers every backend not named.
+    refusals: dict[str, str]
+    why: str
+
+    def applies_to(self, backend: str) -> bool:
+        return backend in self.backends
+
+    def refusal(self, backend: str) -> str:
+        """Why this backend cannot apply the scheme, or an empty string when it can."""
+        if self.applies_to(backend):
+            return ""
+        return self.refusals.get(backend) or self.refusals.get("*", f"{self.name} is not available on {backend}")
+
+
+#: Every on-load scheme ``load_model(quantization=...)`` accepts and the sizer prices, by that name.
+#:
+#: The widths carry their scales. bitsandbytes' NF4 stores one fp32 absmax per 64-element block, which
+#: is 0.0625 bytes a weight on top of the half byte; vLLM's fp8 and LLM.int8 keep one scale per output
+#: channel, which rounds to nothing. FP8 on the eager backend is refused rather than priced:
+#: transformers' ``FineGrainedFP8Config`` needs compute 8.9 and reaches for a DeepGEMM Hub kernel, so a
+#: fit there would be a fit for two failure modes at once.
+QUANTIZATIONS: dict[str, OnLoadQuantization] = {
+    "fp8": OnLoadQuantization(
+        name="fp8",
+        width=1.0,
+        backends=VLLM_BACKENDS,
+        vllm_name="fp8",
+        eager_config={},
+        refusals={
+            "eager": (
+                "transformers' on-load FP8 (FineGrainedFP8Config) needs compute 8.9 and a DeepGEMM Hub "
+                "kernel; load a checkpoint that ships in FP8 with dtype='auto' instead, or use a vLLM backend"
+            ),
+        },
+        why="dynamic per-channel FP8 on every linear layer: half of bf16, no calibration",
+    ),
+    "bnb-8bit": OnLoadQuantization(
+        name="bnb-8bit",
+        width=1.0,
+        backends=("eager",),
+        vllm_name="",
+        eager_config={"load_in_8bit": True},
+        refusals={
+            "*": (
+                "vLLM's in-flight bitsandbytes is 4-bit only; use quantization='bnb-4bit' or quantization='fp8' there"
+            ),
+        },
+        why="LLM.int8 through bitsandbytes: the one 8-bit scheme with a backward pass",
+    ),
+    "bnb-4bit": OnLoadQuantization(
+        name="bnb-4bit",
+        width=0.5625,
+        backends=(*VLLM_BACKENDS, "eager"),
+        vllm_name="bitsandbytes",
+        eager_config={"load_in_4bit": True, "bnb_4bit_quant_type": "nf4"},
+        refusals={},
+        why="NF4 through bitsandbytes, on both backends, and with a backward pass on eager",
+    ),
+}
+
+
+def quantization_refusal(quantization: str, backend: str) -> str:
+    """Why ``quantization`` cannot be applied on ``backend``, or an empty string when it can.
+
+    An unknown name is refused too, naming the ones that exist, so a typo does not price as "as stored".
+    """
+    if not quantization:
+        return ""
+    scheme = QUANTIZATIONS.get(quantization)
+    if scheme is None:
+        return f"unknown quantization {quantization!r}; the sizer prices {', '.join(QUANTIZATIONS)}"
+    return scheme.refusal(backend)
+
+
+#: vLLM's spelling of each on-load scheme back to this module's, for the engine's own sizing in
+#: ``vllm_capture/static.py``: ``quantization="bitsandbytes"`` there is in-flight NF4, ``bnb-4bit`` here.
+VLLM_QUANTIZATION_NAMES: dict[str, str] = {
+    scheme.vllm_name: name for name, scheme in QUANTIZATIONS.items() if scheme.vllm_name
+}
+
+
+def narrow_linear_weights(base: int, *, narrow: float, stored: float, embedding_params: int) -> int:
+    """``base`` bytes of weights once every linear layer is narrowed from ``stored`` to ``narrow``.
+
+    **Neither vLLM nor bitsandbytes quantizes the embeddings or the unembed**, so those stay at the
+    stored width: on Llama-3.3-70B that is 2 x 1.05B parameters, about 3.9 GiB that "halve the
+    weights" would have counted away, and 6% of the answer. ``RedHatAI``'s FP8 export of the same
+    model shows the same shape from disk -- 67.68 GiB against 65.7 for 70.56B at one byte.
+
+    A scheme no narrower than the checkpoint changes nothing, which is the direction that OOMs.
+    """
+    if not base or narrow >= stored:
+        return int(base)
+    embeddings = min(max(int(embedding_params * stored), 0), int(base))
+    return int((int(base) - embeddings) * (narrow / stored) + embeddings)
+
+
+def on_load_weight_bytes(facts: ModelMemoryFacts, dtype: str, quantization: str, *, dequantizes: bool) -> int:
+    """Weight bytes on the device once ``quantization`` has narrowed the checkpoint at load.
+
+    Starts from :meth:`WeightBytes.bytes_for_load`, which is the stored answer, and hands it to
+    :func:`narrow_linear_weights`. A checkpoint that already ships quantized is returned as stored:
+    a quantizer does not narrow what is already narrower, and :func:`estimate` says so in a warning.
+    """
+    weights = facts.weights
+    base = weights.bytes_for_load(dtype, dequantizes=dequantizes)
+    scheme = QUANTIZATIONS.get(quantization) if quantization else None
+    if scheme is None or weights.is_quantized:
+        return base
+    stored = dtype_bytes(dtype if dtype not in ("auto", "", None) else weights.stored_dtype)
+    embedding_params = facts.vocab_size * facts.d_model * (1 if facts.tied_embeddings else 2)
+    return narrow_linear_weights(base, narrow=scheme.width, stored=stored, embedding_params=embedding_params)
 
 
 def logical_param_count(elements_by_dtype: dict[str, int], quant_method: str = "", expert_dtype: str = "") -> int:
@@ -700,7 +839,7 @@ def logical_param_count(elements_by_dtype: dict[str, int], quant_method: str = "
     An unquantized checkpoint is unaffected: its buckets are all float, so containers and parameters
     are the same thing.
     """
-    widths = [w for w in (_scheme_width(quant_method), _scheme_width(expert_dtype)) if w is not None]
+    widths = [w for w in (scheme_width(quant_method), scheme_width(expert_dtype)) if w is not None]
     native = min(widths) if widths else None
     total = 0
     for tag, count in elements_by_dtype.items():
@@ -805,7 +944,7 @@ class WeightBytes:
         if self.is_quantized:
             if not dequantizes:
                 return self.on_disk_bytes
-            native = _scheme_width(self.quant_method)
+            native = scheme_width(self.quant_method)
             if native is not None and wanted <= native:
                 # Asking for the width it is already stored at, or narrower than transformers will
                 # give you: the checkpoint is served natively and the file size stands.
@@ -1015,7 +1154,7 @@ def _scheme_from_headers(elements_by_dtype: dict[str, int]) -> str:
     Requires the container buckets to hold a **majority** of the elements, so a small integer
     side-table cannot make a dense model look packed. Distinguishing 4-bit from 8-bit is then the
     presence of fp8 scales beside a byte payload, which is what every 4-bit export on the Hub looks
-    like; both answers are labels for :func:`_scheme_width`, not claims about a specific vendor
+    like; both answers are labels for :func:`scheme_width`, not claims about a specific vendor
     format, so ``"nvfp4"`` here means "packed two-to-a-byte" rather than NVIDIA's exact encoding.
     """
     total = sum(elements_by_dtype.values())
@@ -1267,6 +1406,10 @@ class ModelMemoryFacts:
     #: NVIDIA's FP4 exports. Not the caller's ``kv_cache_dtype``: this is a property of the weights on
     #: disk, and vLLM honours it whether or not anyone asked. See :func:`hub_kv_quant_algo`.
     kv_quant_algo: str = ""
+    #: Whether the unembed shares the embedding matrix. Read by :func:`on_load_weight_bytes`, since
+    #: both stay at the model dtype under every on-load scheme and a tied pair is one matrix, not two.
+    #: False when unknown, which charges the second matrix -- the direction that does not OOM.
+    tied_embeddings: bool = False
 
     @property
     def kv_width(self) -> int:
@@ -1623,6 +1766,10 @@ class WorkloadSpec:
     #: default is ``"float32"``, not ``"auto"``, which doubles a bf16 checkpoint -- a sizer should
     #: say so rather than reproduce it silently.
     dtype: str = "auto"
+    #: An on-load scheme from :data:`QUANTIZATIONS` (``"fp8"``, ``"bnb-4bit"``, ...), or empty for
+    #: as stored. Not a dtype: vLLM rejects ``dtype="fp8"`` and transformers would store fp8 with no
+    #: kernel behind it, which is why this is its own field and its own ``load_model`` argument.
+    quantization: str = ""
     #: KV cache dtype. ``"auto"`` follows the model dtype.
     kv_cache_dtype: str = "auto"
     max_model_len: int = 0
@@ -2054,12 +2201,39 @@ def estimate(
         )
 
     # Only the eager backend expands a quantized checkpoint to the requested dtype; vLLM reads the same
-    # argument as an activation dtype and serves the packed weights. See `bytes_for_load`.
-    weights_total = facts.weights.bytes_for_load(spec.dtype, dequantizes=spec.backend == "eager")
+    # argument as an activation dtype and serves the packed weights. See `bytes_for_load`. An on-load
+    # scheme then narrows the linear layers and nothing else -- see `on_load_weight_bytes`.
+    refused = quantization_refusal(spec.quantization, spec.backend)
+    weights_total = on_load_weight_bytes(
+        facts, spec.dtype, "" if refused else spec.quantization, dequantizes=spec.backend == "eager"
+    )
     if not weights_total:
         warnings.append(
             "weight bytes are unknown, so every figure below is only the non-weight terms; "
             "pass hf_model_id or a config to model_memory_facts()"
+        )
+    if refused:
+        warnings.append(f"quantization={spec.quantization!r} is refused on backend={spec.backend!r}: {refused}")
+    elif spec.quantization and facts.weights.is_quantized:
+        warnings.append(
+            f"quantization={spec.quantization!r} changes nothing: this checkpoint already ships as "
+            f"{facts.weights.quant_method}, and a quantizer does not narrow what is already narrower. "
+            f"Priced as stored"
+        )
+    elif spec.quantization == "fp8" and not gpu.supports_fp8:
+        warnings.append(
+            f"{gpu.name} has no FP8 tensor cores, so quantization='fp8' runs weight-only through the "
+            f"Marlin kernel: the same memory, but slower than on Ada/Hopper or newer"
+        )
+    if (
+        spec.backend == "eager"
+        and spec.dtype in ("float16", "fp16", "half")
+        and (spec.attn_implementation or "eager") == "eager"
+        and facts.architecture in FP16_EAGER_OVERFLOW_ARCHS
+    ):
+        warnings.append(
+            f"{facts.architecture} overflows to NaN in float16 under attn_implementation='eager'; "
+            f"use dtype='bfloat16' or attn_implementation='sdpa'"
         )
     if facts.weights.is_quantized:
         dequantized = facts.weights.dequantized_bytes() or 0
@@ -2103,7 +2277,7 @@ def estimate(
                 "weights",
                 per_card_weights,
                 "eager",
-                f"{facts.weights.param_count / 1e9:.1f}B params at {spec.dtype}"
+                _weights_note(spec, facts, refused)
                 + (f", spread over {tp} GPUs" if tp > 1 else "")
                 + f" [{facts.weights.source}]",
             )
@@ -2126,8 +2300,9 @@ def estimate(
 
         total = sum(term.bytes for term in terms)
         headroom = gpu.total_bytes - total
-        fits = headroom >= 0 and facts.trunk_dims_known
-        if not fits and facts.trunk_dims_known:
+        # A refused quantization is a configuration that cannot start, whatever the arithmetic says.
+        fits = headroom >= 0 and facts.trunk_dims_known and not refused
+        if not fits and facts.trunk_dims_known and not refused:
             advice.extend(_eager_advice(activation, spec, facts))
         return MemoryEstimate(
             spec=spec,
@@ -2213,7 +2388,7 @@ def estimate(
             "weights",
             per_card_weights,
             "pool",
-            f"{facts.weights.param_count / 1e9:.1f}B params at {spec.dtype}"
+            _weights_note(spec, facts, refused)
             + (f", sharded over TP={tp}" if tp > 1 else "")
             + f" [{facts.weights.source}]",
         )
@@ -2275,7 +2450,13 @@ def estimate(
     # here; the warning above says which it is. An all-recurrent trunk reaches the same zero by a
     # different road -- there really is no cache -- and is refused for the same reason: what it holds
     # instead is a state pool nothing here prices.
-    fits = pool_headroom >= 0 and outside_headroom >= 0 and facts.trunk_dims_known and bool(facts.kv_caching_layers)
+    fits = (
+        pool_headroom >= 0
+        and outside_headroom >= 0
+        and facts.trunk_dims_known
+        and bool(facts.kv_caching_layers)
+        and not refused
+    )
 
     kv_room = max(pool_available - context - reserved_inside - per_card_weights - buffers - graphs, 0)
     per_token = (
@@ -2283,7 +2464,7 @@ def estimate(
     )
     kv_capacity = int(kv_room / (per_token / spec.max_model_len)) if per_token > 0 else 0
 
-    if not fits:
+    if not fits and not refused:
         advice.extend(
             _vllm_advice(
                 spec=spec,
@@ -2313,6 +2494,15 @@ def estimate(
         advice=tuple(advice),
         warnings=tuple(warnings),
     )
+
+
+def _weights_note(spec: WorkloadSpec, facts: ModelMemoryFacts, refused: str) -> str:
+    """The first clause of the weights term: what is loaded, at what width."""
+    note = f"{facts.weights.param_count / 1e9:.1f}B params at {spec.dtype}"
+    if spec.quantization and not refused and not facts.weights.is_quantized:
+        stored = spec.dtype if spec.dtype != "auto" else (facts.weights.stored_dtype or "bfloat16")
+        note += f", {spec.quantization} on load (embeddings stay {stored})"
+    return note
 
 
 def _eager_note(name: str, spec: WorkloadSpec, facts: ModelMemoryFacts) -> str:
@@ -2394,9 +2584,14 @@ def _vllm_advice(
             out.append("dtype='bfloat16' halves the weights, which are the largest term in the pool")
         if weights > gpu.total_bytes * 0.7:
             need = weights / (gpu.total_bytes * 0.6)
+            narrower = (
+                "quantization='fp8' halves the linear layers on load"
+                if not facts.weights.is_quantized and not spec.quantization
+                else "use a quantized checkpoint"
+            )
             out.append(
                 f"the weights alone are {weights / GIB:.1f} GiB of a {gpu.total_gib:.1f} GiB card; "
-                f"num_gpus={max(2, int(need) + 1)} shards them, or use a quantized checkpoint"
+                f"num_gpus={max(2, int(need) + 1)} shards them, or {narrower}"
             )
         if spec.graphs_on:
             out.append(
@@ -2477,6 +2672,7 @@ def model_memory_facts(
         max_position_embeddings=int(getattr(cfg, "max_position_embeddings", 0) or 0),
         architecture=f.architecture,
         kv_quant_algo=hub_kv_quant_algo(hf_model_id, token),
+        tied_embeddings=f.tied_embeddings,
     )
 
 
@@ -2507,6 +2703,7 @@ def fit(
     reservations: Reservations | None = None,
     max_model_len: int = 0,
     dtype: str = "auto",
+    quantization: str = "",
     kv_cache_dtype: str = "auto",
     num_gpus: int = 1,
     static_sites: int = 0,
@@ -2520,6 +2717,9 @@ def fit(
     attn_implementation: str = "",
 ) -> tuple[WorkloadSpec, MemoryEstimate] | None:
     """The largest configuration of this shape that fits, or None when none does.
+
+    A ``quantization`` the backend cannot apply returns None before any ladder is walked: the estimate
+    would price the refusal as a warning and refuse to fit, so every rung would come back False.
 
     Solves in the order the constraints actually bind:
 
@@ -2537,7 +2737,7 @@ def fit(
     """
     res = reservations or Reservations()
 
-    if not facts.trunk_dims_known:
+    if not facts.trunk_dims_known or quantization_refusal(quantization, backend):
         # Short-circuit what would happen anyway. `estimate` refuses to report `fits` on a model whose
         # dims are unknown, so every rung of every ladder below would come back False; returning here
         # just saves walking them. Callers wanting to tell "cannot size" from "does not fit" should
@@ -2566,6 +2766,7 @@ def fit(
             spec = WorkloadSpec(
                 backend="eager",
                 dtype=dtype,
+                quantization=quantization,
                 num_gpus=num_gpus,
                 batch_size=batch_size,
                 seq_len=prompt,
@@ -2611,6 +2812,7 @@ def fit(
             spec = WorkloadSpec(
                 backend=backend,
                 dtype=dtype,
+                quantization=quantization,
                 kv_cache_dtype=kv_cache_dtype,
                 max_model_len=context,
                 # A prefill batch wider than the context is waste: nothing can fill it.

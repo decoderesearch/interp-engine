@@ -94,6 +94,16 @@ eager = load_model("google/gemma-2-2b-it", backend="eager", device="cuda", dtype
 served = load_model("meta-llama/Llama-3.1-8B", backend="vllm", gpu_memory_utilization=0.85)
 ```
 
+Two knobs narrow a bf16 checkpoint on load, with no calibration and no other repo:
+`quantization=` applies `"fp8"` (vLLM backends), `"bnb-4bit"` (either backend) or `"bnb-8bit"`
+(eager) to every linear layer, and `kv_cache_dtype="fp8"` halves vLLM's paged cache. Both take the
+same name on both backends and are refused, naming the alternative, where a backend cannot apply
+them. The [GPU sizer](../gpu-sizer/INPUTS.md) prices both and prints the argument it priced.
+
+```python
+narrow = load_model("meta-llama/Llama-3.3-70B-Instruct", backend="vllm", quantization="fp8", kv_cache_dtype="fp8")
+```
+
 **Construction is cheap and lazy on both backends; `warmup()` is where the cost lands.** On vLLM
 almost the entire load happens there, so call it before you time anything or a first request pays
 for the engine.

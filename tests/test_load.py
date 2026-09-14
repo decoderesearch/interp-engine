@@ -258,6 +258,87 @@ def test_trust_remote_code_reaches_both_backends():
     assert _load(backend="vllm", trust_remote_code=False).kwargs["trust_remote_code"] is False
 
 
+# --- quantization and kv_cache_dtype -----------------------------------------
+
+
+def test_fp8_on_load_reaches_vllm_as_an_engine_argument():
+    m = _load(backend="vllm", quantization="fp8")
+    assert m.kwargs["extra_vllm_kwargs"]["quantization"] == "fp8"
+    assert "quantization_config" not in m.kwargs
+
+
+def test_nf4_on_load_names_vllm_its_own_word_for_it():
+    """vLLM calls in-flight NF4 ``bitsandbytes``; the sizer's name is the scheme, not the library."""
+    m = _load(backend="vllm-static", quantization="bnb-4bit")
+    assert m.kwargs["extra_vllm_kwargs"]["quantization"] == "bitsandbytes"
+
+
+@pytest.mark.parametrize(("scheme", "flag"), [("bnb-4bit", "load_in_4bit"), ("bnb-8bit", "load_in_8bit")])
+def test_bitsandbytes_on_eager_becomes_a_quantization_config(scheme, flag):
+    m = _load(backend="eager", quantization=scheme)
+    config = m.kwargs["quantization_config"]
+    assert getattr(config, flag) is True
+    assert "extra_vllm_kwargs" not in m.kwargs
+
+
+def test_fp8_on_eager_is_refused_with_the_way_forward():
+    """Not dropped, not forwarded to a constructor that would TypeError: refused, naming vLLM."""
+    with pytest.raises(ValueError, match="vLLM backend"):
+        _load(backend="eager", quantization="fp8")
+
+
+def test_bnb_8bit_on_vllm_is_refused_naming_the_4_bit_scheme():
+    with pytest.raises(ValueError, match="bnb-4bit"):
+        _load(backend="vllm", quantization="bnb-8bit")
+
+
+def test_an_unknown_scheme_is_refused_naming_the_known_ones():
+    with pytest.raises(ValueError, match="fp8, bnb-8bit, bnb-4bit"):
+        _load(backend="vllm", quantization="int3")
+
+
+def test_quantization_keeps_the_extra_vllm_kwargs_it_was_handed():
+    m = _load(backend="vllm", quantization="fp8", extra_vllm_kwargs={"seed": 7})
+    assert m.kwargs["extra_vllm_kwargs"] == {"seed": 7, "quantization": "fp8"}
+
+
+def test_two_spellings_of_the_vllm_quantizer_have_to_agree():
+    assert _load(backend="vllm", quantization="fp8", extra_vllm_kwargs={"quantization": "fp8"}).kwargs
+    with pytest.raises(ValueError, match="one or the other"):
+        _load(backend="vllm", quantization="fp8", extra_vllm_kwargs={"quantization": "awq"})
+
+
+def test_a_quantization_config_beside_the_scheme_is_refused_on_eager():
+    with pytest.raises(ValueError, match="one or the other"):
+        _load(backend="eager", quantization="bnb-4bit", quantization_config=object())
+
+
+def test_kv_cache_dtype_reaches_vllm_and_is_refused_on_eager():
+    m = _load(backend="vllm", kv_cache_dtype="fp8")
+    assert m.kwargs["extra_vllm_kwargs"]["kv_cache_dtype"] == "fp8"
+    with pytest.raises(ValueError, match="kv_cache_dtype='fp8'"):
+        _load(backend="eager", kv_cache_dtype="fp8")
+
+
+def test_the_defaults_add_nothing_to_either_constructor():
+    """No scheme and ``auto`` are the plain load: neither constructor sees a new argument."""
+    for backend in ("vllm", "eager"):
+        m = _load(backend=backend)
+        assert "extra_vllm_kwargs" not in m.kwargs
+        assert "quantization_config" not in m.kwargs
+
+
+def test_auto_resolves_the_backend_before_the_scheme_is_judged():
+    """``fp8`` on ``auto`` is refused or applied by the backend the ladder picks, not by the word auto."""
+    with (
+        patch.object(load, "select_backend", return_value=_selection(use_vllm=False)),
+        pytest.raises(ValueError, match="backend='eager'"),
+    ):
+        _load(backend="auto", quantization="fp8")
+    with patch.object(load, "select_backend", return_value=_selection(use_vllm=True)):
+        assert _load(backend="auto", quantization="fp8").kwargs["extra_vllm_kwargs"]["quantization"] == "fp8"
+
+
 def test_the_default_reaches_eager_unresolved_and_vllm_as_true():
     """vLLM never runs a checkpoint's *transformers* modeling code — its loader resolves against its
     own tree — so native-vs-bundled is the eager loader's question, and only it gets the unresolved

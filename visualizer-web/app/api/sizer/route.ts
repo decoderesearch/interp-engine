@@ -31,6 +31,7 @@ import {
   isVllm,
   jacobianLens,
   offeredStaticPoints,
+  quantizationRefusal,
   reservations,
   resolvedStaticPoints,
   snippet,
@@ -58,6 +59,9 @@ export const maxDuration = 30;
  */
 const DTYPES = ["auto", "bfloat16", "float16", "float32"];
 
+/** The KV cache widths vLLM serves, matching the sizer's control. Eager has none to set. */
+const KV_CACHE_DTYPES = ["auto", "fp8"];
+
 /** Reservations are entered in GiB, and past this the answer is not a sizing question. */
 const MAX_RESERVE_GIB = 1024;
 
@@ -80,6 +84,28 @@ export async function GET(request: Request) {
   const dtypeAsked = params.get("dtype")?.trim() ?? "";
   if (dtypeAsked && !DTYPES.includes(dtypeAsked)) {
     return problem(400, `dtype must be one of ${DTYPES.join(", ")}`);
+  }
+
+  // Refused where `load_model` would refuse, and with its sentence: `fit` answers a refused scheme
+  // with no result at all, which would read here as "nothing fits" for a reason no card can fix.
+  const quantization = params.get("quantization")?.trim() ?? "";
+  const refused = quantizationRefusal(quantization, backend as Backend);
+  if (refused) {
+    return problem(400, `quantization: ${refused}`);
+  }
+
+  const kvCacheDtype = params.get("kv_cache_dtype")?.trim() || "auto";
+  if (!KV_CACHE_DTYPES.includes(kvCacheDtype)) {
+    return problem(
+      400,
+      `kv_cache_dtype must be one of ${KV_CACHE_DTYPES.join(", ")}`,
+    );
+  }
+  if (kvCacheDtype !== "auto" && !isVllm(backend as Backend)) {
+    return problem(
+      400,
+      "kv_cache_dtype applies to the vLLM backends; transformers keeps its cache in the model dtype",
+    );
   }
 
   const context = digits(params.get("max_model_len"), MAX_CONTEXT);
@@ -197,6 +223,8 @@ export async function GET(request: Request) {
   const results = fitAcross(facts, {
     backend: backend as Backend,
     dtype,
+    quantization,
+    kvCacheDtype,
     maxModelLen,
     staticPoints: asked,
     res,
@@ -210,6 +238,8 @@ export async function GET(request: Request) {
       request: {
         backend,
         dtype,
+        quantization,
+        kvCacheDtype,
         maxModelLen,
         staticPoints: asked,
         reserveGib: reserveGib ?? 0,
@@ -221,7 +251,16 @@ export async function GET(request: Request) {
       // the only thing the response has to say, priced the way the page prices it.
       advice: results.length
         ? []
-        : shortfall(facts, backend as Backend, dtype, maxModelLen, asked, res),
+        : shortfall(
+            facts,
+            backend as Backend,
+            dtype,
+            quantization,
+            kvCacheDtype,
+            maxModelLen,
+            asked,
+            res,
+          ),
     },
     { headers: { "cache-control": "no-store" } },
   );
@@ -304,6 +343,8 @@ function serialize(
     spec: {
       backend: est.spec.backend,
       dtype: est.spec.dtype,
+      quantization: est.spec.quantization,
+      kvCacheDtype: est.spec.kvCacheDtype,
       numGpus: count,
       maxModelLen: est.spec.maxModelLen,
       maxNumBatchedTokens: est.spec.maxNumBatchedTokens,
@@ -360,6 +401,8 @@ function shortfall(
   facts: ModelMemoryFacts,
   backend: Backend,
   dtype: string,
+  quantization: string,
+  kvCacheDtype: string,
   maxModelLen: number,
   staticPoints: string[],
   res: Reservations,
@@ -371,6 +414,8 @@ function shortfall(
     workload({
       backend,
       dtype,
+      quantization,
+      kvCacheDtype,
       maxModelLen,
       staticPoints,
       gpuMemoryUtilization: isVllm(backend) ? CALIBRATION.max_util : 0,

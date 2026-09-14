@@ -29,12 +29,15 @@ import { VramBar } from "@/components/sizer/VramBar";
 import { CALIBRATION, GPUS } from "@/data/gpus.generated";
 import {
   GIB,
+  QUANTIZATIONS,
+  QUANTIZATION_NAMES,
   concurrentSequences,
   estimate,
   fitAcross,
   isVllm,
   jacobianLens,
   offeredStaticPoints,
+  quantizationRefusal,
   reservations,
   resolvedStaticPoints,
   snippet,
@@ -49,8 +52,10 @@ import {
 import {
   HubError,
   kvPrecision,
+  quantizedVariants,
   setHubToken,
   type ModelMemoryFacts,
+  type QuantizedVariant,
 } from "@/lib/hub";
 import { cachedModelIds } from "@/lib/models";
 import { resolveFacts } from "@/lib/resolve";
@@ -153,6 +158,13 @@ const QUICK_PICKS = [
 
 const DTYPES = ["auto", "bfloat16", "float16", "float32"];
 
+/**
+ * The KV cache widths vLLM serves. `auto` is the model dtype, or the checkpoint's own KV scheme
+ * when it declares one; `fp8` halves the cache on any card, with a dynamic scale on pre-Hopper
+ * ones. The eager backend has no KV dtype of its own, so the control is hidden there.
+ */
+const KV_CACHE_DTYPES = ["auto", "fp8"];
+
 const CONTEXT_MODES = [
   { value: "auto", label: "auto" },
   { value: "manual", label: "manual" },
@@ -207,6 +219,15 @@ export function Sizer({
   const [backend, setBackend] = useState<Backend>("vllm");
   // Empty means "whatever this checkpoint calls for", resolved at use.
   const [dtypeChoice, setDtypeChoice] = useState("");
+  // Empty means load the checkpoint as it is stored; a name from `QUANTIZATIONS` narrows it on load.
+  const [quantizationChoice, setQuantizationChoice] = useState("");
+  const [kvCacheDtype, setKvCacheDtype] = useState("auto");
+  // Keyed by the model they were listed for, so a listing that lands after the next resolve shows
+  // under nothing.
+  const [variants, setVariants] = useState<{
+    modelId: string;
+    list: QuantizedVariant[];
+  }>({ modelId: "", list: [] });
   const [context, setContext] = useState(0);
   // Empty means `"auto"`, which the trunk resolves rather than this component: a hyper-connection
   // block has no single `resid_post` to tap, so the default there is the whole stream stack.
@@ -217,6 +238,14 @@ export function Sizer({
   const [suggestions, setSuggestions] = useState<string[]>([]);
 
   const dtype = facts ? dtypeChoice || recommendedDtype(facts) : "bfloat16";
+  // Dropped rather than refused where it cannot apply: switching to eager with fp8 picked, or
+  // resolving a checkpoint that already ships quantized, prices the plain load and hides the control.
+  const quantization =
+    facts &&
+    !facts.weights.quantMethod &&
+    !quantizationRefusal(quantizationChoice, backend)
+      ? quantizationChoice
+      : "";
 
   // Also what warms the cache chunk: the suggestions and the lookup read the same module, so asking
   // for the ids on mount means it has landed before anyone finishes typing an id.
@@ -246,6 +275,8 @@ export function Sizer({
     setError("");
     setBackend("vllm");
     setDtypeChoice("");
+    setQuantizationChoice("");
+    setKvCacheDtype("auto");
     setContext(0);
     setStaticPoints([]);
     setReserveGib(0);
@@ -254,6 +285,16 @@ export function Sizer({
   }
 
   resolveRef.current = (id: string) => void resolve(id);
+
+  // The Hub's own list of quantized exports, one request behind the resolve rather than part of it:
+  // the estimate does not wait on it, and a checkpoint that is itself quantized offers none, since
+  // its siblings are alternatives to the base and not to it.
+  function listVariants(resolved: ModelMemoryFacts) {
+    if (resolved.weights.quantMethod) return;
+    void quantizedVariants(resolved.modelId).then((list) => {
+      setVariants({ modelId: resolved.modelId, list });
+    });
+  }
 
   async function resolve(id: string) {
     const wanted = id.trim();
@@ -264,12 +305,14 @@ export function Sizer({
     try {
       const resolved = await resolveFacts(wanted);
       setFacts(resolved);
+      listVariants(resolved);
       // A model whose advertised context could not be read needs one chosen rather than defaulted,
       // and 8192 is a length worth pricing rather than a guess at the model's limit.
       setContext(
         resolved.derivedDims.includes("max_position_embeddings") ? 8192 : 0,
       );
       setDtypeChoice("");
+      setQuantizationChoice("");
       setSelected("");
     } catch (cause) {
       setFacts(null);
@@ -303,12 +346,14 @@ export function Sizer({
         ? fitAcross(facts, {
             backend,
             dtype,
+            quantization,
+            kvCacheDtype,
             maxModelLen: context,
             staticPoints,
             res,
           })
         : [],
-    [facts, backend, dtype, context, staticPoints, res],
+    [facts, backend, dtype, quantization, kvCacheDtype, context, staticPoints, res],
   );
 
   const tiers = useMemo(() => byTier(results), [results]);
@@ -344,6 +389,17 @@ export function Sizer({
 
         {facts && <ModelSummary facts={facts} />}
 
+        {facts && variants.modelId === facts.modelId && variants.list.length > 0 && (
+          <Variants
+            variants={variants.list}
+            busy={busy}
+            onPick={(id) => {
+              setQuery(id);
+              void resolve(id);
+            }}
+          />
+        )}
+
         <TokenOverride token={token} onToken={setToken} />
       </div>
 
@@ -373,6 +429,10 @@ export function Sizer({
               onBackend={setBackend}
               dtype={dtype}
               onDtype={setDtypeChoice}
+              quantization={quantization}
+              onQuantization={setQuantizationChoice}
+              kvCacheDtype={kvCacheDtype}
+              onKvCacheDtype={setKvCacheDtype}
               staticPoints={staticPoints}
               onStaticPoints={setStaticPoints}
               context={context}
@@ -405,6 +465,8 @@ export function Sizer({
                 facts={facts}
                 backend={backend}
                 dtype={dtype}
+                quantization={quantization}
+                kvCacheDtype={kvCacheDtype}
                 tiers={tiers}
                 selected={chosen?.gpu.name ?? ""}
                 onSelect={setSelected}
@@ -423,6 +485,8 @@ export function Sizer({
                     facts={facts}
                     backend={backend}
                     dtype={dtype}
+                    quantization={quantization}
+                    kvCacheDtype={kvCacheDtype}
                     context={context}
                     staticPoints={staticPoints}
                     res={res}
@@ -839,12 +903,64 @@ function Fact({
   );
 }
 
+/**
+ * The quantized exports the Hub lists for the model above, as chips that resolve on a click.
+ *
+ * These are other repos, not settings: a `RedHatAI/...-FP8-dynamic` chip prices that checkpoint
+ * with its own headers and its own KV declaration, which is the only honest number for a scheme
+ * that needed a calibration run. The on-load quantizer in the controls covers the schemes that do
+ * not. Labelled by uploader and format, since the ids repeat the model name eight times over.
+ */
+function Variants({
+  variants,
+  busy,
+  onPick,
+}: {
+  variants: QuantizedVariant[];
+  busy: boolean;
+  onPick: (id: string) => void;
+}) {
+  return (
+    <div>
+      <div className="mb-1 flex items-baseline justify-between">
+        <span className="font-mono text-[9px] text-slate-500">
+          quantized on the Hub
+        </span>
+        <span className="text-[9px] text-slate-400 italic">
+          click to size that repo instead
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {variants.map((variant) => (
+          <button
+            key={variant.id}
+            type="button"
+            disabled={busy}
+            onClick={() => onPick(variant.id)}
+            title={`${variant.id}\n${variant.quantMethod}${
+              variant.kvQuantAlgo ? `, ${variant.kvQuantAlgo} KV cache` : ""
+            }, ${num(variant.downloads)} downloads`}
+            className="cursor-pointer rounded-md border border-slate-300 bg-white px-1.5 py-1 font-mono text-[10px] whitespace-nowrap text-slate-600 transition-colors hover:border-sky-600 hover:text-sky-700 disabled:pointer-events-none disabled:opacity-40"
+          >
+            {variant.id.slice(0, variant.id.indexOf("/"))}{" "}
+            <span className="font-semibold">{variant.family}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Controls({
   facts,
   backend,
   onBackend,
   dtype,
   onDtype,
+  quantization,
+  onQuantization,
+  kvCacheDtype,
+  onKvCacheDtype,
   staticPoints,
   onStaticPoints,
   context,
@@ -859,6 +975,10 @@ function Controls({
   onBackend: (value: Backend) => void;
   dtype: string;
   onDtype: (value: string) => void;
+  quantization: string;
+  onQuantization: (value: string) => void;
+  kvCacheDtype: string;
+  onKvCacheDtype: (value: string) => void;
   staticPoints: string[];
   onStaticPoints: (value: string[]) => void;
   context: number;
@@ -869,6 +989,11 @@ function Controls({
   onLens: (value: boolean) => void;
 }) {
   const blind = facts.derivedDims.includes("max_position_embeddings");
+  // The schemes this backend applies. Whatever it refuses is left off the bar rather than greyed,
+  // since the refusal names another backend and a disabled segment cannot say so.
+  const quantizations = QUANTIZATION_NAMES.filter(
+    (name) => !quantizationRefusal(name, backend),
+  );
   return (
     <div className="flex flex-col gap-y-5">
       {/* One card per row, each carrying its own note: the choice is between
@@ -946,6 +1071,47 @@ function Controls({
             onChange={onDtype}
           />
         </Field>
+
+        {/* Only on a checkpoint stored wide. A repo that already ships fp8 or int4 is narrowed by
+            the chips in the first column, which pick another repo; a quantizer on top of it would
+            be a no-op the estimate has to explain away. */}
+        {!facts.weights.quantMethod && (
+          <Field label="quantize on load" hint="no calibration step">
+            <Segmented
+              options={[
+                { value: "", label: "none", title: "load the checkpoint as it is stored" },
+                ...quantizations.map((name) => ({
+                  value: name,
+                  label: name,
+                  title: QUANTIZATIONS[name].why,
+                })),
+              ]}
+              value={quantization}
+              onChange={onQuantization}
+            />
+          </Field>
+        )}
+
+        {/* vLLM's cache only: transformers keeps its KV in the model dtype. */}
+        {isVllm(backend) && (
+          <Field
+            label="kv_cache_dtype"
+            hint={
+              facts.kvQuantAlgo
+                ? `checkpoint declares ${facts.kvQuantAlgo}`
+                : "auto = model dtype"
+            }
+          >
+            <Segmented
+              options={KV_CACHE_DTYPES.map((option) => ({
+                value: option,
+                label: option,
+              }))}
+              value={kvCacheDtype}
+              onChange={onKvCacheDtype}
+            />
+          </Field>
+        )}
 
         <Field
           label={isVllm(backend) ? "max_model_len" : "prompt tokens"}
@@ -1183,7 +1349,7 @@ function Segmented({
   value,
   onChange,
 }: {
-  options: readonly { value: string; label: string }[];
+  options: readonly { value: string; label: string; title?: string }[];
   value: string;
   onChange: (value: string) => void;
 }) {
@@ -1195,6 +1361,7 @@ function Segmented({
           <button
             key={option.value}
             type="button"
+            title={option.title}
             onClick={() => onChange(option.value)}
             className={`relative flex-1 cursor-pointer border px-1.5 py-1.5 font-mono text-[10px] whitespace-nowrap transition-colors first:rounded-l-md last:rounded-r-md ${
               active
@@ -1273,6 +1440,8 @@ function Results({
   facts,
   backend,
   dtype,
+  quantization,
+  kvCacheDtype,
   tiers,
   selected,
   onSelect,
@@ -1280,6 +1449,8 @@ function Results({
   facts: ModelMemoryFacts;
   backend: Backend;
   dtype: string;
+  quantization: string;
+  kvCacheDtype: string;
   tiers: Tier[];
   selected: string;
   onSelect: (name: string) => void;
@@ -1301,10 +1472,7 @@ function Results({
     return (
       <Empty>
         None of the {GPUS.length} cards in the catalog fits this, even sharded
-        across 8 of them.
-        {facts.weights.quantMethod && dtype !== "auto"
-          ? ` Try dtype "auto": ${facts.weights.quantMethod} served natively is much smaller than the dequantized figure this is pricing.`
-          : " A quantized checkpoint of this model would, or a shorter context."}
+        across 8 of them. {noFitHint(facts, backend, dtype, quantization, kvCacheDtype)}
       </Empty>
     );
   }
@@ -1415,6 +1583,31 @@ function Results({
 }
 
 /**
+ * The one knob most likely to make something fit, named in the order the controls offer them: the
+ * storage width a quantized repo already has, then the quantizer, then the cache, then the context.
+ */
+function noFitHint(
+  facts: ModelMemoryFacts,
+  backend: Backend,
+  dtype: string,
+  quantization: string,
+  kvCacheDtype: string,
+): string {
+  if (facts.weights.quantMethod && dtype !== "auto") {
+    return `Try dtype "auto": ${facts.weights.quantMethod} served natively is much smaller than the dequantized figure this is pricing.`;
+  }
+  if (!facts.weights.quantMethod && !quantization) {
+    return isVllm(backend)
+      ? 'Try "fp8" under quantize on load, which halves the linear layers, or a Hub repo that ships quantized.'
+      : 'Try "bnb-4bit" under quantize on load, or a Hub repo that ships quantized.';
+  }
+  if (isVllm(backend) && kvCacheDtype === "auto" && !facts.kvQuantAlgo) {
+    return 'Try kv_cache_dtype "fp8", which halves the cache, or a shorter context.';
+  }
+  return "A shorter context would, or more cards than the catalog shards across.";
+}
+
+/**
  * The tier table's tracks, shared by the header and every row.
  *
  * Fixed widths and one constant, because the header and the rows are separate
@@ -1505,6 +1698,8 @@ function NoFit({
   facts,
   backend,
   dtype,
+  quantization,
+  kvCacheDtype,
   context,
   staticPoints,
   res,
@@ -1512,6 +1707,8 @@ function NoFit({
   facts: ModelMemoryFacts;
   backend: Backend;
   dtype: string;
+  quantization: string;
+  kvCacheDtype: string;
   context: number;
   staticPoints: string[];
   res: Reservations;
@@ -1523,6 +1720,8 @@ function NoFit({
     workload({
       backend,
       dtype,
+      quantization,
+      kvCacheDtype,
       maxModelLen: context,
       staticPoints,
       // vLLM's own default rather than a derived ceiling: a fit search would have lowered this to buy

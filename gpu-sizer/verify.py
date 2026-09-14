@@ -206,6 +206,11 @@ class Record:
         model = self.model_id.replace("/", "__")
         gpu = str(self.gpu.get("name", "unknown")).replace(" ", "-")
         parts = [model, gpu, self.backend, str(self.spec.get("dtype", "auto"))]
+        # Same model, same dtype, half the weights or half the cache: each is its own measurement.
+        if self.spec.get("quantization"):
+            parts.append(f"q{self.spec['quantization']}")
+        if self.spec.get("kv_cache_dtype") not in (None, "", "auto"):
+            parts.append(f"kv{self.spec['kv_cache_dtype']}")
         if self.spec.get("max_model_len"):
             parts.append(f"ctx{self.spec['max_model_len']}")
         if int(self.spec.get("num_gpus") or 1) > 1:
@@ -356,6 +361,12 @@ def child_main(payload: dict[str, Any]) -> int:
     load_kwargs: dict[str, Any] = {"backend": backend, "dtype": spec["dtype"]}
     if spec.get("num_gpus", 1) > 1:
         load_kwargs["num_gpus"] = spec["num_gpus"]
+    # Through `load_model`'s own arguments, which is the route the sizer's snippet prints, so a
+    # record here vouches for exactly the call a reader would make.
+    if spec.get("quantization"):
+        load_kwargs["quantization"] = spec["quantization"]
+    if spec.get("kv_cache_dtype") not in (None, "", "auto"):
+        load_kwargs["kv_cache_dtype"] = spec["kv_cache_dtype"]
     if backend in mem.VLLM_BACKENDS:
         load_kwargs["gpu_memory_utilization"] = spec["gpu_memory_utilization"]
         if spec.get("max_model_len"):
@@ -951,6 +962,42 @@ def standard_specs(gpu: mem.GpuSpec) -> list[dict[str, Any]]:
             "max_model_len": 8192,
             "why": "22.7 GiB of weights on a 44 GiB card -- the edge case this whole tool exists for",
         },
+        {
+            "model": "Qwen/Qwen3-8B",
+            "backend": "vllm",
+            "dtype": "bfloat16",
+            "quantization": "fp8",
+            "max_model_len": 8192,
+            "why": (
+                "FP8 quantized on load: the sizer halves the linear layers and leaves the embeddings at "
+                "bf16, and this is the measurement that rule rests on"
+            ),
+        },
+        {
+            "model": "Qwen/Qwen3-8B",
+            "backend": "vllm",
+            "dtype": "bfloat16",
+            "kv_cache_dtype": "fp8",
+            "max_model_len": 8192,
+            "why": "an fp8 KV cache: the cache halves and the weights do not, so the KV token count is the check",
+        },
+        # The 70B FP8 pair. Same base model, same scheme, and one fits a single 80 GB card where the
+        # other needs two: NVIDIA's export declares an fp8 KV cache in `hf_quant_config.json`, which
+        # the sizer reads from the sidecar. On a card too small for either they queue as pending.
+        {
+            "model": "RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic",
+            "backend": "vllm",
+            "dtype": "auto",
+            "max_model_len": 8192,
+            "why": "70B in FP8 with a bf16 KV cache: 67.7 GiB of weights, which is 2 x 80 GB cards",
+        },
+        {
+            "model": "nvidia/Llama-3.3-70B-Instruct-FP8",
+            "backend": "vllm",
+            "dtype": "auto",
+            "max_model_len": 8192,
+            "why": "the same 70B in FP8 with an fp8 KV cache declared by the checkpoint: one 80 GB card",
+        },
         # The two below need hardware an Ampere card does not have. They are in the standard set rather
         # than in a separate list on purpose: run here they queue themselves into `pending/` and show up
         # as gaps in VERIFIED.md, and run on an H100 or a B200 they simply execute. A card's own
@@ -1090,16 +1137,19 @@ def queue_pending(entry: dict[str, Any], reason: str) -> Path:
     that *can* run it needs no argument beyond the flag.
     """
     PENDING.mkdir(parents=True, exist_ok=True)
-    slug = f"{entry['model'].replace('/', '__')}_{entry.get('backend', 'vllm')}_{entry.get('dtype', 'auto')}"
-    path = PENDING / f"{slug}.json"
+    path = pending_path(entry)
     path.write_text(json.dumps({**entry, "needs": reason}, indent=2) + "\n", encoding="utf-8")
     return path
 
 
 def pending_path(entry: dict[str, Any]) -> Path:
     """Where :func:`queue_pending` would file this entry."""
-    slug = f"{entry['model'].replace('/', '__')}_{entry.get('backend', 'vllm')}_{entry.get('dtype', 'auto')}"
-    return PENDING / f"{slug}.json"
+    parts = [entry["model"].replace("/", "__"), entry.get("backend", "vllm"), entry.get("dtype", "auto")]
+    if entry.get("quantization"):
+        parts.append(f"q{entry['quantization']}")
+    if entry.get("kv_cache_dtype") not in (None, "", "auto"):
+        parts.append(f"kv{entry['kv_cache_dtype']}")
+    return PENDING / f"{'_'.join(parts)}.json"
 
 
 def clear_pending(entry: dict[str, Any]) -> Path | None:
@@ -1129,7 +1179,10 @@ def unverifiable_reason(entry: dict[str, Any], gpu: mem.GpuSpec, family: str = "
     ``compressed-tensors`` down to the actual numeric format. The model *name* is still searched as a
     last resort, but nothing is meant to depend on it.
     """
-    haystack = f"{entry.get('dtype', '')} {family} {entry.get('model', '')}".lower()
+    haystack = (
+        f"{entry.get('dtype', '')} {entry.get('quantization', '')} {entry.get('kv_cache_dtype', '')} "
+        f"{family} {entry.get('model', '')}"
+    ).lower()
     for scheme in gpu.cannot_verify():
         if scheme in haystack:
             return (
@@ -1175,6 +1228,16 @@ def distill_error(text: str) -> str:
     # One exit, one sanitization. A stray pipe reaching a markdown cell silently splits the row into
     # extra columns, so nothing may return before this.
     return " ".join(chosen.split()).replace("|", "/")[:130]
+
+
+def dtype_cell(spec: dict[str, Any]) -> str:
+    """The dtype column: the load dtype, plus what narrowed the weights or the cache on load."""
+    text = str(spec.get("dtype", "auto"))
+    if spec.get("quantization"):
+        text += f" +{spec['quantization']}"
+    if spec.get("kv_cache_dtype") not in (None, "", "auto"):
+        text += f" kv:{spec['kv_cache_dtype']}"
+    return text
 
 
 def gpu_cell(r: Record) -> str:
@@ -1320,7 +1383,7 @@ def render_report() -> str:
             old = predates_static_shrink(r)
             stale = stale or old
             lines.append(
-                f"| `{r.model_id}` | {gpu_cell(r)} | `{r.backend}`{' †' if old else ''} | {spec.get('dtype')} | "
+                f"| `{r.model_id}` | {gpu_cell(r)} | `{r.backend}`{' †' if old else ''} | {dtype_cell(spec)} | "
                 f"{spec.get('max_model_len') or '-'} | {spec.get('gpu_memory_utilization') or '-'} | "
                 f"{reserved_cell(r)} | "
                 f"{built:,} | {predicted:,} | {kv_ratio_cell(built, predicted)} | {outside:.2f} | {share} | "
@@ -1372,7 +1435,7 @@ def render_report() -> str:
             ratio = meas["peak_bytes"] / est["total_bytes"] if est["total_bytes"] else 0
             flag = " !" if ratio > 1 else ""
             lines.append(
-                f"| `{r.model_id}` | {gpu_cell(r)} | {spec.get('dtype')} | "
+                f"| `{r.model_id}` | {gpu_cell(r)} | {dtype_cell(spec)} | "
                 f"{spec.get('seq_len') or '-'} | {spec.get('attn_implementation') or 'eager'} | "
                 f"{est['total_bytes'] / mem.GIB:.1f} | {meas['peak_bytes'] / mem.GIB:.1f} | "
                 f"{ratio:.2f}{flag} |"
@@ -1399,7 +1462,7 @@ def render_report() -> str:
             detail = distill_error(r.stress.get("failure_detail") or r.error or "")
             unexpected = "" if r.expected == "fail" else " UNEXPECTED"
             lines.append(
-                f"| `{r.model_id}` | {gpu_cell(r)} | `{r.backend}` | {spec.get('dtype')} | "
+                f"| `{r.model_id}` | {gpu_cell(r)} | `{r.backend}` | {dtype_cell(spec)} | "
                 f"{spec.get('max_model_len') or '-'} | {reserved_cell(r)} | "
                 f"**{r.outcome}**{unexpected}: {detail} | {r.why or '-'} |"
             )
@@ -1421,7 +1484,7 @@ def render_report() -> str:
         for path in pend:
             entry = json.loads(path.read_text(encoding="utf-8"))
             lines.append(
-                f"| `{entry.get('model')}` | `{entry.get('backend')}` | {entry.get('dtype')} | {entry.get('needs')} |"
+                f"| `{entry.get('model')}` | `{entry.get('backend')}` | {dtype_cell(entry)} | {entry.get('needs')} |"
             )
     else:
         lines.append("Nothing queued.")
@@ -1468,18 +1531,24 @@ def build_spec(args: argparse.Namespace, facts: mem.ModelMemoryFacts, gpu: mem.G
             gpu,
             backend=args.backend,
             dtype=args.dtype,
+            quantization=args.quantization,
+            kv_cache_dtype=args.kv_cache_dtype,
             max_model_len=args.max_model_len,
             num_gpus=args.num_gpus,
         )
         if result is None:
             raise SystemExit(
-                f"nothing fits: {facts.model_id} on {gpu.name} with backend={args.backend} dtype={args.dtype}. "
+                f"nothing fits: {facts.model_id} on {gpu.name} with backend={args.backend} dtype={args.dtype}"
+                + (f" quantization={args.quantization}" if args.quantization else "")
+                + ". "
                 f"Run `python gpu-sizer/fit.py {facts.model_id}` to see what would."
             )
         return result[0]
     return mem.WorkloadSpec(
         backend=args.backend,
         dtype=args.dtype,
+        quantization=args.quantization,
+        kv_cache_dtype=args.kv_cache_dtype,
         max_model_len=args.max_model_len,
         max_num_batched_tokens=args.max_num_batched_tokens,
         max_num_seqs=args.max_num_seqs,
@@ -1501,6 +1570,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--model", help="HF model id")
     p.add_argument("--backend", default="vllm", choices=[b for b in mem.BACKENDS if b != "auto"])
     p.add_argument("--dtype", default="auto")
+    p.add_argument("--quantization", default="", choices=["", *mem.QUANTIZATIONS], help="quantize on load")
+    p.add_argument("--kv-cache-dtype", default="auto", choices=["auto", "fp8"], help="vLLM KV cache dtype")
     p.add_argument("--max-model-len", type=int, default=0)
     p.add_argument("--max-num-batched-tokens", type=int, default=0)
     p.add_argument("--max-num-seqs", type=int, default=0)
@@ -1598,6 +1669,8 @@ def main(argv: list[str]) -> int:
                 "model": args.model,
                 "backend": args.backend,
                 "dtype": args.dtype,
+                "quantization": args.quantization,
+                "kv_cache_dtype": args.kv_cache_dtype,
                 "max_model_len": args.max_model_len,
                 "max_num_batched_tokens": args.max_num_batched_tokens,
                 "expect": "fail" if args.expect_fail else "pass",
@@ -1655,6 +1728,8 @@ def main(argv: list[str]) -> int:
         merged = argparse.Namespace(**vars(args))
         merged.backend = entry.get("backend", args.backend)
         merged.dtype = entry.get("dtype", args.dtype)
+        merged.quantization = str(entry.get("quantization", args.quantization) or "")
+        merged.kv_cache_dtype = str(entry.get("kv_cache_dtype", args.kv_cache_dtype) or "auto")
         merged.max_model_len = entry.get("max_model_len", args.max_model_len)
         merged.max_num_batched_tokens = entry.get("max_num_batched_tokens", args.max_num_batched_tokens)
         merged.attn_implementation = entry.get("attn_implementation", args.attn_implementation)
@@ -1678,8 +1753,14 @@ def main(argv: list[str]) -> int:
                 print(f"    refused before loading, which is the expected outcome: {exc}")
                 print()
                 continue
-            print(f"    {exc}")
-            failures += 1
+            # For one that was supposed to pass, this card is too small for it: a statement about the
+            # card, not about the estimate, so it is queued for a bigger one rather than counted as
+            # the estimator having been wrong. The 70B FP8 pair reaches here on anything under 80 GB.
+            needs = f"needs a card that fits it; this one is {gpu.total_gib:.2f} GiB ({exc})"
+            path = queue_pending(entry, needs)
+            print(f"    QUEUED, not run: {needs}")
+            print(f"    -> {path.relative_to(REPO)}")
+            print()
             continue
 
         # A row that is supposed to fail has to overrun THIS card, and most of them were sized against

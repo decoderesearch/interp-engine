@@ -79,6 +79,10 @@ def _verified_rows() -> list[dict[str, Any]]:
                 "gpu": record.get("gpu", {}).get("name", ""),
                 "backend": record.get("backend", ""),
                 "dtype": spec.get("dtype", ""),
+                # Both narrow what the run held, so a run without them says nothing about one with
+                # them. Records written before the fields existed ran as stored.
+                "quantization": spec.get("quantization", "") or "",
+                "kvCacheDtype": spec.get("kv_cache_dtype", "auto") or "auto",
                 # The three knobs that only ever cost more memory, so one run can speak about a
                 # configuration that was never run: a pass vouches for anything asking for no more,
                 # a failure condemns anything asking for at least as much. `fit.py`'s `_width` is the
@@ -130,6 +134,10 @@ export interface VerifiedRun {{
   gpu: string;
   backend: string;
   dtype: string;
+  /** The on-load scheme, or empty for as stored. Matched exactly, like `dtype`. */
+  quantization: string;
+  /** vLLM's KV cache dtype, `"auto"` unless the run set one. Matched exactly too. */
+  kvCacheDtype: string;
   /** The three knobs that only ever cost more memory, ordered against another spec's. */
   maxModelLen: number;
   maxNumBatchedTokens: number;

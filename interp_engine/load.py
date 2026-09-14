@@ -50,12 +50,62 @@ def _declares_nothing(value: Any) -> bool:
     return not list(value)
 
 
+def _apply_load_precision(backend: str, quantization: str, kv_cache_dtype: str, backend_kwargs: dict[str, Any]) -> None:
+    """Turn ``quantization`` and ``kv_cache_dtype`` into what ``backend``'s constructor takes.
+
+    Both are one name on ``load_model`` and two different things underneath: vLLM quantizes through
+    an engine argument, transformers through a ``BitsAndBytesConfig``. The table in
+    :data:`interp_engine.memory.QUANTIZATIONS` says which backend applies which scheme, and a scheme
+    the backend cannot apply is refused here with that table's reason -- never passed on to become an
+    opaque ``TypeError`` from a constructor, and never dropped to load the checkpoint as stored.
+    """
+    from interp_engine.memory import QUANTIZATIONS, quantization_refusal
+
+    use_vllm = backend in VLLM_BACKENDS
+    if kv_cache_dtype not in ("auto", "", None):
+        if not use_vllm:
+            raise ValueError(
+                f"kv_cache_dtype={kv_cache_dtype!r} names the dtype of vLLM's paged KV cache, and "
+                f"backend={backend!r} has no such cache. Drop it, or use a vLLM backend."
+            )
+        extra = dict(backend_kwargs.get("extra_vllm_kwargs") or {})
+        extra.setdefault("kv_cache_dtype", kv_cache_dtype)
+        backend_kwargs["extra_vllm_kwargs"] = extra
+
+    if not quantization:
+        return
+    refused = quantization_refusal(quantization, backend)
+    if refused:
+        raise ValueError(f"quantization={quantization!r} on backend={backend!r}: {refused}")
+    scheme = QUANTIZATIONS[quantization]
+    if use_vllm:
+        extra = dict(backend_kwargs.get("extra_vllm_kwargs") or {})
+        if extra.get("quantization") not in (None, scheme.vllm_name):
+            raise ValueError(
+                f"quantization={quantization!r} asks vLLM for {scheme.vllm_name!r}, but extra_vllm_kwargs "
+                f"already names {extra['quantization']!r}. Pass one or the other."
+            )
+        extra["quantization"] = scheme.vllm_name
+        backend_kwargs["extra_vllm_kwargs"] = extra
+        return
+    if backend_kwargs.get("quantization_config") is not None:
+        raise ValueError(
+            f"quantization={quantization!r} builds a BitsAndBytesConfig, and quantization_config= was "
+            f"passed as well. Pass one or the other."
+        )
+    from transformers import BitsAndBytesConfig
+
+    backend_kwargs["quantization_config"] = BitsAndBytesConfig(**scheme.eager_config)
+
+
 def load_model(
     hf_model_id: str,
     *,
     backend: str = "auto",
     device: str | None = None,
     dtype: str = "auto",
+    quantization: str = "",
+    kv_cache_dtype: str = "auto",
     num_gpus: int = 1,
     trust_remote_code: bool | None = None,
     static_points: Any = None,
@@ -86,7 +136,21 @@ def load_model(
         device: Explicit device for the eager backend. None means let the ladder choose.
             Ignored by vLLM, which always initializes on CUDA.
         dtype: ``"auto"`` (the checkpoint's native precision) or an explicit
-            ``"float32"``/``"float16"``/``"bfloat16"``.
+            ``"float32"``/``"float16"``/``"bfloat16"``. This is the width the **activations** run
+            at, and the width an unquantized checkpoint's weights are held at. It is not how to ask
+            for a narrower checkpoint: vLLM rejects ``dtype="fp8"``, and transformers would store
+            fp8 weights with no kernel behind them. That is ``quantization``.
+        quantization: An on-load scheme from :data:`interp_engine.memory.QUANTIZATIONS`, applied to
+            a wider checkpoint as it loads, with no calibration step: ``"fp8"`` (vLLM only),
+            ``"bnb-4bit"`` (either backend) or ``"bnb-8bit"`` (eager only). Empty, the default,
+            loads the checkpoint as stored -- which for a repo that already ships quantized is the
+            right answer, since a quantizer cannot narrow what is already narrower. A scheme the
+            chosen backend cannot apply is refused, naming the one to use instead. Other vLLM
+            schemes still reach the engine through ``extra_vllm_kwargs={"quantization": ...}``.
+        kv_cache_dtype: vLLM's KV cache dtype -- ``"auto"`` (the model dtype, or the scheme the
+            checkpoint declares for its cache) or ``"fp8"``, which halves the cache and so roughly
+            doubles the context or concurrency a card holds. Refused on the eager backend, which
+            has no paged cache to set the dtype of.
         num_gpus: Shard across this many GPUs on one node -- vLLM ``tensor_parallel_size``,
             eager accelerate ``device_map="auto"``. Note that vLLM with ``num_gpus > 1``
             cannot serve per-head ``z`` or DFA, because attention heads are sharded across
@@ -118,7 +182,8 @@ def load_model(
         ValueError: ``backend`` is not one of :data:`BACKENDS`; or ``static_points`` /
             ``static_writes`` was passed on a backend other than ``"vllm-static"``; or
             ``backend="vllm-static"`` declared no taps at all; or ``enforce_eager=True`` was
-            passed alongside a graph-replaying backend.
+            passed alongside a graph-replaying backend; or ``quantization`` / ``kv_cache_dtype``
+            asks the chosen backend for something it cannot apply.
         RuntimeError: a vLLM backend was requested but vLLM is not installed.
         GradientsUnsupported: ``requires_grad=True`` on a vLLM backend, which cannot
             provide gradients through its forward on any configuration.
@@ -181,6 +246,8 @@ def load_model(
         # The empty set is what tells the backend "graphs, no wraps": it keeps inductor on,
         # installs nothing in Worker.load_model, and leaves hooks_available False.
         static_points, static_writes = [], None
+
+    _apply_load_precision(resolved, quantization, kv_cache_dtype, backend_kwargs)
 
     if use_vllm:
         require_vllm(f"backend={resolved!r} requested for {hf_model_id}")
