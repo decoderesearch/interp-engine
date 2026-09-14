@@ -153,6 +153,11 @@ bf16" is not the arithmetic: on Llama-3.3-70B the pair is 2 x 1.05B parameters, 
 the answer, and a tied pair (gpt2, gemma) is one matrix rather than two. RedHatAI's FP8 export shows
 the same shape from disk: 67.7 GiB for 70.6B parameters, not 65.7.
 
+**Quantizing at load has a fixed price, inside the pool.** vLLM's own "weights" figure ran 0.30 GiB
+past the fp8 tensors on Qwen3-4B and Qwen3-8B alike, and the KV cache it built was 0.98x of the
+prediction until that was charged. It is the `quant_on_load` term, `CALIBRATION["quant_on_load_gib"]`,
+and it appears only when a scheme took effect.
+
 A scheme the backend cannot apply is **refused**, on the page, in the CLI and in `load_model` alike,
 with the same sentence naming what to do instead — `fp8` on eager is the common case, since
 transformers' on-load FP8 needs compute 8.9 and a DeepGEMM Hub kernel. A scheme applied to a repo that

@@ -407,6 +407,7 @@ export const GPUS: Gpu[] = [
 export const CALIBRATION = {
   "cuda_context_gib": 0.6,
   "vllm_overshoot_gib": 0.6,
+  "quant_on_load_gib": 0.3,
   "frag_fraction": 0.04,
   "graph_pool_gib": 3.0,
   "eager_workspace_gib": 0.5,
@@ -567,6 +568,21 @@ export const VERIFIED_RUNS: VerifiedRun[] = [
     "recordedAt": "2026-09-03T00:05:41Z"
   },
   {
+    "modelId": "Qwen/Qwen3-4B",
+    "gpu": "NVIDIA GeForce RTX 5090",
+    "backend": "vllm",
+    "dtype": "bfloat16",
+    "quantization": "fp8",
+    "kvCacheDtype": "auto",
+    "maxModelLen": 8192,
+    "maxNumBatchedTokens": 2048,
+    "seqLen": 0,
+    "outcome": "pass",
+    "peakBytes": 31409045504,
+    "estimatedBytes": 8576158411,
+    "recordedAt": "2026-09-14T06:40:47Z"
+  },
+  {
     "modelId": "Qwen/Qwen3-8B",
     "gpu": "NVIDIA GeForce RTX 5090",
     "backend": "vllm-static",
@@ -580,6 +596,51 @@ export const VERIFIED_RUNS: VerifiedRun[] = [
     "peakBytes": 32388415488,
     "estimatedBytes": 25861521816,
     "recordedAt": "2026-09-03T01:18:35Z"
+  },
+  {
+    "modelId": "Qwen/Qwen3-8B",
+    "gpu": "NVIDIA GeForce RTX 5090",
+    "backend": "vllm",
+    "dtype": "bfloat16",
+    "quantization": "",
+    "kvCacheDtype": "auto",
+    "maxModelLen": 8192,
+    "maxNumBatchedTokens": 2048,
+    "seqLen": 0,
+    "outcome": "pass",
+    "peakBytes": 31369199616,
+    "estimatedBytes": 20224082328,
+    "recordedAt": "2026-09-14T06:24:34Z"
+  },
+  {
+    "modelId": "Qwen/Qwen3-8B",
+    "gpu": "NVIDIA GeForce RTX 5090",
+    "backend": "vllm",
+    "dtype": "bfloat16",
+    "quantization": "fp8",
+    "kvCacheDtype": "auto",
+    "maxModelLen": 8192,
+    "maxNumBatchedTokens": 2048,
+    "seqLen": 0,
+    "outcome": "pass",
+    "peakBytes": 31400656896,
+    "estimatedBytes": 13600129227,
+    "recordedAt": "2026-09-14T06:40:09Z"
+  },
+  {
+    "modelId": "Qwen/Qwen3-8B",
+    "gpu": "NVIDIA GeForce RTX 5090",
+    "backend": "vllm",
+    "dtype": "bfloat16",
+    "quantization": "fp8",
+    "kvCacheDtype": "fp8",
+    "maxModelLen": 8192,
+    "maxNumBatchedTokens": 2048,
+    "seqLen": 0,
+    "outcome": "pass",
+    "peakBytes": 32231129088,
+    "estimatedBytes": 12996149451,
+    "recordedAt": "2026-09-14T06:40:29Z"
   },
   {
     "modelId": "RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8",

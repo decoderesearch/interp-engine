@@ -1,0 +1,128 @@
+{
+  "model_id": "Qwen/Qwen3-4B",
+  "backend": "vllm",
+  "outcome": "pass",
+  "spec": {
+    "backend": "vllm",
+    "dtype": "bfloat16",
+    "quantization": "fp8",
+    "kv_cache_dtype": "auto",
+    "max_model_len": 8192,
+    "max_num_batched_tokens": 2048,
+    "max_num_seqs": 256,
+    "gpu_memory_utilization": 0.9,
+    "num_gpus": 1,
+    "static_sites": 0,
+    "static_points": [],
+    "enforce_eager": null,
+    "batch_size": 1,
+    "seq_len": 0,
+    "requires_grad": false,
+    "attn_implementation": "",
+    "n_capture_points": 0
+  },
+  "gpu": {
+    "name": "NVIDIA GeForce RTX 5090",
+    "total_bytes": 33654046720,
+    "total_gib": 31.34,
+    "compute_capability": [
+      12,
+      0
+    ],
+    "ecc_enabled": false,
+    "provenance": "measured on this host (ECC [n/a])"
+  },
+  "estimate": {
+    "fits": true,
+    "total_bytes": 8576158411,
+    "pool_bytes": 6585751449,
+    "outside_bytes": 1990406962,
+    "headroom_bytes": 1374997710,
+    "kv_capacity_tokens": 168937,
+    "terms": [
+      {
+        "name": "vllm_overshoot",
+        "bytes": 644245094,
+        "side": "outside"
+      },
+      {
+        "name": "fragmentation",
+        "bytes": 1346161868,
+        "side": "outside"
+      },
+      {
+        "name": "cuda_context",
+        "bytes": 644245094,
+        "side": "pool"
+      },
+      {
+        "name": "quant_on_load",
+        "bytes": 322122547,
+        "side": "pool"
+      },
+      {
+        "name": "weights",
+        "bytes": 4411424256,
+        "side": "pool"
+      },
+      {
+        "name": "kv_cache_floor",
+        "bytes": 1207959552,
+        "side": "pool"
+      }
+    ],
+    "warnings": [],
+    "weights_source": "safetensors-metadata"
+  },
+  "measured": {
+    "baseline_bytes": 524288000,
+    "post_load_bytes": 31406948352,
+    "post_reserve_bytes": 0,
+    "post_warmup_bytes": 31409045504,
+    "peak_bytes": 31409045504,
+    "per_device_peak_bytes": [
+      31409045504
+    ],
+    "pool_claimed_bytes": 30288642048,
+    "outside_measured_bytes": 1120403456,
+    "torch_peak_bytes": 0,
+    "kv_cache_tokens": 169360,
+    "samples": 51
+  },
+  "stress": {
+    "max_concurrency_passed": 4,
+    "first_failing_concurrency": 0,
+    "prompt_tokens": 8176,
+    "requests_ok": 4,
+    "requests_failed": 0,
+    "latencies_ms": [
+      489.3436699931044,
+      797.4992220115382,
+      1108.1786979921162,
+      1309.8093350126874
+    ],
+    "failure_kind": "",
+    "failure_detail": ""
+  },
+  "reservations": {
+    "per_rank_bytes": 0,
+    "host_bytes": 0,
+    "before_engine": false,
+    "note": "--reserve-gib / --host-reserve-gib, held for real by the harness process; a per-rank share above rank 0 carries this process's extra CUDA context with it"
+  },
+  "engine_env": {},
+  "engine_env_note": "",
+  "cannot_verify": [],
+  "expected": "pass",
+  "why": "A second size for fp8 on load, beside the 8B: the charge for quantizing at load is the same 0.30 GiB on both, so it is fixed and not a fraction of the model",
+  "error": "",
+  "versions": {
+    "torch": "2.13.0+cu130",
+    "transformers": "5.16.1",
+    "vllm": "0.28.0",
+    "interp_engine": "1.7.2",
+    "driver": "595.91.07"
+  },
+  "duration_s": 13.4,
+  "recorded_at": "2026-09-14T06:40:47Z"
+}

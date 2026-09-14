@@ -28,9 +28,13 @@ fires on every row is a marker everyone learns to skip.
 | `Qwen/Qwen3-4B` | NVIDIA A40 | `vllm` | bfloat16 | 8192 | 0.9 | - | 233,040 | 232,631 | 1.00 | 0.67 | 0.28x | 8 |
 | `Qwen/Qwen3-4B` | NVIDIA B200 | `vllm` | bfloat16 | 8192 | 0.9 | - | 1,109,600 | 1,111,293 | 1.00 | 1.68 | 0.22x | 4 |
 | `Qwen/Qwen3-4B` | NVIDIA GeForce RTX 5090 | `vllm` | bfloat16 | 8192 | 0.9 | - | 145,888 | 146,480 | 1.00 | 0.94 | 0.51x | 4 |
+| `Qwen/Qwen3-4B` | NVIDIA GeForce RTX 5090 | `vllm` | bfloat16 +fp8 | 8192 | 0.9 | - | 169,360 | 168,937 | 1.00 | 1.04 | 0.56x | 4 |
 | `Qwen/Qwen3-4B` | NVIDIA A40 | `vllm-static` † | bfloat16 | 8192 | 0.9 | - | 209,424 | 190,305 | 1.10 | 1.92 | 0.81x | 8 |
 | `Qwen/Qwen3-4B` | NVIDIA B200 | `vllm-static` | bfloat16 | 8192 | 0.9 | - | 1,096,080 | 1,079,206 | 1.02 | 2.70 | 0.35x | 4 |
 | `Qwen/Qwen3-4B` | NVIDIA GeForce RTX 5090 | `vllm-static` | bfloat16 | 8192 | 0.9 | - | 132,368 | 114,394 | 1.16 | 1.81 | 0.98x | 4 |
+| `Qwen/Qwen3-8B` | NVIDIA GeForce RTX 5090 | `vllm` | bfloat16 | 8192 | 0.9 | - | 89,872 | 89,944 | 1.00 | 1.01 | 0.54x | 4 |
+| `Qwen/Qwen3-8B` | NVIDIA GeForce RTX 5090 | `vllm` | bfloat16 +fp8 | 8192 | 0.9 | - | 134,816 | 134,866 | 1.00 | 1.04 | 0.56x | 4 |
+| `Qwen/Qwen3-8B` | NVIDIA GeForce RTX 5090 | `vllm` | bfloat16 +fp8 kv:fp8 | 8192 | 0.9 | - | 269,648 | 269,733 | 1.00 | 1.81 | 0.98x | 4 |
 | `Qwen/Qwen3-8B` | NVIDIA GeForce RTX 5090 | `vllm-static` | bfloat16 | 8192 | 0.9 | - | 68,528 | 51,713 | 1.33 | 1.96 | 1.05x | 4 |
 | `RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8` | NVIDIA B200 | `vllm` | auto | 8192 | 0.9 | - | 1,239,520 | 1,242,299 | 1.00 | 1.83 | 0.24x | 4 |
 | `google/gemma-3-12b-pt` | NVIDIA A40 | `vllm` | bfloat16 | 8192 | 0.9 | - | 60,714 | 41,552 | 1.46 | 0.37 | 0.16x | 8 |
@@ -106,5 +110,5 @@ Run `python gpu-sizer/verify.py --run-pending` on suitable hardware.
 ## What these runs cover
 
 - Cards exercised: NVIDIA A40, NVIDIA B200, NVIDIA GeForce RTX 5090
-- Records: 25 passing, 5 failing
+- Records: 29 passing, 5 failing
 - Every quantization scheme this catalog tracks has a card behind it here. fp8, nvfp4 cannot be verified on some of the cards above, so read those schemes off the rows whose GPU supports them rather than off the table as a whole.

@@ -402,6 +402,36 @@ def test_kv_cache_dtype_halves_the_cache_and_touches_nothing_else():
     assert declared_auto.term("kv_cache_floor").bytes == fp8.term("kv_cache_floor").bytes
 
 
+def test_quantizing_at_load_costs_a_fixed_charge_inside_the_pool():
+    """vLLM's 'weights' figure ran 0.30 GiB past the fp8 tensors on a 4B and an 8B alike, and the KV
+    cache came out 0.98x of predicted until that was charged. It is a term of its own, inside the pool,
+    and only when a scheme took effect: a quantized checkpoint or a refused scheme pays nothing."""
+    model = facts()
+    plain = mem.estimate(model, A40, mem.WorkloadSpec(backend="vllm", dtype="bfloat16", max_model_len=8192))
+    fp8 = mem.estimate(
+        model, A40, mem.WorkloadSpec(backend="vllm", dtype="bfloat16", max_model_len=8192, quantization="fp8")
+    )
+    assert plain.term("quant_on_load") is None
+    charge = fp8.term("quant_on_load")
+    assert charge is not None and charge.side == "pool"
+    assert charge.bytes == int(mem.CALIBRATION["quant_on_load_gib"].value * GIB)
+    # It comes out of the cache's share: the weights saved, less the charge, is the room the cache gains.
+    saved = plain.term("weights").bytes - fp8.term("weights").bytes - charge.bytes
+    per_token = plain.term("kv_cache_floor").bytes / 8192
+    assert fp8.kv_capacity_tokens - plain.kv_capacity_tokens == pytest.approx(saved / per_token, abs=1)
+    shipped = mem.ModelMemoryFacts(
+        **{**vars(model), "weights": mem.WeightBytes(**{**vars(model.weights), "quant_method": "fp8"})}
+    )
+    already = mem.estimate(
+        shipped, A40, mem.WorkloadSpec(backend="vllm", dtype="auto", max_model_len=8192, quantization="fp8")
+    )
+    assert already.term("quant_on_load") is None
+    refused = mem.estimate(
+        model, A40, mem.WorkloadSpec(backend="eager", dtype="bfloat16", seq_len=1024, quantization="fp8")
+    )
+    assert refused.term("quant_on_load") is None
+
+
 def test_the_snippet_arguments_for_precision_are_in_the_spec():
     """What the sizer prints has to be what it priced: both knobs ride on the spec."""
     spec = mem.WorkloadSpec(backend="vllm", dtype="bfloat16", quantization="fp8", kv_cache_dtype="fp8")

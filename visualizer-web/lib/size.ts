@@ -979,6 +979,12 @@ export function estimate(
     refused ? "" : spec.quantization,
     spec.backend === "eager",
   );
+  // True when the scheme took effect: the checkpoint was wider than it, and the backend runs it.
+  const narrowed =
+    weightsTotal <
+    bytesForLoad(facts.weights, spec.dtype, {
+      dequantizes: spec.backend === "eager",
+    });
   if (!weightsTotal) {
     warnings.push(
       "weight bytes are unknown, so every figure below is only the non-weight terms",
@@ -1172,6 +1178,17 @@ export function estimate(
     side: "pool",
     note: "process CUDA context, charged against vLLM's budget",
   });
+  const quantCharge = narrowed
+    ? Math.trunc(CALIBRATION.quant_on_load_gib * GIB)
+    : 0;
+  if (quantCharge) {
+    terms.push({
+      name: "quant_on_load",
+      bytes: quantCharge,
+      side: "pool",
+      note: `what vLLM holds for quantizing to ${spec.quantization} at load, past the tensors`,
+    });
+  }
   if (reservedInside) {
     terms.push({
       name: "reserved",
@@ -1253,7 +1270,13 @@ export function estimate(
   const poolAvailable = Math.trunc(spec.gpuMemoryUtilization * gpu.totalBytes);
   const outsideNeeded = overshoot + frag + reservedOutside;
   const poolNeeded =
-    context + reservedInside + perCardWeights + buffers + graphs + kvFloor;
+    context +
+    quantCharge +
+    reservedInside +
+    perCardWeights +
+    buffers +
+    graphs +
+    kvFloor;
 
   const poolHeadroom = poolAvailable - poolNeeded;
   const outsideHeadroom = gpu.totalBytes - poolAvailable - outsideNeeded;
@@ -1273,6 +1296,7 @@ export function estimate(
   const kvRoom = Math.max(
     poolAvailable -
       context -
+      quantCharge -
       reservedInside -
       perCardWeights -
       buffers -

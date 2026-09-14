@@ -147,6 +147,22 @@ CALIBRATION: dict[str, Calibration] = {
             "smallest of anything here."
         ),
     ),
+    "quant_on_load_gib": Calibration(
+        value=0.3,
+        unit="GiB",
+        why=(
+            "What vLLM charges against its budget for quantizing at load, past the narrowed tensors "
+            "themselves. It appears in vLLM's own 'weights' figure, so it comes out of the KV cache's "
+            "share the way the CUDA context does, and it does not scale with the model."
+        ),
+        source=(
+            "Qwen3-8B and Qwen3-4B, vllm, bf16 checkpoint with quantization='fp8', RTX 5090, "
+            "utilization 0.9. The fp8 tensors on the card summed to 8.80 and 4.12 GiB; vLLM reported "
+            "'Model loading took' 9.09 and 4.41. The same two models at bf16 reported their tensors "
+            "exactly, and the KV cache came out 0.98x of predicted on fp8 against 1.00x on bf16 -- the "
+            "0.30 GiB is the whole of that gap."
+        ),
+    ),
     "frag_fraction": Calibration(
         value=0.04,
         unit="fraction of card",
@@ -2207,6 +2223,8 @@ def estimate(
     weights_total = on_load_weight_bytes(
         facts, spec.dtype, "" if refused else spec.quantization, dequantizes=spec.backend == "eager"
     )
+    # True when the scheme took effect: the checkpoint was wider than it, and the backend runs it.
+    narrowed = weights_total < facts.weights.bytes_for_load(spec.dtype, dequantizes=spec.backend == "eager")
     if not weights_total:
         warnings.append(
             "weight bytes are unknown, so every figure below is only the non-weight terms; "
@@ -2372,6 +2390,16 @@ def estimate(
     # Inside the pool. The CUDA context is here rather than outside because vLLM's budget is measured
     # against what the process is ALREADY using -- see CALIBRATION["cuda_context_gib"].
     terms.append(MemoryTerm("cuda_context", context, "pool", "process CUDA context, charged against vLLM's budget"))
+    quant_charge = int(_cal("quant_on_load_gib") * GIB) if narrowed else 0
+    if quant_charge:
+        terms.append(
+            MemoryTerm(
+                "quant_on_load",
+                quant_charge,
+                "pool",
+                f"what vLLM holds for quantizing to {spec.quantization} at load, past the tensors",
+            )
+        )
     if reserved_inside:
         terms.append(
             MemoryTerm(
@@ -2438,7 +2466,7 @@ def estimate(
 
     pool_available = int(spec.gpu_memory_utilization * gpu.total_bytes)
     outside_needed = overshoot + frag + reserved_outside
-    pool_needed = context + reserved_inside + per_card_weights + buffers + graphs + kv_floor
+    pool_needed = context + quant_charge + reserved_inside + per_card_weights + buffers + graphs + kv_floor
 
     # Both constraints have to hold, and they fail differently -- see the module docstring.
     pool_headroom = pool_available - pool_needed
@@ -2458,7 +2486,7 @@ def estimate(
         and not refused
     )
 
-    kv_room = max(pool_available - context - reserved_inside - per_card_weights - buffers - graphs, 0)
+    kv_room = max(pool_available - context - quant_charge - reserved_inside - per_card_weights - buffers - graphs, 0)
     per_token = (
         kv_bytes_for_context(facts, spec.max_model_len, kv_dtype=spec.kv_cache_dtype, model_dtype=spec.dtype) / shards
     )
