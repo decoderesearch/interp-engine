@@ -1478,7 +1478,10 @@ function Results({
   }
 
   return (
-    <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
+    /* `shrink-0`: this is a flex item in a column that scrolls, and `overflow-hidden` gives it a
+       min-height of zero. Without it the table shrinks to one row and clips the rest while the
+       column, seeing nothing overflow, never scrolls. */
+    <div className="shrink-0 overflow-hidden rounded-md border border-slate-200 bg-white">
       <div
         className={`${COLUMNS} border-b border-slate-200 px-3 py-1.5 text-[9px] text-slate-400`}
       >
@@ -1624,8 +1627,10 @@ const COLUMNS =
  * column is the only one on the slate page background and three bordered cards
  * on slate read as a single grey field with lines through it.
  */
+/* `shrink-0` for the same reason the results table has it: the snippet inside scrolls sideways,
+   which lets the panel shrink in a scrolling column instead of making the column scroll. */
 const PANEL =
-  "flex flex-col gap-y-3 rounded-md border border-slate-200 bg-white px-3 py-3";
+  "flex shrink-0 flex-col gap-y-3 rounded-md border border-slate-200 bg-white px-3 py-3";
 
 /** 16,384 as `16k`. The exact figure is in the panel below; the column is for scanning. */
 function compactTokens(tokens: number): string {
