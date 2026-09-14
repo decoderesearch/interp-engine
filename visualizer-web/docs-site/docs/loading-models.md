@@ -87,6 +87,29 @@ from interp_engine import load_model
 model = load_model("google/gemma-2-2b-it", backend="eager", requires_grad=True)
 ```
 
+## Quantize on load
+
+A bf16 checkpoint can be narrowed as it loads, with no calibration step and no second repo.
+`quantization="fp8"` halves every linear layer on the vLLM backends; `"bnb-4bit"` quarters them on
+either backend; `"bnb-8bit"` is eager-only. The embeddings stay at the model dtype. On vLLM,
+`kv_cache_dtype="fp8"` halves the paged KV cache as well, independently.
+
+```python
+from interp_engine import load_model
+
+model = load_model(
+    "meta-llama/Llama-3.3-70B-Instruct",
+    backend="vllm",
+    quantization="fp8",
+    kv_cache_dtype="fp8",
+    num_gpus=2,
+)
+```
+
+A scheme the backend cannot apply is refused with the alternative named: `fp8` on eager says to use
+a vLLM backend or a repo that ships in FP8. The [GPU sizer](gpu-sizer.md) prices both knobs and
+prints the snippet with the arguments it priced.
+
 ## Auto
 
 `backend="auto"` is the default: vLLM on CUDA where the architecture supports it, otherwise

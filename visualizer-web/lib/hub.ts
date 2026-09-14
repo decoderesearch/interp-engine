@@ -112,6 +112,13 @@ export interface ModelMemoryFacts {
    * predicted to hold 394,295 tokens and built 784,896.
    */
   kvQuantAlgo: string;
+  /**
+   * Whether the unembed shares the embedding matrix. Read by the on-load quantization rule in
+   * `lib/size.ts`: neither vLLM nor bitsandbytes quantizes the embeddings, and a tied pair is one
+   * matrix left at the model dtype rather than two. False when unknown, which charges the second
+   * matrix — the direction that does not OOM.
+   */
+  tiedEmbeddings: boolean;
   /** The repo's gating, from the API: `false`, `"auto"` or `"manual"`. */
   gated: string | false;
   /**
@@ -864,6 +871,7 @@ interface TrunkDims {
   nResidualStreams: number;
   maxPositionEmbeddings: number;
   architecture: string;
+  tiedEmbeddings: boolean;
   derivedDims: string[];
 }
 
@@ -882,6 +890,7 @@ const NO_DIMS: TrunkDims = {
   nResidualStreams: 1,
   maxPositionEmbeddings: 0,
   architecture: "",
+  tiedEmbeddings: false,
   derivedDims: [],
 };
 
@@ -939,6 +948,12 @@ function trunkDims(config: Json): TrunkDims {
       Array.isArray(architectures) && architectures.length
         ? String(architectures[0])
         : "",
+    // Same two reads as the Python's `resolve_facts`, and the same default: transformers ties the
+    // embeddings unless told not to, and a config it saved carries the key whenever the answer is
+    // no, so a missing key is a yes. gpt2, gemma-2/3, OPT and starcoder2 all leave it out.
+    tiedEmbeddings:
+      (cfg.tie_word_embeddings ?? true) === true ||
+      (config.tie_word_embeddings ?? true) === true,
     derivedDims,
   };
 }
@@ -1324,4 +1339,117 @@ export function recurrentLayers(facts: ModelMemoryFacts): number {
 /** Layers that allocate a KV cache at all, whatever length of it they keep. */
 export function kvCachingLayers(facts: ModelMemoryFacts): number {
   return Math.max(facts.nLayers - recurrentLayers(facts), 0);
+}
+
+// ------------------------------------------------------------ quantized variants
+
+/** One quantized export of a base model, as much of it as a chip can say. */
+export interface QuantizedVariant {
+  /** The repo id, which is what the chip resolves when clicked. */
+  id: string;
+  /** The numeric format: `fp8`, `nvfp4`, `int4`, `int8`. What decides which card can run it. */
+  family: string;
+  /** `quantization_config.quant_method`, for the hover: `compressed-tensors`, `awq`, ... */
+  quantMethod: string;
+  downloads: number;
+  /** Whether the checkpoint also declares a quantized KV cache. NVIDIA's exports do. */
+  kvQuantAlgo: string;
+}
+
+/** The shape of one `api/models?filter=...` row this file reads. */
+interface ListedModel {
+  id?: string;
+  downloads?: number;
+  library_name?: string;
+  gated?: string | false;
+  safetensors?: { parameters?: Record<string, number> };
+  config?: Record<string, unknown>;
+}
+
+/** Families the sizer can price. Anything else — GGUF, EXL2, MLX — is another runtime's format. */
+const VARIANT_FAMILIES = new Set(["fp8", "nvfp4", "mxfp4", "int4", "int8"]);
+
+/**
+ * `quant_method` to the numeric format, mirroring `WeightBytes.quant_family`: the declared method
+ * where it names a width, and the tensor tags where it names only a container.
+ */
+function variantFamily(
+  quantMethod: string,
+  elementsByDtype: Record<string, number>,
+): string {
+  const declared = quantMethod.toLowerCase();
+  for (const family of ["nvfp4", "mxfp4", "fp8", "int4", "int8"]) {
+    if (declared.includes(family)) return family;
+  }
+  if (
+    ["fp4", "nf4", "awq", "gptq", "uint4"].some((tag) => declared.includes(tag))
+  )
+    return "int4";
+  // bitsandbytes declares neither a width nor a tag the header rule reads (its 4-bit payload is
+  // `U8` with fp16 absmax beside it), so the config's own flags settle it.
+  if (declared.includes("bitsandbytes")) return "int4";
+  return declared ? schemeFromHeaders(elementsByDtype) : "";
+}
+
+/**
+ * The quantized exports of `baseId` on the Hub, most downloaded first.
+ *
+ * One request: the model tree's `base_model:quantized:` relation, which is what a repo's "Quantizations"
+ * panel on the Hub renders, expanded with the config extract and the dtype breakdown so the family
+ * can be read without touching each repo. This is a **listing, not a resolution** — the sizes and
+ * dims come when a chip is clicked and the repo goes through {@link resolveModel} like any other id.
+ * The relation is self-declared by whoever uploaded the export, so a variant nobody tagged is not
+ * here, and one tagged against the wrong base is. Both are the Hub's to fix.
+ *
+ * Only exports the sizer can price are kept: GGUF and MLX repos ship no safetensors, and a repo
+ * whose scheme names no width and whose tags show none is dense under a quantized label.
+ */
+export async function quantizedVariants(
+  baseId: string,
+  { limit = 8, ...options }: FetchOptions & { limit?: number } = {},
+): Promise<QuantizedVariant[]> {
+  if (!isRepoId(baseId)) return [];
+  const params = new URLSearchParams({
+    filter: `base_model:quantized:${baseId}`,
+    sort: "downloads",
+    direction: "-1",
+    // Over-fetched, since the GGUF exports are usually the most downloaded and are dropped below.
+    limit: String(limit * 4),
+  });
+  for (const field of ["safetensors", "config", "gated", "library_name"]) {
+    params.append("expand[]", field);
+  }
+  let rows: ListedModel[];
+  try {
+    const response = await hubFetch(`${HUB}/api/models?${params}`, options);
+    if (!response.ok) return [];
+    rows = (await response.json()) as ListedModel[];
+  } catch {
+    return [];
+  }
+  // A variant is named after what it quantizes -- `nvidia/Qwen3-8B-FP8`, `kosbu/Llama-3.3-70B-
+  // Instruct-AWQ` -- and one that is not is a fine-tune or an unrelated repo tagged against the
+  // base by mistake, which the relation cannot tell apart. gpt2's tree is mostly the second kind.
+  const baseName = baseId.split("/").pop()!.toLowerCase();
+  const out: QuantizedVariant[] = [];
+  for (const row of rows) {
+    if (!row.id || !isRepoId(row.id)) continue;
+    if (!row.id.toLowerCase().includes(baseName)) continue;
+    const tags = row.safetensors?.parameters ?? {};
+    if (!Object.keys(tags).length) continue;
+    const quantMethod = row.config ? configQuantMethod(row.config) : "";
+    const family = variantFamily(quantMethod, tags);
+    if (!VARIANT_FAMILIES.has(family)) continue;
+    const quant = row.config ? asRecord(row.config.quantization_config) : null;
+    const kv = quant?.kv_cache_quant_algo ?? quant?.kv_cache_scheme;
+    out.push({
+      id: row.id,
+      family,
+      quantMethod,
+      downloads: row.downloads ?? 0,
+      kvQuantAlgo: typeof kv === "string" ? kv.toLowerCase() : kv ? "fp8" : "",
+    });
+    if (out.length === limit) break;
+  }
+  return out;
 }

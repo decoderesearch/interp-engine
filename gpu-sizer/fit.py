@@ -120,7 +120,14 @@ def evidence_for(
         ):
             continue
         recorded = record.get("spec", {})
-        if str(recorded.get("dtype")) != spec.dtype:
+        # Everything that changes what the weights or the cache cost has to agree, or a run of a
+        # narrower configuration vouches for a wider one. Records older than the field default to
+        # "as stored", which is what every one of them ran.
+        if (
+            str(recorded.get("dtype")) != spec.dtype
+            or str(recorded.get("quantization") or "") != spec.quantization
+            or str(recorded.get("kv_cache_dtype") or "auto") != spec.kv_cache_dtype
+        ):
             continue
         theirs, ours = _width(recorded), _width(spec)
         failed = record.get("outcome") != "pass"
@@ -144,6 +151,10 @@ def snippet(model_id: str, spec: mem.WorkloadSpec, gpu: mem.GpuSpec, count: int)
     args = [f'    "{model_id}"', f'    backend="{spec.backend}"']
     if spec.dtype and spec.dtype != "auto":
         args.append(f'    dtype="{spec.dtype}"')
+    if spec.quantization:
+        args.append(f'    quantization="{spec.quantization}"')
+    if spec.is_vllm and spec.kv_cache_dtype and spec.kv_cache_dtype != "auto":
+        args.append(f'    kv_cache_dtype="{spec.kv_cache_dtype}"')
     if count > 1:
         args.append(f"    num_gpus={count}")
     if spec.is_vllm:
@@ -171,10 +182,14 @@ def report_model(facts: mem.ModelMemoryFacts, args: argparse.Namespace) -> dict[
     print(f"{facts.model_id}")
     print(f"  architecture     {facts.architecture or 'unknown'}")
     print(f"  parameters       {weights.param_count / 1e9:.2f}B   ({weights.source})")
-    print(f"  on disk          {weights.on_disk_bytes / mem.GIB:.2f} GiB   stored as {weights.stored_dtype or '?'}")
+    # `stored_dtype` is the compute dtype on a quantized repo -- RedHatAI's FP8 export declares
+    # bfloat16 and ships fp8 -- so the scheme names what is on disk there, and the config's dtype
+    # is shown for what it is.
+    stored = weights.quant_family() if weights.is_quantized else (weights.stored_dtype or "?")
+    print(f"  on disk          {weights.on_disk_bytes / mem.GIB:.2f} GiB   stored as {stored}")
     if weights.is_quantized:
         deq = weights.dequantized_bytes() or 0
-        print(f"  quantization     {weights.quant_method}")
+        print(f"  quantization     {weights.quant_method}   (compute dtype {weights.stored_dtype or '?'})")
         print(
             f"                   served natively this is {weights.on_disk_bytes / mem.GIB:.1f} GiB, but "
             f"{deq / mem.GIB:.1f} GiB if transformers cannot find its kernels and dequantizes"
@@ -263,11 +278,18 @@ def report_model(facts: mem.ModelMemoryFacts, args: argparse.Namespace) -> dict[
         print(f"   memory: {BACKEND_MEMORY.get(backend, '')}")
         print(f"   speed:  {BACKEND_SPEED.get(backend, '')}")
         dtype = args.dtype or ("auto" if weights.is_quantized else "bfloat16")
+        refused = mem.quantization_refusal(args.quantization, backend)
+        if refused:
+            print(f"   quantization={args.quantization!r} is refused here: {refused}")
+            print()
+            continue
         fitted = mem.fit_across(
             facts,
             gpus,
             backend=backend,
             dtype=dtype,
+            quantization=args.quantization,
+            kv_cache_dtype=args.kv_cache_dtype,
             reservations=reservations,
             max_model_len=args.max_model_len,
             static_points=static_points,
@@ -286,6 +308,8 @@ def report_model(facts: mem.ModelMemoryFacts, args: argparse.Namespace) -> dict[
                 print("   nothing in the catalog fits, even sharded.")
                 if weights.is_quantized and dtype != "auto":
                     print(f"   try --dtype auto: {weights.quant_method} served natively is much smaller.")
+                elif not weights.is_quantized and not args.quantization and backend != "eager":
+                    print("   try --quantization fp8, which halves the linear layers on load, or --kv-cache-dtype fp8.")
                 elif not weights.is_quantized:
                     print("   a quantized checkpoint of this model, or more GPUs than --max-gpus allows, would.")
             print()
@@ -310,6 +334,8 @@ def report_model(facts: mem.ModelMemoryFacts, args: argparse.Namespace) -> dict[
                     "gpu_total_bytes": gpu.total_bytes,
                     "num_gpus": count,
                     "dtype": spec.dtype,
+                    "quantization": spec.quantization,
+                    "kv_cache_dtype": spec.kv_cache_dtype,
                     "gpu_memory_utilization": spec.gpu_memory_utilization,
                     "max_model_len": spec.max_model_len,
                     "max_num_batched_tokens": spec.max_num_batched_tokens,
@@ -370,6 +396,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--local", action="store_true", help="use the card in this box, with its measured capacity")
     p.add_argument("--backend", choices=[b for b in mem.BACKENDS if b != "auto"], help="just one backend")
     p.add_argument("--dtype", default="", help="load dtype (default: bfloat16, or auto for a quantized checkpoint)")
+    p.add_argument(
+        "--quantization",
+        default="",
+        choices=["", *mem.QUANTIZATIONS],
+        help="quantize a wider checkpoint on load: fp8 (vLLM), bnb-4bit (either), bnb-8bit (eager)",
+    )
+    p.add_argument(
+        "--kv-cache-dtype",
+        default="auto",
+        choices=["auto", "fp8"],
+        help="vLLM KV cache dtype; fp8 halves the cache and roughly doubles the context that fits",
+    )
     p.add_argument("--max-model-len", type=int, default=0, help="context to fit (default: the model's own)")
     p.add_argument(
         "--static-point",

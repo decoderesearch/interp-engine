@@ -79,6 +79,24 @@ const MODELS = [
   },
 ];
 
+/** The two load-time knobs, spelled as `fit.py` takes them. */
+interface Precision {
+  quantization?: string;
+  kvCacheDtype?: string;
+}
+
+/**
+ * Load-time precision pairs to hold the two sides against, on every unquantized model above.
+ *
+ * `fp8` is refused on eager and priced on vLLM; `bnb-4bit` is priced on both and is the one width
+ * that carries its block scales (0.5625 bytes a weight, not 0.5). The KV width rides along on the
+ * first, where it changes the vLLM rows and has to change nothing on the eager one.
+ */
+const PRECISIONS: Precision[] = [
+  { quantization: "fp8", kvCacheDtype: "fp8" },
+  { quantization: "bnb-4bit" },
+];
+
 interface PyTerm {
   name: string;
   bytes: number;
@@ -90,6 +108,8 @@ interface PyOption {
   gpu: string;
   num_gpus: number;
   dtype: string;
+  quantization: string;
+  kv_cache_dtype: string;
   gpu_memory_utilization: number;
   max_model_len: number;
   max_num_batched_tokens: number;
@@ -157,6 +177,7 @@ async function python(
   modelId: string,
   maxModelLen = 0,
   staticPoints: string[] = [],
+  { quantization = "", kvCacheDtype = "" }: Precision = {},
 ): Promise<PyReport> {
   // `--json` redirects the human table away from stdout rather than interleaving it, so what comes
   // back is the report and nothing else. The warning about a config-less repo goes to stderr.
@@ -170,6 +191,8 @@ async function python(
       "--json",
       ...(maxModelLen ? ["--max-model-len", String(maxModelLen)] : []),
       ...staticPoints.flatMap((point) => ["--static-point", point]),
+      ...(quantization ? ["--quantization", quantization] : []),
+      ...(kvCacheDtype ? ["--kv-cache-dtype", kvCacheDtype] : []),
     ],
     { cwd: REPO, maxBuffer: 64 * 1024 * 1024 },
   );
@@ -215,6 +238,8 @@ function compare(
     const est = got.estimate;
 
     check(`${where}: dtype`, est.spec.dtype, want.dtype);
+    check(`${where}: quantization`, est.spec.quantization, want.quantization);
+    check(`${where}: kv_cache_dtype`, est.spec.kvCacheDtype, want.kv_cache_dtype);
     check(
       `${where}: utilization`,
       est.spec.gpuMemoryUtilization,
@@ -334,6 +359,32 @@ async function main(): Promise<void> {
       await python(model.id, maxModelLen, points)
     ).options.filter((option) => option.backend === "vllm-static");
     compare(facts, "vllm-static", staticOurs, staticTheirs, ` [${points}]`);
+
+    // The on-load quantizer and the KV width, on a checkpoint stored wide. Neither is reached above:
+    // with nothing asked both sides price the weights as stored and the cache at the model dtype, so
+    // the narrowing rule -- linear layers only, the embedding kept wide, and once when it is tied --
+    // could differ on the two sides with every check passing. The tied case is the one that matters:
+    // gpt2 and gemma share the unembed, and counting it twice is a 3% error on a 12B and a 30% one
+    // on gpt2. Skipped on a quantized checkpoint, where both sides say the quantizer changes nothing.
+    if (!facts.weights.quantMethod) {
+      for (const precision of PRECISIONS) {
+        const label = ` [${Object.values(precision).join(" ")}]`;
+        const report = await python(model.id, maxModelLen, [], precision);
+        for (const backend of REPORT_BACKENDS) {
+          const ours = fitAcross(facts, {
+            backend,
+            dtype,
+            maxModelLen,
+            maxGpus: 8,
+            ...precision,
+          });
+          const theirs = report.options.filter(
+            (option) => option.backend === backend,
+          );
+          compare(facts, backend, ours, theirs, label);
+        }
+      }
+    }
 
     console.log();
   }

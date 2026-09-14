@@ -528,6 +528,34 @@ def estimate_weight_bytes(
     return int(n_layers * per_layer + 2 * 128_256 * hidden * dtype_bytes)
 
 
+def quantized_on_load_bytes(weight_bytes: int, config: Any, quantization: str | None) -> int:
+    """Weight bytes once vLLM's ``quantization=`` has narrowed a wider checkpoint at load.
+
+    :func:`estimate_weight_bytes` prices the checkpoint as *stored*, and ``quantization="fp8"`` on a
+    bf16 checkpoint halves every linear weight on the way in. Charging the stored total refused a
+    static set for Llama-3.3-70B on a 96 GB card that holds its 68 GiB of fp8 weights beside a KV
+    pool with room to spare. The arithmetic is :func:`interp_engine.memory.narrow_linear_weights`,
+    the same rule the sizer prices, so the two cannot disagree about what fp8 costs. A scheme with no
+    row in ``memory.VLLM_QUANTIZATION_NAMES``, or a checkpoint already stored at or below its width,
+    changes nothing -- both are the direction that OOMs.
+    """
+    if not quantization or config is None:
+        return int(weight_bytes)
+    from interp_engine import facts
+    from interp_engine.memory import QUANTIZATIONS, VLLM_QUANTIZATION_NAMES, narrow_linear_weights
+
+    scheme = QUANTIZATIONS.get(VLLM_QUANTIZATION_NAMES.get(str(quantization).lower(), ""))
+    if scheme is None:
+        return int(weight_bytes)
+    f = facts.resolve_facts(config)
+    return narrow_linear_weights(
+        int(weight_bytes),
+        narrow=scheme.width,
+        stored=_storage_dtype_bytes(config),
+        embedding_params=f.vocab_size * f.d_model * (1 if f.tied_embeddings else 2),
+    )
+
+
 def static_read_width(
     reads: Sequence[Address],
     *,

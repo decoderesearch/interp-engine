@@ -154,13 +154,17 @@ In rough order of how often each is the cause:
 
 1. **`dtype`.** Eager defaults to `float32`; a quantized checkpoint asked for `bfloat16` dequantizes.
 2. **`max_model_len`.** The KV floor is linear in it. Halve it.
-3. **Prompt length on eager.** The logits and the attention matrix grow with the prompt, not the model,
+   Or halve the cache instead with `kv_cache_dtype="fp8"`, which changes nothing else.
+3. **The weights themselves.** `quantization="fp8"` halves every linear layer of a bf16 checkpoint
+   on load, on any vLLM backend and with no calibration; `bnb-4bit` quarters them on either backend.
+   Or size a repo that already ships quantized, which the page lists under the base model.
+4. **Prompt length on eager.** The logits and the attention matrix grow with the prompt, not the model,
    and the attention term is quadratic. `attn_implementation="sdpa"` removes it.
-4. **`max_num_batched_tokens` under `vllm-static`.** Read tap buffers are that many rows tall, and it
+5. **`max_num_batched_tokens` under `vllm-static`.** Read tap buffers are that many rows tall, and it
    defaults to 8192. Write deltas are one row, so dropping the writes will not help.
-5. **Something else on the card.** `nvidia-smi`. Utilization is a fraction of the whole card, so
+6. **Something else on the card.** `nvidia-smi`. Utilization is a fraction of the whole card, so
    another process does not just take its own memory — it takes it from vLLM's pool.
-6. **`gpu_memory_utilization` too high.** Above 0.9 the margin is thinner than vLLM's own warmup
+7. **`gpu_memory_utilization` too high.** Above 0.9 the margin is thinner than vLLM's own warmup
    overshoot.
 
 `python gpu-sizer/fit.py <model> --local --detail` prints the per-term breakdown and names the

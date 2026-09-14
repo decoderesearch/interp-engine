@@ -58,6 +58,7 @@ from interp_engine.vllm_capture.static import (
     estimate_weight_bytes,
     fit_max_num_batched_tokens,
     kv_cache_width,
+    quantized_on_load_bytes,
     resid_stream_aliases,
     resolve_static_points,
     sm100_cudagraph_refusal_reason,
@@ -1141,11 +1142,17 @@ class VLLMModel:
             max_n=max_n,
             device_memory=int(torch.cuda.get_device_properties(0).total_memory),
             gpu_memory_utilization=float(self._engine_kwargs.get("gpu_memory_utilization") or 0.9),
-            weight_bytes=estimate_weight_bytes(
-                self.num_hidden_layers,
-                self._hidden_size,
-                config=cfg,
-                hf_model_id=hf_id,
+            # As stored, then narrowed if vLLM quantizes at load: a bf16 70B asked for as fp8 is
+            # 68 GiB on the card, not 141, and the stored total refused a static set that fits.
+            weight_bytes=quantized_on_load_bytes(
+                estimate_weight_bytes(
+                    self.num_hidden_layers,
+                    self._hidden_size,
+                    config=cfg,
+                    hf_model_id=hf_id,
+                ),
+                cfg,
+                self._engine_kwargs.get("quantization"),
             ),
             max_model_len=int(self._engine_kwargs.get("max_model_len") or max_n),
             kv_width=kv_cache_width(

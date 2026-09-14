@@ -16,7 +16,7 @@ export interface CachedModel {
   sha: string;
 }
 
-export const GENERATED_AT = "2026-09-01T06:19:42.023Z";
+export const GENERATED_AT = "2026-09-14T05:34:14.215Z";
 
 /** Keyed by lowercased model id; `facts.modelId` keeps the canonical spelling. */
 export const MODEL_CACHE: Record<string, CachedModel> = {
@@ -48,6 +48,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 4096,
       "architecture": "Olmo2ForCausalLM",
+      "tiedEmbeddings": false,
       "derivedDims": [],
       "kvQuantAlgo": "",
       "gated": false,
@@ -57,77 +58,6 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       ]
     },
     "sha": "a1847dff35000b4271fa70afc5db10fd29fedbdf"
-  },
-  "allenai/olmo-3-1025-7b": {
-    "facts": {
-      "modelId": "allenai/Olmo-3-1025-7B",
-      "weights": {
-        "paramCount": 7298011136,
-        "onDiskBytes": 14596022272,
-        "storedDtype": "bfloat16",
-        "quantMethod": "",
-        "expertDtype": "",
-        "elementsByDtype": {
-          "BF16": 7298011136
-        },
-        "source": "safetensors-index"
-      },
-      "nLayers": 32,
-      "dModel": 4096,
-      "nHeads": 32,
-      "nKvHeads": 32,
-      "headDim": 128,
-      "vHeadDim": 128,
-      "vocabSize": 100278,
-      "intermediateSize": 11008,
-      "nExperts": 0,
-      "layerTypes": [
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention"
-      ],
-      "slidingWindow": 4096,
-      "nResidualStreams": 1,
-      "maxPositionEmbeddings": 65536,
-      "architecture": "Olmo3ForCausalLM",
-      "derivedDims": [],
-      "kvQuantAlgo": "",
-      "gated": false,
-      "trunkDimsKnown": true,
-      "notes": [
-        "config.json omits head_dim; the key projection in the checkpoint gives 128, so the KV figures are exact rather than derived from hidden_size / heads."
-      ]
-    },
-    "sha": "a81bae42db3975be1671e27b9c9a56da1a9f980f"
   },
   "allenai/olmo-3-1125-32b": {
     "facts": {
@@ -222,6 +152,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 65536,
       "architecture": "Olmo3ForCausalLM",
+      "tiedEmbeddings": false,
       "derivedDims": [],
       "kvQuantAlgo": "",
       "gated": false,
@@ -260,6 +191,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 2048,
       "architecture": "GPTBigCodeForCausalLM",
+      "tiedEmbeddings": true,
       "derivedDims": [
         "head_dim"
       ],
@@ -300,6 +232,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 16384,
       "architecture": "Starcoder2ForCausalLM",
+      "tiedEmbeddings": true,
       "derivedDims": [
         "layer_types"
       ],
@@ -341,6 +274,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 0,
       "architecture": "BloomForCausalLM",
+      "tiedEmbeddings": true,
       "derivedDims": [
         "head_dim",
         "max_position_embeddings"
@@ -383,6 +317,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 163840,
       "architecture": "DeepseekV2ForCausalLM",
+      "tiedEmbeddings": false,
       "derivedDims": [
         "head_dim"
       ],
@@ -427,6 +362,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 4,
       "maxPositionEmbeddings": 1048576,
       "architecture": "DeepseekV4ForCausalLM",
+      "tiedEmbeddings": false,
       "derivedDims": [
         "layer_types"
       ],
@@ -471,6 +407,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 4,
       "maxPositionEmbeddings": 1048576,
       "architecture": "DeepseekV4ForCausalLM",
+      "tiedEmbeddings": false,
       "derivedDims": [
         "layer_types"
       ],
@@ -512,6 +449,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 2048,
       "architecture": "GPTNeoXForCausalLM",
+      "tiedEmbeddings": false,
       "derivedDims": [
         "head_dim"
       ],
@@ -550,6 +488,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 2048,
       "architecture": "OPTForCausalLM",
+      "tiedEmbeddings": true,
       "derivedDims": [
         "head_dim"
       ],
@@ -591,6 +530,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 8192,
       "architecture": "Gemma2ForCausalLM",
+      "tiedEmbeddings": true,
       "derivedDims": [
         "layer_types"
       ],
@@ -602,126 +542,6 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       ]
     },
     "sha": "938270f5272feb02779b55c2bb2fffdd0f53ff0c"
-  },
-  "google/gemma-2-2b": {
-    "facts": {
-      "modelId": "google/gemma-2-2b",
-      "weights": {
-        "paramCount": 2614341888,
-        "onDiskBytes": 10457367552,
-        "storedDtype": "float32",
-        "quantMethod": "",
-        "expertDtype": "",
-        "elementsByDtype": {
-          "F32": 2614341888
-        },
-        "source": "safetensors-index"
-      },
-      "nLayers": 26,
-      "dModel": 2304,
-      "nHeads": 8,
-      "nKvHeads": 4,
-      "headDim": 256,
-      "vHeadDim": 256,
-      "vocabSize": 256000,
-      "intermediateSize": 9216,
-      "nExperts": 0,
-      "layerTypes": null,
-      "slidingWindow": 4096,
-      "nResidualStreams": 1,
-      "maxPositionEmbeddings": 8192,
-      "architecture": "Gemma2ForCausalLM",
-      "derivedDims": [
-        "layer_types"
-      ],
-      "kvQuantAlgo": "",
-      "gated": "manual",
-      "trunkDimsKnown": true,
-      "notes": [
-        "this model declares a sliding window but no per-layer table, so every layer is priced as if it caches the full context. That over-states the KV cache, often by a lot: a 5:1 sliding trunk really caches the window on five layers in six."
-      ]
-    },
-    "sha": "c5ebcd40d208330abc697524c919956e692655cf"
-  },
-  "google/gemma-2-2b-it": {
-    "facts": {
-      "modelId": "google/gemma-2-2b-it",
-      "weights": {
-        "paramCount": 2614341888,
-        "onDiskBytes": 5228683776,
-        "storedDtype": "bfloat16",
-        "quantMethod": "",
-        "expertDtype": "",
-        "elementsByDtype": {
-          "BF16": 2614341888
-        },
-        "source": "safetensors-index"
-      },
-      "nLayers": 26,
-      "dModel": 2304,
-      "nHeads": 8,
-      "nKvHeads": 4,
-      "headDim": 256,
-      "vHeadDim": 256,
-      "vocabSize": 256000,
-      "intermediateSize": 9216,
-      "nExperts": 0,
-      "layerTypes": null,
-      "slidingWindow": 4096,
-      "nResidualStreams": 1,
-      "maxPositionEmbeddings": 8192,
-      "architecture": "Gemma2ForCausalLM",
-      "derivedDims": [
-        "layer_types"
-      ],
-      "kvQuantAlgo": "",
-      "gated": "manual",
-      "trunkDimsKnown": true,
-      "notes": [
-        "this model declares a sliding window but no per-layer table, so every layer is priced as if it caches the full context. That over-states the KV cache, often by a lot: a 5:1 sliding trunk really caches the window on five layers in six."
-      ]
-    },
-    "sha": "299a8560bedf22ed1c72a8a11e7dce4a7f9f51f8"
-  },
-  "google/gemma-2-9b": {
-    "facts": {
-      "modelId": "google/gemma-2-9b",
-      "weights": {
-        "paramCount": 9241705984,
-        "onDiskBytes": 36966823936,
-        "storedDtype": "float32",
-        "quantMethod": "",
-        "expertDtype": "",
-        "elementsByDtype": {
-          "F32": 9241705984
-        },
-        "source": "safetensors-index"
-      },
-      "nLayers": 42,
-      "dModel": 3584,
-      "nHeads": 16,
-      "nKvHeads": 8,
-      "headDim": 256,
-      "vHeadDim": 256,
-      "vocabSize": 256000,
-      "intermediateSize": 14336,
-      "nExperts": 0,
-      "layerTypes": null,
-      "slidingWindow": 4096,
-      "nResidualStreams": 1,
-      "maxPositionEmbeddings": 8192,
-      "architecture": "Gemma2ForCausalLM",
-      "derivedDims": [
-        "layer_types"
-      ],
-      "kvQuantAlgo": "",
-      "gated": "manual",
-      "trunkDimsKnown": true,
-      "notes": [
-        "this model declares a sliding window but no per-layer table, so every layer is priced as if it caches the full context. That over-states the KV cache, often by a lot: a 5:1 sliding trunk really caches the window on five layers in six."
-      ]
-    },
-    "sha": "33c193028431c2fde6c6e51f29e6f17b60cbfac6"
   },
   "google/gemma-2-9b-it": {
     "facts": {
@@ -751,6 +571,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 8192,
       "architecture": "Gemma2ForCausalLM",
+      "tiedEmbeddings": true,
       "derivedDims": [
         "layer_types"
       ],
@@ -762,50 +583,6 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       ]
     },
     "sha": "11c9b309abf73637e4b6f9a3fa1e92e615547819"
-  },
-  "google/gemma-3-12b-it": {
-    "facts": {
-      "modelId": "google/gemma-3-12b-it",
-      "weights": {
-        "paramCount": 12187325040,
-        "onDiskBytes": 24374650080,
-        "storedDtype": "bfloat16",
-        "quantMethod": "",
-        "expertDtype": "",
-        "elementsByDtype": {
-          "BF16": 12187325040
-        },
-        "source": "safetensors-index"
-      },
-      "nLayers": 48,
-      "dModel": 3840,
-      "nHeads": 16,
-      "nKvHeads": 8,
-      "headDim": 256,
-      "vHeadDim": 256,
-      "vocabSize": 262208,
-      "intermediateSize": 15360,
-      "nExperts": 0,
-      "layerTypes": null,
-      "slidingWindow": 1024,
-      "nResidualStreams": 1,
-      "maxPositionEmbeddings": 0,
-      "architecture": "Gemma3ForConditionalGeneration",
-      "derivedDims": [
-        "max_position_embeddings",
-        "layer_types"
-      ],
-      "kvQuantAlgo": "",
-      "gated": "manual",
-      "trunkDimsKnown": true,
-      "notes": [
-        "config.json states no vocab_size, so it was read from the checkpoint: the embedding matrix is 262,208 rows. This is the term the eager logits are priced from, and pricing it at zero is the direction that hides an OOM.",
-        "config.json omits head_dim; the key projection in the checkpoint gives 256, so the KV figures are exact rather than derived from hidden_size / heads.",
-        "config.json omits max_position_embeddings, so the model's advertised context is unknown and a max_model_len has to be chosen rather than defaulted.",
-        "this model declares a sliding window but no per-layer table, so every layer is priced as if it caches the full context. That over-states the KV cache, often by a lot: a 5:1 sliding trunk really caches the window on five layers in six."
-      ]
-    },
-    "sha": "96b6f1eccf38110c56df3a15bffe176da04bfd80"
   },
   "google/gemma-3-12b-pt": {
     "facts": {
@@ -835,6 +612,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 0,
       "architecture": "Gemma3ForConditionalGeneration",
+      "tiedEmbeddings": true,
       "derivedDims": [
         "max_position_embeddings",
         "layer_types"
@@ -879,6 +657,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 32768,
       "architecture": "Gemma3ForCausalLM",
+      "tiedEmbeddings": true,
       "derivedDims": [
         "layer_types"
       ],
@@ -919,6 +698,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 32768,
       "architecture": "Gemma3ForCausalLM",
+      "tiedEmbeddings": true,
       "derivedDims": [
         "layer_types"
       ],
@@ -930,116 +710,6 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       ]
     },
     "sha": "fcf18a2a879aab110ca39f8bffbccd5d49d8eb29"
-  },
-  "google/gemma-3-270m": {
-    "facts": {
-      "modelId": "google/gemma-3-270m",
-      "weights": {
-        "paramCount": 268098176,
-        "onDiskBytes": 536223056,
-        "storedDtype": "bfloat16",
-        "quantMethod": "",
-        "expertDtype": "",
-        "elementsByDtype": {
-          "BF16": 268098176
-        },
-        "source": "file-sizes"
-      },
-      "nLayers": 18,
-      "dModel": 640,
-      "nHeads": 4,
-      "nKvHeads": 1,
-      "headDim": 256,
-      "vHeadDim": 256,
-      "vocabSize": 262144,
-      "intermediateSize": 2048,
-      "nExperts": 0,
-      "layerTypes": [
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention"
-      ],
-      "slidingWindow": 512,
-      "nResidualStreams": 1,
-      "maxPositionEmbeddings": 32768,
-      "architecture": "Gemma3ForCausalLM",
-      "derivedDims": [],
-      "kvQuantAlgo": "",
-      "gated": "manual",
-      "trunkDimsKnown": true,
-      "notes": []
-    },
-    "sha": "9b0cfec892e2bc2afd938c98eabe4e4a7b1e0ca1"
-  },
-  "google/gemma-3-270m-it": {
-    "facts": {
-      "modelId": "google/gemma-3-270m-it",
-      "weights": {
-        "paramCount": 268098176,
-        "onDiskBytes": 536223056,
-        "storedDtype": "bfloat16",
-        "quantMethod": "",
-        "expertDtype": "",
-        "elementsByDtype": {
-          "BF16": 268098176
-        },
-        "source": "file-sizes"
-      },
-      "nLayers": 18,
-      "dModel": 640,
-      "nHeads": 4,
-      "nKvHeads": 1,
-      "headDim": 256,
-      "vHeadDim": 256,
-      "vocabSize": 262144,
-      "intermediateSize": 2048,
-      "nExperts": 0,
-      "layerTypes": [
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention"
-      ],
-      "slidingWindow": 512,
-      "nResidualStreams": 1,
-      "maxPositionEmbeddings": 32768,
-      "architecture": "Gemma3ForCausalLM",
-      "derivedDims": [],
-      "kvQuantAlgo": "",
-      "gated": "manual",
-      "trunkDimsKnown": true,
-      "notes": []
-    },
-    "sha": "ac82b4e820549b854eebf28ce6dedaf9fdfa17b3"
   },
   "google/gemma-3-27b-it": {
     "facts": {
@@ -1069,6 +739,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 0,
       "architecture": "Gemma3ForConditionalGeneration",
+      "tiedEmbeddings": true,
       "derivedDims": [
         "max_position_embeddings",
         "layer_types"
@@ -1083,135 +754,6 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       ]
     },
     "sha": "005ad3404e59d6023443cb575daa05336842228a"
-  },
-  "google/gemma-3-27b-pt": {
-    "facts": {
-      "modelId": "google/gemma-3-27b-pt",
-      "weights": {
-        "paramCount": 27432406640,
-        "onDiskBytes": 54864813280,
-        "storedDtype": "bfloat16",
-        "quantMethod": "",
-        "expertDtype": "",
-        "elementsByDtype": {
-          "BF16": 27432406640
-        },
-        "source": "safetensors-index"
-      },
-      "nLayers": 62,
-      "dModel": 5376,
-      "nHeads": 32,
-      "nKvHeads": 16,
-      "headDim": 128,
-      "vHeadDim": 128,
-      "vocabSize": 262208,
-      "intermediateSize": 21504,
-      "nExperts": 0,
-      "layerTypes": null,
-      "slidingWindow": 1024,
-      "nResidualStreams": 1,
-      "maxPositionEmbeddings": 0,
-      "architecture": "Gemma3ForConditionalGeneration",
-      "derivedDims": [
-        "max_position_embeddings",
-        "layer_types"
-      ],
-      "kvQuantAlgo": "",
-      "gated": "manual",
-      "trunkDimsKnown": true,
-      "notes": [
-        "config.json states no vocab_size, so it was read from the checkpoint: the embedding matrix is 262,208 rows. This is the term the eager logits are priced from, and pricing it at zero is the direction that hides an OOM.",
-        "config.json omits max_position_embeddings, so the model's advertised context is unknown and a max_model_len has to be chosen rather than defaulted.",
-        "this model declares a sliding window but no per-layer table, so every layer is priced as if it caches the full context. That over-states the KV cache, often by a lot: a 5:1 sliding trunk really caches the window on five layers in six."
-      ]
-    },
-    "sha": "9fe3c4ebc93fbadb14913801536d022054ef11cc"
-  },
-  "google/gemma-3-4b-it": {
-    "facts": {
-      "modelId": "google/gemma-3-4b-it",
-      "weights": {
-        "paramCount": 4300079472,
-        "onDiskBytes": 8600158944,
-        "storedDtype": "bfloat16",
-        "quantMethod": "",
-        "expertDtype": "",
-        "elementsByDtype": {
-          "BF16": 4300079472
-        },
-        "source": "safetensors-index"
-      },
-      "nLayers": 34,
-      "dModel": 2560,
-      "nHeads": 0,
-      "nKvHeads": 0,
-      "headDim": 0,
-      "vHeadDim": 0,
-      "vocabSize": 262208,
-      "intermediateSize": 10240,
-      "nExperts": 0,
-      "layerTypes": null,
-      "slidingWindow": 1024,
-      "nResidualStreams": 1,
-      "maxPositionEmbeddings": 0,
-      "architecture": "Gemma3ForConditionalGeneration",
-      "derivedDims": [
-        "max_position_embeddings",
-        "layer_types"
-      ],
-      "kvQuantAlgo": "",
-      "gated": "manual",
-      "trunkDimsKnown": true,
-      "notes": [
-        "config.json states no vocab_size, so it was read from the checkpoint: the embedding matrix is 262,208 rows. This is the term the eager logits are priced from, and pricing it at zero is the direction that hides an OOM.",
-        "config.json omits max_position_embeddings, so the model's advertised context is unknown and a max_model_len has to be chosen rather than defaulted.",
-        "this model declares a sliding window but no per-layer table, so every layer is priced as if it caches the full context. That over-states the KV cache, often by a lot: a 5:1 sliding trunk really caches the window on five layers in six."
-      ]
-    },
-    "sha": "093f9f388b31de276ce2de164bdc2081324b9767"
-  },
-  "google/gemma-3-4b-pt": {
-    "facts": {
-      "modelId": "google/gemma-3-4b-pt",
-      "weights": {
-        "paramCount": 4300079472,
-        "onDiskBytes": 8600158944,
-        "storedDtype": "bfloat16",
-        "quantMethod": "",
-        "expertDtype": "",
-        "elementsByDtype": {
-          "BF16": 4300079472
-        },
-        "source": "safetensors-index"
-      },
-      "nLayers": 34,
-      "dModel": 2560,
-      "nHeads": 0,
-      "nKvHeads": 0,
-      "headDim": 0,
-      "vHeadDim": 0,
-      "vocabSize": 262208,
-      "intermediateSize": 10240,
-      "nExperts": 0,
-      "layerTypes": null,
-      "slidingWindow": 1024,
-      "nResidualStreams": 1,
-      "maxPositionEmbeddings": 0,
-      "architecture": "Gemma3ForConditionalGeneration",
-      "derivedDims": [
-        "max_position_embeddings",
-        "layer_types"
-      ],
-      "kvQuantAlgo": "",
-      "gated": "manual",
-      "trunkDimsKnown": true,
-      "notes": [
-        "config.json states no vocab_size, so it was read from the checkpoint: the embedding matrix is 262,208 rows. This is the term the eager logits are priced from, and pricing it at zero is the direction that hides an OOM.",
-        "config.json omits max_position_embeddings, so the model's advertised context is unknown and a max_model_len has to be chosen rather than defaulted.",
-        "this model declares a sliding window but no per-layer table, so every layer is priced as if it caches the full context. That over-states the KV cache, often by a lot: a 5:1 sliding trunk really caches the window on five layers in six."
-      ]
-    },
-    "sha": "cc012e0a6d0787b4adcc0fa2c4da74402494554d"
   },
   "google/gemma-4-12b-it": {
     "facts": {
@@ -1290,6 +832,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 262144,
       "architecture": "Gemma4UnifiedForConditionalGeneration",
+      "tiedEmbeddings": true,
       "derivedDims": [],
       "kvQuantAlgo": "",
       "gated": false,
@@ -1357,6 +900,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 262144,
       "architecture": "Gemma4ForConditionalGeneration",
+      "tiedEmbeddings": true,
       "derivedDims": [],
       "kvQuantAlgo": "",
       "gated": false,
@@ -1454,6 +998,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 262144,
       "architecture": "Gemma4ForConditionalGeneration",
+      "tiedEmbeddings": true,
       "derivedDims": [],
       "kvQuantAlgo": "",
       "gated": false,
@@ -1461,157 +1006,6 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "notes": []
     },
     "sha": "5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89"
-  },
-  "google/gemma-4-e2b": {
-    "facts": {
-      "modelId": "google/gemma-4-E2B",
-      "weights": {
-        "paramCount": 5123178051,
-        "onDiskBytes": 10246621918,
-        "storedDtype": "bfloat16",
-        "quantMethod": "",
-        "expertDtype": "",
-        "elementsByDtype": {
-          "BF16": 5123178051
-        },
-        "source": "file-sizes"
-      },
-      "nLayers": 35,
-      "dModel": 1536,
-      "nHeads": 8,
-      "nKvHeads": 1,
-      "headDim": 256,
-      "vHeadDim": 256,
-      "vocabSize": 262144,
-      "intermediateSize": 6144,
-      "nExperts": 0,
-      "layerTypes": [
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention"
-      ],
-      "slidingWindow": 512,
-      "nResidualStreams": 1,
-      "maxPositionEmbeddings": 131072,
-      "architecture": "Gemma4ForConditionalGeneration",
-      "derivedDims": [],
-      "kvQuantAlgo": "",
-      "gated": false,
-      "trunkDimsKnown": true,
-      "notes": []
-    },
-    "sha": "d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f"
-  },
-  "google/gemma-4-e4b": {
-    "facts": {
-      "modelId": "google/gemma-4-E4B",
-      "weights": {
-        "paramCount": 7996156490,
-        "onDiskBytes": 15992595884,
-        "storedDtype": "bfloat16",
-        "quantMethod": "",
-        "expertDtype": "",
-        "elementsByDtype": {
-          "BF16": 7996156490
-        },
-        "source": "file-sizes"
-      },
-      "nLayers": 42,
-      "dModel": 2560,
-      "nHeads": 8,
-      "nKvHeads": 2,
-      "headDim": 256,
-      "vHeadDim": 256,
-      "vocabSize": 262144,
-      "intermediateSize": 10240,
-      "nExperts": 0,
-      "layerTypes": [
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "sliding_attention",
-        "full_attention"
-      ],
-      "slidingWindow": 512,
-      "nResidualStreams": 1,
-      "maxPositionEmbeddings": 131072,
-      "architecture": "Gemma4ForConditionalGeneration",
-      "derivedDims": [],
-      "kvQuantAlgo": "",
-      "gated": false,
-      "trunkDimsKnown": true,
-      "notes": []
-    },
-    "sha": "411aa17b749aa952df1359d2dcea73917a544d9a"
   },
   "huggingfacetb/smollm3-3b": {
     "facts": {
@@ -1678,6 +1072,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 65536,
       "architecture": "SmolLM3ForCausalLM",
+      "tiedEmbeddings": true,
       "derivedDims": [],
       "kvQuantAlgo": "",
       "gated": false,
@@ -1716,6 +1111,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 4096,
       "architecture": "GraniteMoeForCausalLM",
+      "tiedEmbeddings": true,
       "derivedDims": [],
       "kvQuantAlgo": "",
       "gated": false,
@@ -1754,6 +1150,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 131072,
       "architecture": "GraniteForCausalLM",
+      "tiedEmbeddings": true,
       "derivedDims": [],
       "kvQuantAlgo": "",
       "gated": false,
@@ -1818,6 +1215,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 128000,
       "architecture": "Lfm2MoeForCausalLM",
+      "tiedEmbeddings": true,
       "derivedDims": [],
       "kvQuantAlgo": "",
       "gated": false,
@@ -1871,6 +1269,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 128000,
       "architecture": "Lfm2ForCausalLM",
+      "tiedEmbeddings": true,
       "derivedDims": [],
       "kvQuantAlgo": "",
       "gated": false,
@@ -1909,6 +1308,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 131072,
       "architecture": "LlamaForCausalLM",
+      "tiedEmbeddings": false,
       "derivedDims": [],
       "kvQuantAlgo": "",
       "gated": "manual",
@@ -1918,44 +1318,6 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       ]
     },
     "sha": "d04e592bb4f6aa9cfee91e2e20afa771667e1d4b"
-  },
-  "meta-llama/llama-3.1-8b-instruct": {
-    "facts": {
-      "modelId": "meta-llama/Llama-3.1-8B-Instruct",
-      "weights": {
-        "paramCount": 8030261248,
-        "onDiskBytes": 16060522496,
-        "storedDtype": "bfloat16",
-        "quantMethod": "",
-        "expertDtype": "",
-        "elementsByDtype": {
-          "BF16": 8030261248
-        },
-        "source": "safetensors-index"
-      },
-      "nLayers": 32,
-      "dModel": 4096,
-      "nHeads": 32,
-      "nKvHeads": 8,
-      "headDim": 128,
-      "vHeadDim": 128,
-      "vocabSize": 128256,
-      "intermediateSize": 14336,
-      "nExperts": 0,
-      "layerTypes": null,
-      "slidingWindow": null,
-      "nResidualStreams": 1,
-      "maxPositionEmbeddings": 131072,
-      "architecture": "LlamaForCausalLM",
-      "derivedDims": [],
-      "kvQuantAlgo": "",
-      "gated": "manual",
-      "trunkDimsKnown": true,
-      "notes": [
-        "config.json omits head_dim; the key projection in the checkpoint gives 128, so the KV figures are exact rather than derived from hidden_size / heads."
-      ]
-    },
-    "sha": "0e9e39f249a16976918f6564b8830bc894c89659"
   },
   "meta-llama/llama-3.3-70b-instruct": {
     "facts": {
@@ -1985,6 +1347,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 131072,
       "architecture": "LlamaForCausalLM",
+      "tiedEmbeddings": false,
       "derivedDims": [],
       "kvQuantAlgo": "",
       "gated": "manual",
@@ -2021,6 +1384,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 2048,
       "architecture": "PhiForCausalLM",
+      "tiedEmbeddings": false,
       "derivedDims": [],
       "kvQuantAlgo": "",
       "gated": false,
@@ -2059,6 +1423,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 4096,
       "architecture": "Phi3ForCausalLM",
+      "tiedEmbeddings": false,
       "derivedDims": [
         "head_dim",
         "layer_types"
@@ -2101,6 +1466,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 4096,
       "architecture": "PhiMoEForCausalLM",
+      "tiedEmbeddings": false,
       "derivedDims": [
         "layer_types"
       ],
@@ -2141,6 +1507,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 32768,
       "architecture": "MistralForCausalLM",
+      "tiedEmbeddings": false,
       "derivedDims": [
         "layer_types"
       ],
@@ -2184,6 +1551,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 131072,
       "architecture": "LlamaForCausalLM",
+      "tiedEmbeddings": false,
       "derivedDims": [],
       "kvQuantAlgo": "fp8",
       "gated": false,
@@ -2263,6 +1631,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 262144,
       "architecture": "NemotronHForCausalLM",
+      "tiedEmbeddings": false,
       "derivedDims": [],
       "kvQuantAlgo": "",
       "gated": false,
@@ -2299,6 +1668,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 1024,
       "architecture": "GPT2LMHeadModel",
+      "tiedEmbeddings": true,
       "derivedDims": [
         "head_dim"
       ],
@@ -2365,6 +1735,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 131072,
       "architecture": "GptOssForCausalLM",
+      "tiedEmbeddings": false,
       "derivedDims": [],
       "kvQuantAlgo": "",
       "gated": false,
@@ -2372,47 +1743,6 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "notes": []
     },
     "sha": "6cee5e81ee83917806bbde320786a8fb61efebee"
-  },
-  "qwen/qwen2.5-1.5b-instruct": {
-    "facts": {
-      "modelId": "Qwen/Qwen2.5-1.5B-Instruct",
-      "weights": {
-        "paramCount": 1543714304,
-        "onDiskBytes": 3087467144,
-        "storedDtype": "bfloat16",
-        "quantMethod": "",
-        "expertDtype": "",
-        "elementsByDtype": {
-          "BF16": 1543714304
-        },
-        "source": "file-sizes"
-      },
-      "nLayers": 28,
-      "dModel": 1536,
-      "nHeads": 12,
-      "nKvHeads": 2,
-      "headDim": 128,
-      "vHeadDim": 128,
-      "vocabSize": 151936,
-      "intermediateSize": 8960,
-      "nExperts": 0,
-      "layerTypes": null,
-      "slidingWindow": 32768,
-      "nResidualStreams": 1,
-      "maxPositionEmbeddings": 32768,
-      "architecture": "Qwen2ForCausalLM",
-      "derivedDims": [
-        "layer_types"
-      ],
-      "kvQuantAlgo": "",
-      "gated": false,
-      "trunkDimsKnown": true,
-      "notes": [
-        "config.json omits head_dim; the key projection in the checkpoint gives 128, so the KV figures are exact rather than derived from hidden_size / heads.",
-        "this model declares a sliding window but no per-layer table, so every layer is priced as if it caches the full context. That over-states the KV cache, often by a lot: a 5:1 sliding trunk really caches the window on five layers in six."
-      ]
-    },
-    "sha": "989aa7980e4cf806f80c7fef2b1adb7bc71aa306"
   },
   "qwen/qwen2.5-7b-instruct": {
     "facts": {
@@ -2442,6 +1772,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 32768,
       "architecture": "Qwen2ForCausalLM",
+      "tiedEmbeddings": false,
       "derivedDims": [
         "layer_types"
       ],
@@ -2454,78 +1785,6 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       ]
     },
     "sha": "a09a35458c702b33eeacc393d103063234e8bc28"
-  },
-  "qwen/qwen3-1.7b": {
-    "facts": {
-      "modelId": "Qwen/Qwen3-1.7B",
-      "weights": {
-        "paramCount": 2031739904,
-        "onDiskBytes": 4063479808,
-        "storedDtype": "bfloat16",
-        "quantMethod": "",
-        "expertDtype": "",
-        "elementsByDtype": {
-          "BF16": 2031739904
-        },
-        "source": "safetensors-index"
-      },
-      "nLayers": 28,
-      "dModel": 2048,
-      "nHeads": 16,
-      "nKvHeads": 8,
-      "headDim": 128,
-      "vHeadDim": 128,
-      "vocabSize": 151936,
-      "intermediateSize": 6144,
-      "nExperts": 0,
-      "layerTypes": null,
-      "slidingWindow": null,
-      "nResidualStreams": 1,
-      "maxPositionEmbeddings": 40960,
-      "architecture": "Qwen3ForCausalLM",
-      "derivedDims": [],
-      "kvQuantAlgo": "",
-      "gated": false,
-      "trunkDimsKnown": true,
-      "notes": []
-    },
-    "sha": "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e"
-  },
-  "qwen/qwen3-14b": {
-    "facts": {
-      "modelId": "Qwen/Qwen3-14B",
-      "weights": {
-        "paramCount": 14768307200,
-        "onDiskBytes": 29536614400,
-        "storedDtype": "bfloat16",
-        "quantMethod": "",
-        "expertDtype": "",
-        "elementsByDtype": {
-          "BF16": 14768307200
-        },
-        "source": "safetensors-index"
-      },
-      "nLayers": 40,
-      "dModel": 5120,
-      "nHeads": 40,
-      "nKvHeads": 8,
-      "headDim": 128,
-      "vHeadDim": 128,
-      "vocabSize": 151936,
-      "intermediateSize": 17408,
-      "nExperts": 0,
-      "layerTypes": null,
-      "slidingWindow": null,
-      "nResidualStreams": 1,
-      "maxPositionEmbeddings": 40960,
-      "architecture": "Qwen3ForCausalLM",
-      "derivedDims": [],
-      "kvQuantAlgo": "",
-      "gated": false,
-      "trunkDimsKnown": true,
-      "notes": []
-    },
-    "sha": "40c069824f4251a91eefaf281ebe4c544efd3e18"
   },
   "qwen/qwen3-30b-a3b": {
     "facts": {
@@ -2555,6 +1814,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 40960,
       "architecture": "Qwen3MoeForCausalLM",
+      "tiedEmbeddings": false,
       "derivedDims": [],
       "kvQuantAlgo": "",
       "gated": false,
@@ -2591,6 +1851,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 40960,
       "architecture": "Qwen3ForCausalLM",
+      "tiedEmbeddings": false,
       "derivedDims": [],
       "kvQuantAlgo": "",
       "gated": false,
@@ -2627,6 +1888,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 40960,
       "architecture": "Qwen3ForCausalLM",
+      "tiedEmbeddings": true,
       "derivedDims": [],
       "kvQuantAlgo": "",
       "gated": false,
@@ -2663,6 +1925,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 40960,
       "architecture": "Qwen3ForCausalLM",
+      "tiedEmbeddings": false,
       "derivedDims": [],
       "kvQuantAlgo": "",
       "gated": false,
@@ -2699,6 +1962,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 262144,
       "architecture": "Qwen3NextForCausalLM",
+      "tiedEmbeddings": false,
       "derivedDims": [],
       "kvQuantAlgo": "",
       "gated": false,
@@ -2706,372 +1970,6 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "notes": []
     },
     "sha": "9c7f2fbe84465e40164a94cc16cd30b6999b0cc7"
-  },
-  "qwen/qwen3.5-0.8b": {
-    "facts": {
-      "modelId": "Qwen/Qwen3.5-0.8B",
-      "weights": {
-        "paramCount": 873438784,
-        "onDiskBytes": 1746882752,
-        "storedDtype": "bfloat16",
-        "quantMethod": "",
-        "expertDtype": "",
-        "elementsByDtype": {
-          "BF16": 873436192,
-          "F32": 2592
-        },
-        "source": "safetensors-index"
-      },
-      "nLayers": 24,
-      "dModel": 1024,
-      "nHeads": 8,
-      "nKvHeads": 2,
-      "headDim": 256,
-      "vHeadDim": 256,
-      "vocabSize": 248320,
-      "intermediateSize": 3584,
-      "nExperts": 0,
-      "layerTypes": [
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention"
-      ],
-      "slidingWindow": null,
-      "nResidualStreams": 1,
-      "maxPositionEmbeddings": 262144,
-      "architecture": "Qwen3_5ForConditionalGeneration",
-      "derivedDims": [],
-      "kvQuantAlgo": "",
-      "gated": false,
-      "trunkDimsKnown": true,
-      "notes": []
-    },
-    "sha": "2fc06364715b967f1860aea9cf38778875588b17"
-  },
-  "qwen/qwen3.5-27b": {
-    "facts": {
-      "modelId": "Qwen/Qwen3.5-27B",
-      "weights": {
-        "paramCount": 27781427952,
-        "onDiskBytes": 55562872800,
-        "storedDtype": "bfloat16",
-        "quantMethod": "",
-        "expertDtype": "",
-        "elementsByDtype": {
-          "BF16": 27781419504,
-          "F32": 8448
-        },
-        "source": "safetensors-index"
-      },
-      "nLayers": 64,
-      "dModel": 5120,
-      "nHeads": 24,
-      "nKvHeads": 4,
-      "headDim": 256,
-      "vHeadDim": 256,
-      "vocabSize": 248320,
-      "intermediateSize": 17408,
-      "nExperts": 0,
-      "layerTypes": [
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention"
-      ],
-      "slidingWindow": null,
-      "nResidualStreams": 1,
-      "maxPositionEmbeddings": 262144,
-      "architecture": "Qwen3_5ForConditionalGeneration",
-      "derivedDims": [],
-      "kvQuantAlgo": "",
-      "gated": false,
-      "trunkDimsKnown": true,
-      "notes": []
-    },
-    "sha": "fc05daec18b0a78c049392ed2e771dde82bdf654"
-  },
-  "qwen/qwen3.5-2b-base": {
-    "facts": {
-      "modelId": "Qwen/Qwen3.5-2B-Base",
-      "weights": {
-        "paramCount": 2274069824,
-        "onDiskBytes": 4548144832,
-        "storedDtype": "bfloat16",
-        "quantMethod": "",
-        "expertDtype": "",
-        "elementsByDtype": {
-          "BF16": 2274067232,
-          "F32": 2592
-        },
-        "source": "safetensors-index"
-      },
-      "nLayers": 24,
-      "dModel": 2048,
-      "nHeads": 8,
-      "nKvHeads": 2,
-      "headDim": 256,
-      "vHeadDim": 256,
-      "vocabSize": 248320,
-      "intermediateSize": 6144,
-      "nExperts": 0,
-      "layerTypes": [
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention"
-      ],
-      "slidingWindow": null,
-      "nResidualStreams": 1,
-      "maxPositionEmbeddings": 262144,
-      "architecture": "Qwen3_5ForConditionalGeneration",
-      "derivedDims": [],
-      "kvQuantAlgo": "",
-      "gated": false,
-      "trunkDimsKnown": true,
-      "notes": []
-    },
-    "sha": "b1485b2fa6dfa1287294f269f5fb618e03d52d7c"
-  },
-  "qwen/qwen3.5-4b": {
-    "facts": {
-      "modelId": "Qwen/Qwen3.5-4B",
-      "weights": {
-        "paramCount": 4659865088,
-        "onDiskBytes": 9319737856,
-        "storedDtype": "bfloat16",
-        "quantMethod": "",
-        "expertDtype": "",
-        "elementsByDtype": {
-          "BF16": 4659861248,
-          "F32": 3840
-        },
-        "source": "safetensors-index"
-      },
-      "nLayers": 32,
-      "dModel": 2560,
-      "nHeads": 16,
-      "nKvHeads": 4,
-      "headDim": 256,
-      "vHeadDim": 256,
-      "vocabSize": 248320,
-      "intermediateSize": 9216,
-      "nExperts": 0,
-      "layerTypes": [
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention"
-      ],
-      "slidingWindow": null,
-      "nResidualStreams": 1,
-      "maxPositionEmbeddings": 262144,
-      "architecture": "Qwen3_5ForConditionalGeneration",
-      "derivedDims": [],
-      "kvQuantAlgo": "",
-      "gated": false,
-      "trunkDimsKnown": true,
-      "notes": []
-    },
-    "sha": "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a"
-  },
-  "qwen/qwen3.5-9b-base": {
-    "facts": {
-      "modelId": "Qwen/Qwen3.5-9B-Base",
-      "weights": {
-        "paramCount": 9653104368,
-        "onDiskBytes": 19306216416,
-        "storedDtype": "bfloat16",
-        "quantMethod": "",
-        "expertDtype": "",
-        "elementsByDtype": {
-          "BF16": 9653100528,
-          "F32": 3840
-        },
-        "source": "safetensors-index"
-      },
-      "nLayers": 32,
-      "dModel": 4096,
-      "nHeads": 16,
-      "nKvHeads": 4,
-      "headDim": 256,
-      "vHeadDim": 256,
-      "vocabSize": 248320,
-      "intermediateSize": 12288,
-      "nExperts": 0,
-      "layerTypes": [
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention",
-        "linear_attention",
-        "linear_attention",
-        "linear_attention",
-        "full_attention"
-      ],
-      "slidingWindow": null,
-      "nResidualStreams": 1,
-      "maxPositionEmbeddings": 262144,
-      "architecture": "Qwen3_5ForConditionalGeneration",
-      "derivedDims": [],
-      "kvQuantAlgo": "",
-      "gated": false,
-      "trunkDimsKnown": true,
-      "notes": []
-    },
-    "sha": "68c46c4b3498877f3ef123c856ecfde50c39f404"
   },
   "qwen/qwen3.6-27b": {
     "facts": {
@@ -3166,6 +2064,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 262144,
       "architecture": "Qwen3_5ForConditionalGeneration",
+      "tiedEmbeddings": false,
       "derivedDims": [],
       "kvQuantAlgo": "",
       "gated": false,
@@ -3243,6 +2142,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 262144,
       "architecture": "Qwen3_5MoeForConditionalGeneration",
+      "tiedEmbeddings": false,
       "derivedDims": [],
       "kvQuantAlgo": "",
       "gated": false,
@@ -3344,6 +2244,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 262144,
       "architecture": "Qwen3_5ForConditionalGeneration",
+      "tiedEmbeddings": false,
       "derivedDims": [],
       "kvQuantAlgo": "",
       "gated": false,
@@ -3381,6 +2282,7 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       "nResidualStreams": 1,
       "maxPositionEmbeddings": 131072,
       "architecture": "LlamaForCausalLM",
+      "tiedEmbeddings": false,
       "derivedDims": [],
       "kvQuantAlgo": "",
       "gated": false,
@@ -3390,5 +2292,42 @@ export const MODEL_CACHE: Record<string, CachedModel> = {
       ]
     },
     "sha": "870a1177ed082c0ba5dbefd62573ab8f91803f6a"
+  },
+  "zai-org/glm-4-9b-0414": {
+    "facts": {
+      "modelId": "zai-org/GLM-4-9B-0414",
+      "weights": {
+        "paramCount": 9400279040,
+        "onDiskBytes": 18800558080,
+        "storedDtype": "bfloat16",
+        "quantMethod": "",
+        "expertDtype": "",
+        "elementsByDtype": {
+          "BF16": 9400279040
+        },
+        "source": "safetensors-index"
+      },
+      "nLayers": 40,
+      "dModel": 4096,
+      "nHeads": 32,
+      "nKvHeads": 2,
+      "headDim": 128,
+      "vHeadDim": 128,
+      "vocabSize": 151552,
+      "intermediateSize": 13696,
+      "nExperts": 0,
+      "layerTypes": null,
+      "slidingWindow": null,
+      "nResidualStreams": 1,
+      "maxPositionEmbeddings": 32768,
+      "architecture": "Glm4ForCausalLM",
+      "tiedEmbeddings": false,
+      "derivedDims": [],
+      "kvQuantAlgo": "",
+      "gated": false,
+      "trunkDimsKnown": true,
+      "notes": []
+    },
+    "sha": "645b8482494e31b6b752272bf7f7f273ef0f3caf"
   },
 };

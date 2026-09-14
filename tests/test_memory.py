@@ -33,6 +33,8 @@ def facts(
     max_position_embeddings: int = 8192,
     intermediate_size: int = 0,
     n_experts: int = 0,
+    tied_embeddings: bool = False,
+    architecture: str = "TestForCausalLM",
 ) -> mem.ModelMemoryFacts:
     """A plausible dense GQA model, with knobs for the shapes that behave differently."""
     return mem.ModelMemoryFacts(
@@ -57,7 +59,8 @@ def facts(
         sliding_window=sliding_window,
         n_residual_streams=n_residual_streams,
         max_position_embeddings=max_position_embeddings,
-        architecture="TestForCausalLM",
+        architecture=architecture,
+        tied_embeddings=tied_embeddings,
     )
 
 
@@ -287,6 +290,180 @@ def test_asking_for_a_narrower_dtype_than_stored_keeps_the_file_size():
     """A caller asking fp8 of an already-4-bit checkpoint does not get a smaller file."""
     weights = mem.WeightBytes(param_count=20e9, on_disk_bytes=int(12 * GIB), quant_method="mxfp4")
     assert weights.bytes_for_load("mxfp4") == int(12 * GIB)
+
+
+# ------------------------------------------------------------- quantize on load
+
+
+def test_every_on_load_scheme_names_its_backends_and_its_refusals():
+    """A scheme is one ``load_model`` argument, so each backend either applies it or says why not."""
+    for name, scheme in mem.QUANTIZATIONS.items():
+        assert scheme.name == name
+        assert 0 < scheme.width < 2
+        assert scheme.backends
+        # The backends the sizer prices; ``auto`` is resolved to one of them before anything is priced.
+        for backend in (*mem.VLLM_BACKENDS, "eager"):
+            refusal = mem.quantization_refusal(name, backend)
+            assert (refusal == "") == scheme.applies_to(backend)
+            if refusal:
+                # Every refusal names a way forward: another scheme, another backend or another repo.
+                assert "quantization=" in refusal or "backend" in refusal or "checkpoint" in refusal
+    assert mem.quantization_refusal("", "eager") == ""
+    assert "unknown" in mem.quantization_refusal("int3", "vllm")
+
+
+def test_fp8_on_load_halves_the_linear_layers_and_leaves_the_embeddings_wide():
+    """Neither vLLM nor bitsandbytes quantizes the embedding or the unembed.
+
+    On Llama-3.3-70B that pair is 2 x 1.05B parameters, 3.9 GiB that "halve the weights" would count
+    away -- and RedHatAI's FP8 export shows the same shape from disk: 67.7 GiB for 70.6B parameters,
+    not 65.7.
+    """
+    llama = facts(param_count=70_553_706_496, vocab_size=128256, d_model=8192)
+    stored = llama.weights.bytes_for_load("bfloat16", dequantizes=False)
+    fp8 = mem.on_load_weight_bytes(llama, "bfloat16", "fp8", dequantizes=False)
+    embeddings = 2 * 128256 * 8192  # two matrices, at two bytes each
+    linear = llama.weights.param_count - embeddings
+    assert fp8 == linear * 1 + embeddings * 2
+    assert fp8 / GIB == pytest.approx(67.7, abs=0.1)
+    assert stored - fp8 == linear  # one byte back per linear weight, and nothing per embedding
+
+
+def test_a_tied_unembed_is_one_matrix_and_is_kept_wide_once():
+    """gpt2 and gemma share the unembed with the embedding; counting it twice is 30% of gpt2."""
+    untied = facts(param_count=124_439_808, vocab_size=50257, d_model=768, tied_embeddings=False)
+    tied = facts(param_count=124_439_808, vocab_size=50257, d_model=768, tied_embeddings=True)
+    assert (
+        mem.on_load_weight_bytes(untied, "bfloat16", "fp8", dequantizes=False)
+        - mem.on_load_weight_bytes(tied, "bfloat16", "fp8", dequantizes=False)
+        == 50257 * 768
+    )
+
+
+def test_nf4_carries_its_block_scales():
+    """bitsandbytes stores one fp32 absmax per 64 weights: 0.5625 bytes a weight, not 0.5."""
+    assert mem.QUANTIZATIONS["bnb-4bit"].width == 0.5 + 4 / 64
+    model = facts(param_count=8_000_000_000, vocab_size=128256, d_model=4096)
+    nf4 = mem.on_load_weight_bytes(model, "bfloat16", "bnb-4bit", dequantizes=True)
+    fp8 = mem.on_load_weight_bytes(model, "bfloat16", "fp8", dequantizes=False)
+    assert nf4 < fp8
+
+
+def test_a_scheme_no_narrower_than_the_checkpoint_changes_nothing():
+    """The direction that OOMs: ``fp8`` on a bf16 load halves, on an fp8 or int4 load it must not."""
+    shipped = facts(param_count=8e9, quant_method="fp8", on_disk_bytes=8_500_000_000)
+    assert mem.on_load_weight_bytes(shipped, "auto", "fp8", dequantizes=False) == 8_500_000_000
+    est = mem.estimate(shipped, A40, mem.WorkloadSpec(backend="vllm", dtype="auto", quantization="fp8"))
+    assert any("changes nothing" in line for line in est.warnings)
+    assert est.term("weights").bytes == 8_500_000_000
+    # And a scheme applied to a wider load than it narrows to is priced at the wider width.
+    dense = facts(param_count=8e9)
+    assert mem.narrow_linear_weights(1000, narrow=1.0, stored=1.0, embedding_params=0) == 1000
+    assert mem.on_load_weight_bytes(dense, "bfloat16", "", dequantizes=False) == 16_000_000_000
+
+
+def test_a_refused_scheme_is_a_configuration_that_cannot_start():
+    """eager has no on-load FP8, so the estimate does not fit and ``fit`` walks no ladder."""
+    model = facts(param_count=2_000_000_000)
+    est = mem.estimate(model, A40, mem.WorkloadSpec(backend="eager", dtype="bfloat16", quantization="fp8"))
+    assert not est.fits
+    assert any("refused" in line and "vLLM" in line for line in est.warnings)
+    # Priced as the plain load, so the reader sees what the argument would have narrowed.
+    assert est.term("weights").bytes == 4_000_000_000
+    assert mem.fit(model, A40, backend="eager", quantization="fp8") is None
+    # The same model and scheme on a backend that applies it walks the ladder as usual.
+    assert mem.fit(model, A40, backend="vllm", quantization="fp8") is not None
+
+
+def test_fp8_without_fp8_tensor_cores_is_a_speed_warning_not_a_memory_one():
+    """Below compute 8.9 vLLM runs fp8 weights through Marlin: the same bytes, slower."""
+    model = facts(param_count=8_000_000_000)
+    ampere = mem.estimate(model, A40, mem.WorkloadSpec(backend="vllm", dtype="bfloat16", quantization="fp8"))
+    hopper = mem.estimate(model, H100, mem.WorkloadSpec(backend="vllm", dtype="bfloat16", quantization="fp8"))
+    assert any("FP8 tensor cores" in line for line in ampere.warnings)
+    assert not any("FP8 tensor cores" in line for line in hopper.warnings)
+    assert ampere.term("weights").bytes == hopper.term("weights").bytes
+    assert "fp8 on load" in ampere.term("weights").note
+
+
+def test_kv_cache_dtype_halves_the_cache_and_touches_nothing_else():
+    """The other half of the memory story: on a 70B the cache is what decides two cards or four."""
+    model = facts()
+    auto = mem.estimate(model, A40, mem.WorkloadSpec(backend="vllm", dtype="bfloat16", max_model_len=8192))
+    fp8 = mem.estimate(
+        model, A40, mem.WorkloadSpec(backend="vllm", dtype="bfloat16", max_model_len=8192, kv_cache_dtype="fp8")
+    )
+    assert fp8.term("kv_cache_floor").bytes * 2 == auto.term("kv_cache_floor").bytes
+    assert fp8.term("weights").bytes == auto.term("weights").bytes
+    assert fp8.kv_capacity_tokens > auto.kv_capacity_tokens
+    # A checkpoint that already declares an fp8 cache is served that way under ``auto``.
+    declared = mem.ModelMemoryFacts(**{**vars(model), "kv_quant_algo": "fp8"})
+    declared_auto = mem.estimate(declared, A40, mem.WorkloadSpec(backend="vllm", dtype="bfloat16", max_model_len=8192))
+    assert declared_auto.term("kv_cache_floor").bytes == fp8.term("kv_cache_floor").bytes
+
+
+def test_quantizing_at_load_costs_a_fixed_charge_inside_the_pool():
+    """vLLM's 'weights' figure ran 0.30 GiB past the fp8 tensors on a 4B and an 8B alike, and the KV
+    cache came out 0.98x of predicted until that was charged. It is a term of its own, inside the pool,
+    and only when a scheme took effect: a quantized checkpoint or a refused scheme pays nothing."""
+    model = facts()
+    plain = mem.estimate(model, A40, mem.WorkloadSpec(backend="vllm", dtype="bfloat16", max_model_len=8192))
+    fp8 = mem.estimate(
+        model, A40, mem.WorkloadSpec(backend="vllm", dtype="bfloat16", max_model_len=8192, quantization="fp8")
+    )
+    assert plain.term("quant_on_load") is None
+    charge = fp8.term("quant_on_load")
+    assert charge is not None and charge.side == "pool"
+    assert charge.bytes == int(mem.CALIBRATION["quant_on_load_gib"].value * GIB)
+    # It comes out of the cache's share: the weights saved, less the charge, is the room the cache gains.
+    saved = plain.term("weights").bytes - fp8.term("weights").bytes - charge.bytes
+    per_token = plain.term("kv_cache_floor").bytes / 8192
+    assert fp8.kv_capacity_tokens - plain.kv_capacity_tokens == pytest.approx(saved / per_token, abs=1)
+    shipped = mem.ModelMemoryFacts(
+        **{**vars(model), "weights": mem.WeightBytes(**{**vars(model.weights), "quant_method": "fp8"})}
+    )
+    already = mem.estimate(
+        shipped, A40, mem.WorkloadSpec(backend="vllm", dtype="auto", max_model_len=8192, quantization="fp8")
+    )
+    assert already.term("quant_on_load") is None
+    refused = mem.estimate(
+        model, A40, mem.WorkloadSpec(backend="eager", dtype="bfloat16", seq_len=1024, quantization="fp8")
+    )
+    assert refused.term("quant_on_load") is None
+
+
+def test_the_snippet_arguments_for_precision_are_in_the_spec():
+    """What the sizer prints has to be what it priced: both knobs ride on the spec."""
+    spec = mem.WorkloadSpec(backend="vllm", dtype="bfloat16", quantization="fp8", kv_cache_dtype="fp8")
+    assert spec.quantization == "fp8"
+    assert spec.kv_cache_dtype == "fp8"
+    eager = mem.WorkloadSpec(backend="eager", dtype="bfloat16")
+    assert eager.quantization == ""
+    assert eager.kv_cache_dtype == "auto"
+
+
+def test_fp16_on_eager_warns_for_the_architectures_that_overflow():
+    """GPT-NeoX and Phi's eager attention reaches inf at half precision; sdpa and bf16 do not."""
+    pythia = facts(param_count=70e6, architecture="GPTNeoXForCausalLM")
+    fp16 = mem.estimate(pythia, A40, mem.WorkloadSpec(backend="eager", dtype="float16", attn_implementation="eager"))
+    bf16 = mem.estimate(pythia, A40, mem.WorkloadSpec(backend="eager", dtype="bfloat16", attn_implementation="eager"))
+    assert any("float16" in line and "NaN" in line for line in fp16.warnings)
+    assert not any("NaN" in line for line in bf16.warnings)
+    llama = facts(param_count=70e6, architecture="LlamaForCausalLM")
+    llama_fp16 = mem.estimate(
+        llama, A40, mem.WorkloadSpec(backend="eager", dtype="float16", attn_implementation="eager")
+    )
+    assert not any("NaN" in line for line in llama_fp16.warnings)
+
+
+def test_advice_on_a_wide_checkpoint_that_does_not_fit_names_the_quantizer():
+    """The knob most likely to make it fit, before "buy another card"."""
+    est = mem.estimate(facts(param_count=70_000_000_000), A40, mem.WorkloadSpec(backend="vllm", dtype="bfloat16"))
+    assert not est.fits
+    assert any("quantization='fp8'" in line for line in est.advice)
+    shipped = facts(param_count=70e9, quant_method="fp8", on_disk_bytes=int(68 * GIB))
+    est = mem.estimate(shipped, A40, mem.WorkloadSpec(backend="vllm", dtype="auto"))
+    assert not any("quantization='fp8'" in line for line in est.advice)
 
 
 # --------------------------------------------------------------------- the two sides

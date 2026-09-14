@@ -143,6 +143,12 @@ export interface WorkloadSpec {
   backend: Backend;
   /** The dtype weights load at. `"auto"` means as stored. */
   dtype: string;
+  /**
+   * An on-load scheme from {@link QUANTIZATIONS}, or empty for as stored. Not a dtype: vLLM rejects
+   * `dtype="fp8"`, and transformers would store fp8 with no kernel behind it, which is why this is
+   * its own field and its own `load_model` argument.
+   */
+  quantization: string;
   /** `"auto"` follows the model dtype. */
   kvCacheDtype: string;
   maxModelLen: number;
@@ -170,6 +176,7 @@ export function workload(overrides: Partial<WorkloadSpec> = {}): WorkloadSpec {
   return {
     backend: "vllm",
     dtype: "auto",
+    quantization: "",
     kvCacheDtype: "auto",
     maxModelLen: 0,
     maxNumBatchedTokens: 0,
@@ -763,6 +770,137 @@ export function eagerActivationBytes(
   ];
 }
 
+// ------------------------------------------------------------ on-load quantization
+
+/**
+ * A scheme a backend can apply to a wider checkpoint **at load**, with no calibration step.
+ *
+ * Mirrors `memory.QUANTIZATIONS` row for row. What separates these from AWQ, GPTQ, NVFP4 and MXFP4
+ * is that those need a calibration run and arrive as a repo, which `hub.ts` prices from its headers.
+ * A row here is one argument to `load_model`, so the sizer can offer it on any bf16 checkpoint and
+ * the snippet it prints still runs.
+ */
+export interface OnLoadQuantization {
+  name: string;
+  /** Bytes per **linear** weight once quantized, scales included. Embeddings stay at the model dtype. */
+  width: number;
+  /** The backends that apply it. Any other is refused, with the reason in `refusals`. */
+  backends: Backend[];
+  /** Why each absent backend cannot, and what to do instead. `"*"` covers every backend not named. */
+  refusals: Record<string, string>;
+  why: string;
+}
+
+/**
+ * Every on-load scheme `load_model(quantization=...)` accepts, by that name. Same widths, same
+ * backends and the same refusal text as the Python, which is where the reasons are written up.
+ */
+export const QUANTIZATIONS: Record<string, OnLoadQuantization> = {
+  fp8: {
+    name: "fp8",
+    width: 1.0,
+    backends: [...VLLM_BACKENDS],
+    refusals: {
+      eager:
+        "transformers' on-load FP8 (FineGrainedFP8Config) needs compute 8.9 and a DeepGEMM Hub kernel; load a checkpoint that ships in FP8 with dtype='auto' instead, or use a vLLM backend",
+    },
+    why: "dynamic per-channel FP8 on every linear layer: half of bf16, no calibration",
+  },
+  "bnb-8bit": {
+    name: "bnb-8bit",
+    width: 1.0,
+    backends: ["eager"],
+    refusals: {
+      "*": "vLLM's in-flight bitsandbytes is 4-bit only; use quantization='bnb-4bit' or quantization='fp8' there",
+    },
+    why: "LLM.int8 through bitsandbytes: the one 8-bit scheme with a backward pass",
+  },
+  "bnb-4bit": {
+    name: "bnb-4bit",
+    width: 0.5625,
+    backends: [...VLLM_BACKENDS, "eager"],
+    refusals: {},
+    why: "NF4 through bitsandbytes, on both backends, and with a backward pass on eager",
+  },
+};
+
+/** The names, in the order the control offers them. */
+export const QUANTIZATION_NAMES = Object.keys(QUANTIZATIONS);
+
+/** Why `quantization` cannot be applied on `backend`, or an empty string when it can. */
+export function quantizationRefusal(
+  quantization: string,
+  backend: Backend,
+): string {
+  if (!quantization) return "";
+  const scheme = QUANTIZATIONS[quantization];
+  if (!scheme) {
+    return `unknown quantization '${quantization}'; the sizer prices ${QUANTIZATION_NAMES.join(", ")}`;
+  }
+  if (scheme.backends.includes(backend)) return "";
+  return (
+    scheme.refusals[backend] ??
+    scheme.refusals["*"] ??
+    `${scheme.name} is not available on ${backend}`
+  );
+}
+
+/**
+ * `base` bytes of weights once every linear layer is narrowed from `stored` to `narrow`.
+ *
+ * Neither vLLM nor bitsandbytes quantizes the embeddings or the unembed, so those stay at the stored
+ * width: on Llama-3.3-70B that is 2 x 1.05B parameters, about 3.9 GiB that "halve the weights" would
+ * have counted away. Mirrors `memory.narrow_linear_weights`, `Math.trunc` for `int`.
+ */
+function narrowLinearWeights(
+  base: number,
+  narrow: number,
+  stored: number,
+  embeddingParams: number,
+): number {
+  if (!base || narrow >= stored) return Math.trunc(base);
+  const embeddings = Math.min(
+    Math.max(Math.trunc(embeddingParams * stored), 0),
+    Math.trunc(base),
+  );
+  return Math.trunc(
+    (Math.trunc(base) - embeddings) * (narrow / stored) + embeddings,
+  );
+}
+
+/**
+ * Weight bytes on the device once `quantization` has narrowed the checkpoint at load.
+ *
+ * A checkpoint that already ships quantized is returned as stored: a quantizer does not narrow what
+ * is already narrower, and `estimate` says so in a warning.
+ */
+export function onLoadWeightBytes(
+  facts: ModelMemoryFacts,
+  dtype: string,
+  quantization: string,
+  dequantizes: boolean,
+): number {
+  const weights = facts.weights;
+  const base = bytesForLoad(weights, dtype, { dequantizes });
+  const scheme = quantization ? QUANTIZATIONS[quantization] : undefined;
+  if (!scheme || weights.quantMethod) return base;
+  const stored = dtypeBytes(
+    dtype && dtype !== "auto" ? dtype : weights.storedDtype,
+  );
+  const embeddingParams =
+    facts.vocabSize * facts.dModel * (facts.tiedEmbeddings ? 1 : 2);
+  return narrowLinearWeights(base, scheme.width, stored, embeddingParams);
+}
+
+/**
+ * Architectures whose eager attention overflows to NaN at float16. Mirrors
+ * `facts.FP16_EAGER_OVERFLOW_ARCHS`, which is where the reason is written up.
+ */
+const FP16_EAGER_OVERFLOW_ARCHS = new Set([
+  "GPTNeoXForCausalLM",
+  "PhiForCausalLM",
+]);
+
 // ----------------------------------------------------------------- the estimate
 
 export function supportsFp8(gpu: Gpu): boolean {
@@ -832,13 +970,47 @@ export function estimate(
   }
 
   // Only the eager backend expands a quantized checkpoint to the requested dtype; vLLM reads the
-  // same argument as an activation dtype and serves the packed weights.
-  const weightsTotal = bytesForLoad(facts.weights, spec.dtype, {
-    dequantizes: spec.backend === "eager",
-  });
+  // same argument as an activation dtype and serves the packed weights. An on-load scheme then
+  // narrows the linear layers and nothing else -- see `onLoadWeightBytes`.
+  const refused = quantizationRefusal(spec.quantization, spec.backend);
+  const weightsTotal = onLoadWeightBytes(
+    facts,
+    spec.dtype,
+    refused ? "" : spec.quantization,
+    spec.backend === "eager",
+  );
+  // True when the scheme took effect: the checkpoint was wider than it, and the backend runs it.
+  const narrowed =
+    weightsTotal <
+    bytesForLoad(facts.weights, spec.dtype, {
+      dequantizes: spec.backend === "eager",
+    });
   if (!weightsTotal) {
     warnings.push(
       "weight bytes are unknown, so every figure below is only the non-weight terms",
+    );
+  }
+  if (refused) {
+    warnings.push(
+      `quantization='${spec.quantization}' is refused on backend='${spec.backend}': ${refused}`,
+    );
+  } else if (spec.quantization && facts.weights.quantMethod) {
+    warnings.push(
+      `quantization='${spec.quantization}' changes nothing: this checkpoint already ships as ${facts.weights.quantMethod}, and a quantizer does not narrow what is already narrower. Priced as stored`,
+    );
+  } else if (spec.quantization === "fp8" && !supportsFp8(gpu)) {
+    warnings.push(
+      `${gpu.name} has no FP8 tensor cores, so quantization='fp8' runs weight-only through the Marlin kernel: the same memory, but slower than on Ada/Hopper or newer`,
+    );
+  }
+  if (
+    spec.backend === "eager" &&
+    ["float16", "fp16", "half"].includes(spec.dtype) &&
+    (spec.attnImplementation || "eager") === "eager" &&
+    FP16_EAGER_OVERFLOW_ARCHS.has(facts.architecture)
+  ) {
+    warnings.push(
+      `${facts.architecture} overflows to NaN in float16 under attn_implementation='eager'; use dtype='bfloat16' or attn_implementation='sdpa'`,
     );
   }
   if (facts.weights.quantMethod) {
@@ -881,7 +1053,7 @@ export function estimate(
       bytes: perCardWeights,
       side: "eager",
       note:
-        `${(facts.weights.paramCount / 1e9).toFixed(1)}B params at ${spec.dtype}` +
+        weightsNote(spec, facts, refused) +
         (tp > 1 ? `, spread over ${tp} GPUs` : "") +
         ` [${facts.weights.source}]`,
     });
@@ -924,8 +1096,9 @@ export function estimate(
 
     const total = terms.reduce((sum, term) => sum + term.bytes, 0);
     const headroom = gpu.totalBytes - total;
-    const fits = headroom >= 0 && facts.trunkDimsKnown;
-    if (!fits && facts.trunkDimsKnown) {
+    // A refused quantization is a configuration that cannot start, whatever the arithmetic says.
+    const fits = headroom >= 0 && facts.trunkDimsKnown && !refused;
+    if (!fits && facts.trunkDimsKnown && !refused) {
       advice.push(...eagerAdvice(activation, spec, facts));
     }
     return {
@@ -1005,6 +1178,17 @@ export function estimate(
     side: "pool",
     note: "process CUDA context, charged against vLLM's budget",
   });
+  const quantCharge = narrowed
+    ? Math.trunc(CALIBRATION.quant_on_load_gib * GIB)
+    : 0;
+  if (quantCharge) {
+    terms.push({
+      name: "quant_on_load",
+      bytes: quantCharge,
+      side: "pool",
+      note: `what vLLM holds for quantizing to ${spec.quantization} at load, past the tensors`,
+    });
+  }
   if (reservedInside) {
     terms.push({
       name: "reserved",
@@ -1022,7 +1206,7 @@ export function estimate(
     bytes: perCardWeights,
     side: "pool",
     note:
-      `${(facts.weights.paramCount / 1e9).toFixed(1)}B params at ${spec.dtype}` +
+      weightsNote(spec, facts, refused) +
       (tp > 1 ? `, sharded over TP=${tp}` : "") +
       ` [${facts.weights.source}]`,
   });
@@ -1086,7 +1270,13 @@ export function estimate(
   const poolAvailable = Math.trunc(spec.gpuMemoryUtilization * gpu.totalBytes);
   const outsideNeeded = overshoot + frag + reservedOutside;
   const poolNeeded =
-    context + reservedInside + perCardWeights + buffers + graphs + kvFloor;
+    context +
+    quantCharge +
+    reservedInside +
+    perCardWeights +
+    buffers +
+    graphs +
+    kvFloor;
 
   const poolHeadroom = poolAvailable - poolNeeded;
   const outsideHeadroom = gpu.totalBytes - poolAvailable - outsideNeeded;
@@ -1100,11 +1290,13 @@ export function estimate(
     poolHeadroom >= 0 &&
     outsideHeadroom >= 0 &&
     facts.trunkDimsKnown &&
-    kvCachingLayers(facts) > 0;
+    kvCachingLayers(facts) > 0 &&
+    !refused;
 
   const kvRoom = Math.max(
     poolAvailable -
       context -
+      quantCharge -
       reservedInside -
       perCardWeights -
       buffers -
@@ -1117,7 +1309,7 @@ export function estimate(
   const kvCapacity =
     perToken > 0 ? Math.trunc(kvRoom / (perToken / spec.maxModelLen)) : 0;
 
-  if (!fits) {
+  if (!fits && !refused) {
     advice.push(
       ...vllmAdvice({
         spec,
@@ -1151,6 +1343,23 @@ export function estimate(
     warnings,
     evidence: "estimated",
   };
+}
+
+/** The first clause of the weights term: what is loaded, at what width. */
+function weightsNote(
+  spec: WorkloadSpec,
+  facts: ModelMemoryFacts,
+  refused: string,
+): string {
+  let note = `${(facts.weights.paramCount / 1e9).toFixed(1)}B params at ${spec.dtype}`;
+  if (spec.quantization && !refused && !facts.weights.quantMethod) {
+    const stored =
+      spec.dtype !== "auto"
+        ? spec.dtype
+        : facts.weights.storedDtype || "bfloat16";
+    note += `, ${spec.quantization} on load (embeddings stay ${stored})`;
+  }
+  return note;
 }
 
 function eagerNote(
@@ -1264,8 +1473,12 @@ function vllmAdvice({
     }
     if (weights > gpu.totalBytes * 0.7) {
       const need = weights / (gpu.totalBytes * 0.6);
+      const narrower =
+        !facts.weights.quantMethod && !spec.quantization
+          ? "quantization='fp8' halves the linear layers on load"
+          : "use a quantized checkpoint";
       out.push(
-        `the weights alone are ${gib(weights)} GiB of a ${totalGib(gpu).toFixed(1)} GiB card; num_gpus=${Math.max(2, Math.trunc(need) + 1)} shards them, or use a quantized checkpoint`,
+        `the weights alone are ${gib(weights)} GiB of a ${totalGib(gpu).toFixed(1)} GiB card; num_gpus=${Math.max(2, Math.trunc(need) + 1)} shards them, or ${narrower}`,
       );
     }
     if (graphsOn(spec)) {
@@ -1284,6 +1497,7 @@ export interface FitOptions {
   res?: Reservations;
   maxModelLen?: number;
   dtype?: string;
+  quantization?: string;
   kvCacheDtype?: string;
   numGpus?: number;
   staticSites?: number;
@@ -1318,6 +1532,7 @@ export function fit(
     res = reservations(),
     maxModelLen = 0,
     dtype = "auto",
+    quantization = "",
     kvCacheDtype = "auto",
     numGpus = 1,
     staticSites = 0,
@@ -1331,10 +1546,12 @@ export function fit(
     attnImplementation = "",
   } = options;
 
-  // `estimate` refuses to report `fits` on a model whose dims are unknown, so every rung of every
-  // ladder below would come back false. Callers wanting to tell "cannot size" from "does not fit"
-  // should read `facts.trunkDimsKnown`, which is the only thing that distinguishes them.
-  if (!facts.trunkDimsKnown) return null;
+  // `estimate` refuses to report `fits` on a model whose dims are unknown, or under a quantization
+  // the backend cannot apply, so every rung of every ladder below would come back false. Callers
+  // wanting to tell "cannot size" from "does not fit" should read `facts.trunkDimsKnown`.
+  if (!facts.trunkDimsKnown || quantizationRefusal(quantization, backend)) {
+    return null;
+  }
 
   const advertised = facts.maxPositionEmbeddings || 4096;
 
@@ -1357,6 +1574,7 @@ export function fit(
         workload({
           backend: "eager",
           dtype,
+          quantization,
           numGpus,
           batchSize,
           seqLen: prompt,
@@ -1406,6 +1624,7 @@ export function fit(
         workload({
           backend,
           dtype,
+          quantization,
           kvCacheDtype,
           maxModelLen: context,
           // A prefill batch wider than the context is waste: nothing can fill it.
@@ -1508,11 +1727,15 @@ export function evidenceFor(
   let inexact: Evidence | null = null;
   const ours = width(spec);
   for (const run of VERIFIED_RUNS) {
+    // Everything that changes what the weights or the cache cost has to agree, or a run of a
+    // narrower configuration vouches for a wider one.
     if (
       run.modelId !== facts.modelId ||
       run.gpu !== gpu.name ||
       run.backend !== spec.backend ||
-      run.dtype !== spec.dtype
+      run.dtype !== spec.dtype ||
+      run.quantization !== spec.quantization ||
+      run.kvCacheDtype !== spec.kvCacheDtype
     ) {
       continue;
     }
@@ -1557,6 +1780,10 @@ export function snippet(
   const lines = [`# ${modelId} on ${count}x ${gpu.name}`];
   const args = [`    "${modelId}"`, `    backend="${spec.backend}"`];
   if (spec.dtype && spec.dtype !== "auto") args.push(`    dtype="${spec.dtype}"`);
+  if (spec.quantization) args.push(`    quantization="${spec.quantization}"`);
+  if (isVllm(spec.backend) && spec.kvCacheDtype && spec.kvCacheDtype !== "auto") {
+    args.push(`    kv_cache_dtype="${spec.kvCacheDtype}"`);
+  }
   if (count > 1) args.push(`    num_gpus=${count}`);
   // `"auto"` *is* the default point at every layer, so a set equal to it is spelled the short way.
   // Anything else has to be named per layer: a static tap is per (point, layer), and there is no

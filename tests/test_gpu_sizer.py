@@ -52,18 +52,26 @@ def record(
     max_model_len: int = 8192,
     max_num_batched_tokens: int = 8192,
     seq_len: int = 0,
+    quantization: str | None = None,
+    kv_cache_dtype: str | None = None,
 ) -> dict:
+    spec = {
+        "dtype": dtype,
+        "max_model_len": max_model_len,
+        "max_num_batched_tokens": max_num_batched_tokens,
+        "seq_len": seq_len,
+    }
+    # Written only when set, the way a record from before the two knobs existed reads.
+    if quantization is not None:
+        spec["quantization"] = quantization
+    if kv_cache_dtype is not None:
+        spec["kv_cache_dtype"] = kv_cache_dtype
     return {
         "model_id": model_id,
         "backend": backend,
         "outcome": outcome,
         "gpu": {"name": gpu},
-        "spec": {
-            "dtype": dtype,
-            "max_model_len": max_model_len,
-            "max_num_batched_tokens": max_num_batched_tokens,
-            "seq_len": seq_len,
-        },
+        "spec": spec,
     }
 
 
@@ -115,6 +123,33 @@ def test_evidence_never_crosses_card_backend_or_dtype():
 
 def test_no_records_at_all_reads_as_estimated():
     assert evidence([], candidate()) == "estimated"
+
+
+def test_evidence_never_crosses_the_load_precision_either():
+    """fp8 weights or an fp8 cache are a different pod, and a bf16 run says nothing about it."""
+    plain = [record()]
+    assert evidence(plain, candidate(quantization="fp8")) == "estimated"
+    assert evidence(plain, candidate(kv_cache_dtype="fp8")) == "estimated"
+    narrowed = [record(quantization="fp8", kv_cache_dtype="fp8")]
+    assert evidence(narrowed, candidate()) == "estimated"
+    assert evidence(narrowed, candidate(quantization="fp8", kv_cache_dtype="fp8")) == "verified"
+
+
+def test_a_record_from_before_the_precision_knobs_ran_as_stored():
+    """Older JSONs carry neither field, and every one of them loaded the checkpoint as it ships."""
+    assert evidence([record()], candidate(quantization="", kv_cache_dtype="auto")) == "verified"
+
+
+def test_the_snippet_prints_the_precision_it_priced():
+    gpu = mem.GPUS["NVIDIA A40"]
+    code = fit.snippet("test/model", candidate(quantization="fp8", kv_cache_dtype="fp8"), gpu, 1)
+    assert 'quantization="fp8"' in code
+    assert 'kv_cache_dtype="fp8"' in code
+    # The defaults are not restated, and a cache dtype is not printed for a backend with no such cache.
+    plain = fit.snippet("test/model", candidate(), gpu, 1)
+    assert "quantization" not in plain and "kv_cache_dtype" not in plain
+    eager = fit.snippet("test/model", mem.WorkloadSpec(backend="eager", dtype="bfloat16", kv_cache_dtype="fp8"), gpu, 1)
+    assert "kv_cache_dtype" not in eager
 
 
 # ------------------------------------------------------------------- reading a failure

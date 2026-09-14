@@ -325,6 +325,55 @@ def test_config_weight_bytes_count_moe_experts():
     assert static_read_width([Address("resid_streams", 0)], d_model=d_model, n_streams=4) == 4 * d_model
 
 
+def test_on_load_fp8_narrows_the_static_budget_by_the_sizers_rule():
+    """The worker sizes its buffers from the same arithmetic the sizer prices, so a 70B on
+    ``quantization="fp8"`` is charged 68 GiB of weights, not the 131 GiB it is stored at."""
+    from transformers import LlamaConfig
+
+    from interp_engine.memory import narrow_linear_weights
+    from interp_engine.vllm_capture.static import quantized_on_load_bytes
+
+    cfg = LlamaConfig(
+        num_hidden_layers=80,
+        hidden_size=8192,
+        num_attention_heads=64,
+        num_key_value_heads=8,
+        vocab_size=128256,
+        intermediate_size=28672,
+        tie_word_embeddings=False,
+        torch_dtype="bfloat16",
+    )
+    stored = 141_107_412_992  # 70.55B parameters at two bytes
+    fp8 = quantized_on_load_bytes(stored, cfg, "fp8")
+    assert fp8 == narrow_linear_weights(stored, narrow=1.0, stored=2.0, embedding_params=2 * 128256 * 8192)
+    assert 67 * 1024**3 < fp8 < 68 * 1024**3
+    # vLLM's own spelling of NF4, and the block scales that come with it.
+    assert stored / 4 < quantized_on_load_bytes(stored, cfg, "bitsandbytes") < fp8
+    # Unknown scheme, no scheme and no config: the stored total, which is the direction that OOMs.
+    assert quantized_on_load_bytes(stored, cfg, "awq") == stored
+    assert quantized_on_load_bytes(stored, cfg, None) == stored
+    assert quantized_on_load_bytes(stored, None, "fp8") == stored
+    # A checkpoint already at one byte is not narrowed again.
+    shipped = LlamaConfig(**{**cfg.to_dict(), "quantization_config": {"quant_method": "fp8"}})
+    assert quantized_on_load_bytes(stored // 2, shipped, "fp8") == stored // 2
+
+    # The charge that matters: a 96 GB card refuses a static set at the stored total and takes one
+    # at the fp8 total, beside a KV pool with room to spare.
+    shared = {
+        "n_sites": 80,
+        "width": 8192,
+        "max_n": 8192,
+        "device_memory": 95 * 1024**3,
+        "gpu_memory_utilization": 0.9,
+        "max_model_len": 2048,
+        "kv_width": kv_cache_width(n_kv_heads=8, head_dim=128, d_model=8192),
+        "n_layers": 80,
+    }
+    with pytest.raises(ValueError, match="do not fit"):
+        fit_max_num_batched_tokens(**shared, weight_bytes=stored)
+    assert fit_max_num_batched_tokens(**shared, weight_bytes=fp8) >= 1024
+
+
 def test_honest_weights_drop_dsv4_auto_below_default_max_n():
     """A dense guess keeps vLLM's 16384 capture size; 146 GiB-class weights do not."""
     shared = {

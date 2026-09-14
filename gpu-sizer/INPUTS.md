@@ -130,6 +130,45 @@ matching on the method string, and never on the repo name.
 
 `kv_cache_dtype` is separate and defaults to following the model dtype. Halving it halves the cache.
 
+### Two ways to a narrower model, and the sizer prices both
+
+A quantized model reaches a card in one of two ways, and they are different inputs:
+
+- **A repo that ships quantized** (`RedHatAI/...-FP8-dynamic`, `Qwen/Qwen3-8B-AWQ`, `nvidia/...-NVFP4`).
+  The scheme needed a calibration run and lives in the files, so the sizer reads it off the headers and
+  the only argument that matters is `dtype="auto"`. The page lists these repos under the base model as
+  chips; they are what to reach for when one exists.
+- **A wider checkpoint narrowed on load**, through `load_model(quantization=...)`. No calibration, so
+  it works on any bf16 repo, and the snippet the sizer prints still runs. Three schemes, each one row
+  in `memory.QUANTIZATIONS`:
+
+| `quantization` | bytes per linear weight | backends | what it is |
+| --- | --- | --- | --- |
+| `fp8` | 1 | vLLM | dynamic per-channel FP8. Hardware speed needs compute >= 8.9; below that vLLM runs it weight-only through Marlin, same memory, slower. |
+| `bnb-4bit` | 0.5625 | vLLM, eager | NF4 through bitsandbytes. The extra 0.0625 is one fp32 absmax per 64-weight block. |
+| `bnb-8bit` | 1 | eager | LLM.int8 through bitsandbytes; the one 8-bit scheme with a backward pass. vLLM's in-flight bitsandbytes is 4-bit only. |
+
+**The embeddings stay wide.** Neither quantizer touches the embedding or the unembed, so "half of
+bf16" is not the arithmetic: on Llama-3.3-70B the pair is 2 x 1.05B parameters, 3.9 GiB and 6% of
+the answer, and a tied pair (gpt2, gemma) is one matrix rather than two. RedHatAI's FP8 export shows
+the same shape from disk: 67.7 GiB for 70.6B parameters, not 65.7.
+
+**Quantizing at load has a fixed price, inside the pool.** vLLM's own "weights" figure ran 0.30 GiB
+past the fp8 tensors on Qwen3-4B and Qwen3-8B alike, and the KV cache it built was 0.98x of the
+prediction until that was charged. It is the `quant_on_load` term, `CALIBRATION["quant_on_load_gib"]`,
+and it appears only when a scheme took effect.
+
+A scheme the backend cannot apply is **refused**, on the page, in the CLI and in `load_model` alike,
+with the same sentence naming what to do instead — `fp8` on eager is the common case, since
+transformers' on-load FP8 needs compute 8.9 and a DeepGEMM Hub kernel. A scheme applied to a repo that
+already ships narrower changes nothing, and the estimate says so rather than pricing the halving.
+
+`kv_cache_dtype="fp8"` is the third knob, independent of both. On a 70B at 8k context it is the
+difference between the cache fitting beside the weights on two cards and needing four, which is
+exactly the gap between NVIDIA's FP8 export (declares an fp8 cache in `hf_quant_config.json`) and
+RedHatAI's (does not). The sizer reads the declaration, so `auto` on the first prices a one-byte cache
+already.
+
 ---
 
 ## 3. `backend` — the biggest single lever
@@ -368,6 +407,7 @@ without the speed, and `fit.py` says so.
 | --- | --- | --- | --- |
 | `gpu_memory_utilization` | ↑ = bigger cache, thinner margin | vLLM backends | dies during warmup, after the cache looked fine |
 | `dtype` | ↑ width = ↑ weights | all | 2x on eager's fp32 default; 3.2x on a dequantized MXFP4 |
+| `quantization` | narrows the linear layers on load; embeddings stay wide | `fp8`: vLLM; `bnb-4bit`: both; `bnb-8bit`: eager | refused where the backend cannot apply it; a no-op on a repo that already ships narrower |
 | `kv_cache_dtype` | ↑ width = ↑ cache | vLLM backends | fewer concurrent sequences |
 | `backend` | `vllm` < `vllm-static` | — | graph pool plus tap buffers appear |
 | `max_model_len` | ↑ = ↑ KV floor, linearly | vLLM backends | refuses at startup; must exceed your longest prompt |
