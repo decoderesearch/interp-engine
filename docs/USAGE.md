@@ -225,7 +225,9 @@ one entry in `chat_formatters.CODE_CHAT_FORMATS`.
 
 To attribute *tokens* to messages there are two methods, and the difference matters. `message_spans`
 gives per-token role, channel and section (`header` / `content` / `footer`), leaving the trailing
-generation scaffold owned by no message — use it to read or display structure. `message_partition`
+generation scaffold owned by no message — use it to read or display structure. A system turn the
+template injects on its own (Llama's knowledge-cutoff preamble, Qwen2.5's default persona) is
+tagged `role="system"` with `message_index=None`, so it can be shown as its own turn. `message_partition`
 gives one contiguous `[start, end)` span per message that together cover every token, which is what
 mean-pooling activations per turn needs:
 
