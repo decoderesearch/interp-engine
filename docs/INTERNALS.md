@@ -65,7 +65,11 @@ files and why they are where they are.
   version torch was built for and raises with the forward-compat fix (`cuda-compat-<major>-<minor>`
   - `LD_LIBRARY_PATH`) before the first CUDA call, instead of failing ten frames deep in
     `torch.cuda._lazy_init`. Lives here because every app on the engine inherits the same CUDA
-    floor — the `[vllm]` wheels link `libcudart.so.13` directly.
+    floor — the `[vllm]` wheels link `libcudart.so.13` directly. `check_flashinfer`: refuses, before
+    the vLLM engine is built, a box where vLLM would disable FlashInfer (no `nvcc` on PATH, no
+    `flashinfer-cubin` + `flashinfer-jit-cache`) or where a prebuilt package is not
+    `flashinfer-python`'s version; an error on Blackwell, a warning elsewhere. `load_model` calls it
+    on the vLLM path. Reads the GPU through NVML so it creates no CUDA context in the parent.
 - `notebook_stdout.py` — `ensure_stdout_descriptor`: gives a notebook kernel's `sys.stdout` the file
   descriptor vLLM's engine start needs. vLLM silences C-level output by dup'ing over one and forks
   its EngineCore child, so under ipykernel — whose stream writes to a socket and has none — the

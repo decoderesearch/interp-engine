@@ -40,34 +40,61 @@ a caller can override any of this — including the correctness defaults above. 
 there are legitimate reasons to want stock vLLM behaviour, and the alternative (an allowlist) turns
 every new upstream flag into an engine change.
 
-### The vLLM version is a floor, not a ceiling
+### The vLLM version is an exact pin
 
-`interp-engine[vllm]` declares `vllm>=0.27.1` on Linux and no upper bound. Read that as **the oldest
-version we have evidence for**, not the version to run:
+`interp-engine[vllm]` declares `vllm==0.28.0` on Linux. One engine release runs on one vLLM:
 
-- **The floor is measured, not guessed.** 0.27.1 is the version the DeepSeek-V4-Flash-0731
-  cross-engine comparison scored, and the oldest the engine is supported on. The performance sweep in
-  [`benchmarks/results-latest.md`](../benchmarks/results-latest.md) ran on **0.26.0**, one below —
-  being ahead of the floor is the normal state, not drift.
-- **This floor is load-bearing, not hygiene.** It was 0.25.1 until `vllm_capture/mhc.py` needed
-  `mhc_pre_broadcast_tilelang`, which arrived in 0.26.0. Below that, every DeepSeek-V4
-  hyper-connection point is refused at install, and since `STATIC_POINTS=auto` selects
-  `resid_streams` on such a trunk, the pod does not load at all.
-- **There is deliberately no cap.** vLLM moves fast and a `<` bound would make every upstream release
-  an engine release; a lock file is the right place to pin a deployment, and both apps have one. The
-  version an app runs is whatever its `uv.lock` resolved, which is normally newer than this floor.
-- **Being ahead of the floor is expected.** The validator's registry snapshot
-  (`tests/vllm_supported_archs.json`) tracks 0.26.0, and drifting ahead is how it notices new
-  families. A mismatch between that snapshot and this floor is not a bug in either.
-- **Raise the floor only when engine code needs a newer API**, and say which code in the commit that
-  does it. Raising it because a newer version exists costs every consumer a resolution and buys
-  nothing — the flags this engine sets (`enforce_eager`, `enable_prefix_caching`, `cache_salt`,
-  `worker_extension_cls`, `collective_rpc`) have been stable across the versions in question.
-- **A newer vLLM breaking capture is a bug to fix, not a cap to add.** The failure is usually one of
-  two things: a `LogitsProcessor` change (see
+- **The engine patches vLLM internals.** `vllm_capture/` walks worker attributes and replaces
+  kernels by name (`mhc.py`), so a vLLM the engine has not run on is a risk, not a feature. A drift
+  now fails at install, from the resolver, rather than on a pod after the weights load.
+- **A vLLM release fixes the whole CUDA stack.** Each one requires one exact `flashinfer-python`,
+  one `torch` and so one CUDA build. With vLLM pinned, those are known constants per engine release.
+- **Why 0.28.0.** 0.27.x cannot run a head_dim=256 model on Blackwell (sm_100+): the FA4 kernel rejects
+  the `seqused_q/k` vLLM's decoder attention supplies, fixed by vllm-project/vllm#52050 in 0.28.0 and
+  confirmed on a B200 with google/gemma-3-12b-pt. `vllm_capture/mhc.py` needs
+  `mhc_pre_broadcast_tilelang`, present from 0.26.0. The performance sweep in
+  [`benchmarks/results-latest.md`](../benchmarks/results-latest.md) ran on 0.26.0 and the validator's
+  registry snapshot (`tests/vllm_supported_archs.json`) tracks 0.26.0; neither is a bug.
+- **To bump:** change the pin, run a capture on a GPU (Blackwell if available), relock the root and
+  `validator/`, and say in the commit what was run. The usual breakage on a new vLLM is a
+  `LogitsProcessor` change (see
   [vLLM `compute_logits` is not a bare unembed](ARCHITECTURE_QUIRKS.md#vllm-compute_logits-is-not-a-bare-unembed))
-  or a worker-attribute rename that `_walk_trunk` no longer finds. Both surface as a loud refusal
-  rather than a wrong number, which is why an unbounded floor is safe here.
+  or a worker-attribute rename that `_walk_trunk` no longer finds; both surface as a loud refusal
+  rather than a wrong number.
+
+### FlashInfer needs a compiler on PATH, or the prebuilt kernels
+
+On Blackwell GPUs (compute capability 10.0 and up) vLLM selects FlashInfer as the attention backend,
+and FlashInfer compiles its kernels on first use. vLLM enables it only when `nvcc` is on PATH or the
+`flashinfer-cubin` package is installed; with neither, the engine fails after the weights load with
+`RuntimeError: FlashInfer backend is not available`, from a stub that names no cause.
+
+The usual cause is not a missing compiler but a missing PATH entry. The compiler sits at
+`/usr/local/cuda/bin/nvcc`, the image puts that directory on PATH, and the operator's interactive
+shell has it, but the process that launches the server does not: a non-interactive `ssh host cmd`
+never runs `.bashrc` (where RunPod images source `/etc/rp_environment`), a tmux server keeps the
+PATH it was started with, and a service manager gives its children its own. Everything under that
+launcher, vLLM's engine core included, inherits the stripped PATH.
+
+`load_model` runs `check_flashinfer` before the engine is built, so this is refused in milliseconds
+rather than after a 27B load. The message prints the PATH the process has and both fixes:
+
+```bash
+export PATH=/usr/local/cuda/bin:$PATH   # in whatever launches the server, not only in your shell
+```
+
+or, for a box with no compiler at all, the prebuilt kernels (both at the exact `flashinfer-python`
+version vLLM pins, from FlashInfer's index rather than PyPI; the `cu` suffix follows the CUDA build
+of the torch wheel, `cu130` for torch 2.13):
+
+```bash
+pip install flashinfer-cubin==0.6.16.post3 flashinfer-jit-cache==0.6.16.post3 \
+  --extra-index-url https://flashinfer.ai/whl --extra-index-url https://flashinfer.ai/whl/cu130
+```
+
+A prebuilt package at another version is refused on every GPU, because FlashInfer itself raises on
+that pair at import. On pre-Blackwell GPUs FlashInfer is opt-in, so a missing kernel source is a
+warning. `VLLM_HAS_FLASHINFER_CUBIN=1` skips the check, as it does in vLLM.
 
 What is genuinely **free** — do not attribute slowness to these:
 

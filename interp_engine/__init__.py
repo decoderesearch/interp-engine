@@ -65,7 +65,7 @@ from interp_engine.chat_formatters import (
     RenderedChat,
     resolve_chat_formatter,
 )
-from interp_engine.cuda_preflight import check_cuda_driver
+from interp_engine.cuda_preflight import check_cuda_driver, check_flashinfer
 from interp_engine.dispatch import CAPABILITIES, Capability, CapabilityUnsupported, TokensLike
 from interp_engine.facts import rms_norm_eps_for_model
 from interp_engine.hooks import HookManager
@@ -308,4 +308,5 @@ __all__ = [
     "sliding_window_for_layer",
     # Environment checks.
     "check_cuda_driver",
+    "check_flashinfer",
 ]

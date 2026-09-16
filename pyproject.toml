@@ -46,9 +46,10 @@ dev = [
 # EagerModel core must install on macOS/CPU). Apps that actually run the vLLM backend depend on
 # `interp-engine[vllm]` so the version pin lives here, next to the code that imports it.
 #
-# A FLOOR, not a ceiling, and deliberately uncapped: 0.28.0 is the oldest version there is evidence
-# for, not the version to run. Raise it only when engine code needs a newer API, or when an older
-# release cannot produce numbers at all, and name the reason.
+# An EXACT pin: the engine patches vLLM internals (vllm_capture/), so one engine release is validated
+# against one vLLM, and each vLLM release fixes one flashinfer-python, one torch and one CUDA build.
+# A resolver that wants another vLLM fails at install rather than on a pod. Bump it on purpose, in a
+# commit that names what was run on a GPU, and relock the root and validator/.
 #
 # Raised from 0.27.1 because 0.27.x cannot run a head_dim=256 model on Blackwell (sm_100+). It enabled
 # the FA4 head-dim 256 kernel there (vllm-project/vllm#42669), and that kernel rejects the
@@ -67,8 +68,8 @@ dev = [
 # `resid_streams` included, which `STATIC_POINTS=auto` selects on such a trunk -- is refused at
 # install and the pod fails to load. 0.27.1 rather than 0.26.0 because that is the version the
 # DeepSeek-V4-Flash-0731 cross-engine comparison actually scored (validator/comparison/results/
-# deepseek-ai/DeepSeek-V4-Flash-0731/). See docs/PERFORMANCE.md, "The vLLM version is a floor, not a
-# ceiling", for why there is no upper bound and what to do when an upstream release breaks capture.
+# deepseek-ai/DeepSeek-V4-Flash-0731/). See docs/PERFORMANCE.md, "The vLLM version is an exact pin",
+# for the bump procedure and what to do when an upstream release breaks capture.
 #
 # Why this is an extra and NOT a marker-gated base dependency, which is the recurring suggestion:
 # packaging has no "install this if you can, warn if you cannot". A dependency either resolves or
@@ -85,7 +86,7 @@ dev = [
 # The `sys_platform` marker below is the one axis a marker CAN answer: it makes the extra itself a
 # no-op on macOS rather than an error, so `[vllm]` is safe to ask for unconditionally.
 vllm = [
-    "vllm>=0.28.0; sys_platform == 'linux'",
+    "vllm==0.28.0; sys_platform == 'linux'",
 ]
 # MXFP4-quantized models (e.g. gpt-oss) and block-FP8 ones (DeepSeek-V4-Flash) need the Triton kernel
 # loader, which in turn needs huggingface-hub>=1.0 / transformers>=5. Missing it is not always an

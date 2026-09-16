@@ -61,6 +61,14 @@ The last line is the case worth knowing about: `backend="vllm"` (and constructin
 directly) refuses up front with a message naming both the extra to install and the eager fallback,
 rather than failing later with a bare `ModuleNotFoundError` from inside the first request.
 
+`load_model` on the vLLM backend also runs `check_flashinfer` before the engine is built. On a
+Blackwell GPU, a process with no `nvcc` on PATH and no prebuilt FlashInfer packages would get
+`FlashInfer backend is not available` from vLLM only after the weights load; the check refuses in
+milliseconds, prints the PATH the process has, and names the fixes (see
+[PERFORMANCE.md](PERFORMANCE.md#flashinfer-needs-a-compiler-on-path-or-the-prebuilt-kernels)).
+Servers that want the answer before they do anything else can call `interp_engine.check_flashinfer()`
+at startup, next to `check_cuda_driver()`.
+
 ## Load a model
 
 There is one entry point, and it takes a raw HuggingFace repo id. The engine has no model-name

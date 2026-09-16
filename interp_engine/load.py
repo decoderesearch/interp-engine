@@ -21,6 +21,7 @@ import logging
 from typing import Any
 
 from interp_engine.autograd_support import vllm_grad_support
+from interp_engine.cuda_preflight import check_flashinfer
 from interp_engine.model import EagerModel
 from interp_engine.select import select_backend
 
@@ -252,6 +253,9 @@ def load_model(
 
     if use_vllm:
         require_vllm(f"backend={resolved!r} requested for {hf_model_id}")
+        # Before the weights load: on Blackwell, vLLM without a FlashInfer kernel source fails
+        # only at the first attention call, which is minutes in on a large model.
+        check_flashinfer()
         # `requires_grad` is an eager-only constructor kwarg, so on vLLM it would otherwise land as
         # an opaque TypeError. Answer the question actually being asked instead.
         if backend_kwargs.pop("requires_grad", False):
