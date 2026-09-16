@@ -245,6 +245,7 @@ def capture(
     saes: tuple[SaeSpec, ...] = (),  # noqa: ARG001 - SAE spot-check stays on eager engines
     device: str = "cuda",  # noqa: ARG001 - vLLM auto-detects device
     dtype: str = "float32",
+    num_gpus: int = 1,
 ) -> tuple[dict[str, np.ndarray], list[dict]]:
     import asyncio
     import os
@@ -284,6 +285,7 @@ def capture(
         hf_id,
         backend="vllm-static",
         dtype=dtype,
+        num_gpus=num_gpus,
         static_points=static_addrs,
         gpu_memory_utilization=float(os.environ.get("IE_VLLM_GPU_UTIL", "0.7")),
         max_model_len=max(len(input_ids) + 8, 32),

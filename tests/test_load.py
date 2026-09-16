@@ -7,11 +7,12 @@ without downloading weights or needing CUDA/vLLM.
 from __future__ import annotations
 
 import os
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
 import pytest
-from transformers import CLIPConfig, LlamaConfig
+from transformers import CLIPConfig, LlamaConfig, LlavaConfig
 
 from interp_engine import load, model, vllm_backend
 from interp_engine.select import BackendSelection
@@ -372,6 +373,102 @@ def test_a_family_with_no_native_causal_lm_keeps_its_bundled_code():
     can build a model from it, which is how Phi-mini-MoE passed a config-only probe while its only
     `PhimoeForCausalLM` was still the checkpoint's."""
     assert _resolved(CLIPConfig()) is True
+
+
+def test_a_multimodal_family_with_a_native_class_is_loaded_natively():
+    """A composite config is absent from the causal-LM mapping and present in the image-text-to-text
+    one, which is the mapping `_load_hf_model` falls back to for it. Kimi-K2.6 is the case: native
+    `Kimi_K25ForConditionalGeneration`, while its bundled `modeling_deepseek.py` imports a symbol
+    transformers 5 removed."""
+    assert _resolved(LlavaConfig()) is False
+
+
+def test_a_native_model_may_still_need_the_checkpoints_own_tokenizer():
+    """Kimi-K2.6 again: the model is native, the tokenizer exists only as `tokenization_kimi.py`.
+    The native attempt fails to convert it, and the bundled one is loaded -- for the tokenizer only."""
+    calls: list[bool] = []
+
+    def from_pretrained(hf_model_id: str, *, trust_remote_code: bool) -> str:
+        calls.append(trust_remote_code)
+        if not trust_remote_code:
+            raise ValueError("Couldn't instantiate the backend tokenizer")
+        return "bundled"
+
+    with patch.object(model.AutoTokenizer, "from_pretrained", side_effect=from_pretrained):
+        assert model._load_tokenizer("some-org/some-model", False) == "bundled"
+        assert calls == [False, True]
+    # Already trusting remote code: nothing further to fall back on, so the error stands.
+    with (
+        patch.object(model.AutoTokenizer, "from_pretrained", side_effect=ValueError("no")),
+        pytest.raises(ValueError),
+    ):
+        model._load_tokenizer("some-org/some-model", True)
+
+
+def test_compressed_tensors_is_decompressed_at_load_and_never_loaded_modules_are_skipped():
+    """Kimi-K2.6: its vision tower is marked quantized by mistake and its packed tensors stay meta,
+    so compressed-tensors' first-forward hook would raise. The engine decompresses right after the
+    load instead: real modules are decompressed, meta ones skipped, and the hook is gone."""
+    from torch import nn
+
+    class Quantized(nn.Linear):
+        quantization_scheme = "int4"
+
+    loaded = Quantized(4, 4)
+    never_loaded = Quantized(4, 4, device="meta")
+    plain = nn.Linear(4, 4)
+    root = nn.Module()
+    root.a, root.b, root.c = loaded, never_loaded, plain
+    removed: list[bool] = []
+    root.ct_decompress_hook = SimpleNamespace(remove=lambda: removed.append(True))
+    decompressed: list[nn.Module] = []
+
+    def decompress_module(module: nn.Module, fmt: Any) -> None:
+        decompressed.append(module)
+
+    with patch.object(
+        model, "_ct_helpers", return_value=(lambda m: hasattr(m, "quantization_scheme"), decompress_module)
+    ):
+        model._settle_compressed_tensors(root)
+    assert decompressed == [loaded]
+    assert removed == [True] and not hasattr(root, "ct_decompress_hook")
+
+    # Placed on a card, a never-loaded module holds real tensors of init values; only the loading
+    # report tells it from a loaded one, and it is skipped -- decompressing it would choke.
+    resident_never_loaded = Quantized(4, 4)
+    root.d = resident_never_loaded
+    setattr(root, model.MISSING_KEYS_ATTR, frozenset({"d.weight"}))
+    root.ct_decompress_hook = SimpleNamespace(remove=lambda: None)
+    with patch.object(
+        model, "_ct_helpers", return_value=(lambda m: hasattr(m, "quantization_scheme"), decompress_module)
+    ):
+        model._settle_compressed_tensors(root)
+    assert decompressed == [loaded, loaded]
+    del root.d
+
+    # An offloaded module no shard filled is meta in the offload map too: skipped like the rest.
+    never_loaded._hf_hook = SimpleNamespace(offload=True, weights_map={"weight": never_loaded.weight})
+    root.ct_decompress_hook = SimpleNamespace(remove=lambda: None)
+    with patch.object(
+        model, "_ct_helpers", return_value=(lambda m: hasattr(m, "quantization_scheme"), decompress_module)
+    ):
+        model._settle_compressed_tensors(root)
+    assert decompressed == [loaded, loaded, loaded]
+
+    # An offloaded compressed module whose weights are real is meta for a reason that cannot be
+    # skipped over.
+    never_loaded._hf_hook = SimpleNamespace(offload=True, weights_map={"weight": plain.weight})
+    root.ct_decompress_hook = SimpleNamespace(remove=lambda: None)
+    with (
+        patch.object(
+            model, "_ct_helpers", return_value=(lambda m: hasattr(m, "quantization_scheme"), decompress_module)
+        ),
+        pytest.raises(RuntimeError, match="offloaded to host RAM"),
+    ):
+        model._settle_compressed_tensors(root)
+    # Without the hook there is nothing to do, whatever the modules look like.
+    del root.ct_decompress_hook
+    model._settle_compressed_tensors(root)
 
 
 def test_a_remote_only_config_keeps_its_bundled_code():

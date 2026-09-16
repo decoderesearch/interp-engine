@@ -21,7 +21,11 @@ class EnvStamp:
     """What the numbers were produced on. Recorded per run, so a stale result is identifiable."""
 
     gpu_name: str = ""
+    """The card, prefixed with the count when the model was sharded across more than one
+    (``2x NVIDIA A40``), so every view keyed on this field says how many cards the number is from."""
     gpu_total_gib: float = 0.0
+    """Per card, not summed: the figure a reader compares against a card's spec sheet."""
+    gpu_count: int = 1
     driver_version: str = ""
     cuda_version: str = ""
     torch_version: str = ""
@@ -76,11 +80,13 @@ def _driver_version() -> str:
     return out.stdout.strip().splitlines()[0].strip() if out.stdout.strip() else "unknown"
 
 
-def env_stamp(index: int = 0) -> EnvStamp:
+def env_stamp(index: int = 0, num_gpus: int = 1) -> EnvStamp:
     props = torch.cuda.get_device_properties(index)
+    name = torch.cuda.get_device_name(index)
     return EnvStamp(
-        gpu_name=torch.cuda.get_device_name(index),
+        gpu_name=f"{num_gpus}x {name}" if num_gpus > 1 else name,
         gpu_total_gib=props.total_memory / GIB,
+        gpu_count=num_gpus,
         driver_version=_driver_version(),
         cuda_version=torch.version.cuda or "unknown",
         torch_version=torch.__version__,

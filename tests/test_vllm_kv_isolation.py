@@ -58,6 +58,8 @@ class _FakeEngine:
         if method == "register_capture":
             self.registered[args[0]] = list(args[1])
             return [None]
+        if method == "resolvable_attn":
+            return [{str(layer): "" for layer in args[0]}]  # every layer has an op to read q/k off
         if method in ("collect_request", "drain_request"):
             points = self.registered.get(args[0], [])
             if method == "collect_request":

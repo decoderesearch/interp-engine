@@ -480,8 +480,8 @@ def capture_attention(
     pass rather than one rebuilt from the other.
 
     The eager arm needs the model loaded with eager attention for ``attn_probs``; the vLLM arm
-    recomputes off-kernel from captured post-RoPE q/k and is single-GPU only. Both refusals name
-    themselves.
+    recomputes off-kernel from captured post-RoPE q/k, gathered across ranks under tensor
+    parallelism. Both refusals name themselves.
     """
     if not isinstance(model, EagerModel):
         ids = as_token_ids(tokens, model=model, what="capture_attention")

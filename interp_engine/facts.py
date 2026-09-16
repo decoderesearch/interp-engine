@@ -1630,6 +1630,21 @@ def value_head_dim(cfg: Any, head_dim: int) -> int:
     return _first_int(cfg, ("v_head_dim",)) or head_dim
 
 
+def kv_latent_width(cfg: Any) -> int:
+    """Elements one token of KV cache holds per layer under MLA, or 0 where keys and values are cached.
+
+    DeepSeek's multi-head latent attention never caches K and V: it caches the ``kv_lora_rank``-wide
+    latent both are expanded from, plus the ``qk_rope_head_dim`` positional key part that rides beside
+    it -- one 576-wide row per token on DeepSeek-V3 and Kimi-K2, in place of 64 heads of K and V. A
+    cache sized from ``n_kv_heads * (head_dim + v_head_dim)`` is 21x too large there, and it is the
+    figure vLLM builds its pool from, so this is what a sizer has to charge. 0 on every non-MLA config.
+    """
+    rank = _first_int(cfg, ("kv_lora_rank",))
+    if not rank:
+        return 0
+    return rank + (_first_int(cfg, ("qk_rope_head_dim",)) or 0)
+
+
 def first_kv_shared_layer(cfg: Any, n_layers: int) -> int | None:
     """The first layer that reuses an earlier layer's keys/values, or None if none do."""
     shared = _first_int(cfg, ("num_kv_shared_layers",))
@@ -2020,6 +2035,9 @@ class ModelFacts:
     # The width of one value head, which differs from ``head_dim`` on MiMo-V2 and the DeepSeek MLA
     # families. See :func:`value_head_dim`; ``value`` and ``z`` are this wide per head, not ``head_dim``.
     v_head_dim: int = 0
+    # Elements per token per layer that an MLA trunk caches in place of K and V (the latent plus the
+    # RoPE'd key part); 0 where the cache holds K and V. See :func:`kv_latent_width`.
+    kv_latent_width: int = 0
     # First layer that reuses an earlier layer's keys/values and so has no k/v projection of its own
     # (Gemma-4); None when every layer computes its own.
     first_kv_shared_layer: int | None = None
@@ -2476,6 +2494,7 @@ def resolve_facts(config: Any, *, n_layers_fallback: int | None = None) -> Model
         global_kv_heads=_first_int(cfg, ("num_global_key_value_heads",)) or None,
         k_eq_v=bool(config_attr(cfg, "attention_k_eq_v", False)),
         v_head_dim=value_head_dim(cfg, head_dim),
+        kv_latent_width=kv_latent_width(cfg),
         first_kv_shared_layer=first_kv_shared_layer(cfg, n_layers),
         n_experts=n_experts(cfg),
         experts_per_token=_first_int(cfg, _EXPERTS_PER_TOKEN_FIELDS) or 0,

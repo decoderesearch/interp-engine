@@ -108,7 +108,15 @@ index names the layer HF's does, which nothing checked before and which would fa
 than raise. It needs `interp-engine[vllm]`, so it self-skips elsewhere; note that running it via
 `.venv-vllm/bin/python` needs that directory on `PATH` too, because vLLM shells out to `ninja` to
 build a sampler kernel at startup. `tests/test_vllm_wire_grammar.py` covers the same process
-boundary on CPU, over a synthetic demux.
+boundary on CPU, over a synthetic demux. `tests/test_multigpu.py` (`-m multigpu`, two CUDA cards)
+repeats the comparison at `num_gpus=2`: eager under accelerate's layer placement and vLLM under
+tensor parallelism, where `vllm_capture/_tp.py` gathers the head- and neuron-sharded points across
+ranks, against the one-card eager reference — captures, attention, steering, decode and the lens.
+One rule follows from tensor parallelism: a worker RPC refuses by *returning* a reason, never by
+raising. Under vLLM's multiprocess executor a raise inside `collective_rpc` is read from one rank
+while the others' replies stay queued, and the next RPC consumes those — so a single refused layer
+took every point of a TP=8 cell with it. `resolvable_points` and `resolvable_attn` are the ask-first
+calls; `tests/test_vllm_new_points.py` pins that they install nothing.
 
 **The docs are parsed, not maintained.** The point table in
 [SUPPORTED_POINTS.md](SUPPORTED_POINTS.md) and the footnote markers in

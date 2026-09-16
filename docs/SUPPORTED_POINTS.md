@@ -14,12 +14,12 @@ nnsight and nnterp.
 | [`embeddings`][embeddings]                            | `d_model`               |  ✅   |  ✅  | trunk-level, so addressed with no layer index; distinct from `resid_pre` at layer 0 only where the trunk adds positional embeddings or scales the embedding                                                                               |
 | [`resid_pre`][resid_pre]                              | `d_model`               |  ✅   |  ✅  |                                                                                                                                                                                                                                           |
 | [`attn_in`][attn_in]                                  | `d_model`               |  ✅   |  ✅  |                                                                                                                                                                                                                                           |
-| [`q_norm_in`][q_norm_in] / [`q_norm_out`][q_norm_out] | `n_heads * head_dim`    |  ✅   |  ✅  | head-sharded, so single-GPU only                                                                                                                                                                                                          |
-| [`k_norm_in`][k_norm_in] / [`k_norm_out`][k_norm_out] | `n_kv_heads * head_dim` |  ✅   |  ✅  | head-sharded, so single-GPU only                                                                                                                                                                                                          |
-| [`value`][value]                                      | `n_heads * head_dim`    |  ✅   |  ✅  | head-sharded, so single-GPU only                                                                                                                                                                                                          |
+| [`q_norm_in`][q_norm_in] / [`q_norm_out`][q_norm_out] | `n_heads * head_dim`    |  ✅   |  ✅  | head-sharded; gathered across TP ranks at collect                                                                                                                                                                                         |
+| [`k_norm_in`][k_norm_in] / [`k_norm_out`][k_norm_out] | `n_kv_heads * head_dim` |  ✅   |  ✅  | head-sharded; gathered across TP ranks at collect                                                                                                                                                                                         |
+| [`value`][value]                                      | `n_heads * head_dim`    |  ✅   |  ✅  | head-sharded; gathered across TP ranks at collect                                                                                                                                                                                         |
 | [`attn_scores`][attn_scores]                          | `n_heads * query * key` |  ✅   |  ♻️  | no module boundary holds the pre-softmax matrix on **either** backend; vLLM rebuilds it from captured post-RoPE q/k                                                                                                                       |
 | [`attn_probs`][attn_probs]                            | `n_heads * query * key` |  ✅   |  ♻️  | fused paged attention never materializes the probabilities; same recompute                                                                                                                                                                |
-| [`z`][z]                                              | `n_heads * head_dim`    |  ✅   |  ✅  | head-sharded, so single-GPU only                                                                                                                                                                                                          |
+| [`z`][z]                                              | `n_heads * head_dim`    |  ✅   |  ✅  | head-sharded; gathered across TP ranks at collect                                                                                                                                                                                         |
 | [`attn_gate`][attn_gate]                              | `n_heads * head_dim`    |  ✅   |  ❌  | unimplemented — a real module on both trees                                                                                                                                                                                               |
 | [`attn_out`][attn_out]                                | `d_model`               |  ✅   |  ✅  |                                                                                                                                                                                                                                           |
 | [`attn_out_post`][attn_out_post]                      | `d_model`               |  ✅   |  ✅  |                                                                                                                                                                                                                                           |
@@ -27,7 +27,7 @@ nnsight and nnterp.
 | [`mlp_in`][mlp_in]                                    | `d_model`               |  ✅   |  ✅  |                                                                                                                                                                                                                                           |
 | [`mlp_pre`][mlp_pre]                                  | `d_mlp`                 |  ✅   |  ❌  | unreachable — vLLM fuses `gate_proj` and `up_proj` into one `gate_up_proj`, so neither branch is a module output                                                                                                                          |
 | [`mlp_pre_linear`][mlp_pre_linear]                    | `d_mlp`                 |  ✅   |  ❌  | as `mlp_pre`; gated MLPs only                                                                                                                                                                                                             |
-| [`mlp_act`][mlp_act]                                  | `d_mlp`                 |  ✅   |  ✅  | neuron-sharded, so single-GPU only                                                                                                                                                                                                        |
+| [`mlp_act`][mlp_act]                                  | `d_mlp`                 |  ✅   |  ✅  | neuron-sharded; gathered across TP ranks at collect                                                                                                                                                                                       |
 | [`router_logits`][router_logits]                      | `n_experts`             |  ✅   |  ✅  | replicated gate, so it survives tensor parallelism                                                                                                                                                                                        |
 | [`expert_weights`][expert_weights]                    | `n_experts`             |  ✅   |  ❌  | unreachable — the top-k happens inside the FusedMoE kernel, which returns the combined output with the selection never materialized                                                                                                       |
 | [`expert_indices`][expert_indices]                    | `n_experts`             |  ✅   |  ❌  | as `expert_weights`                                                                                                                                                                                                                       |
@@ -54,13 +54,16 @@ a fused kernel ate the tensor and no module boundary holds it. Ask the code rath
 you are branching on it — `points.vllm_hookable()` is the served set, `points.reason(name)` is the
 sentence for one refusal, and `model.points()` is what a loaded model has.
 
-## Tensor parallelism narrows the vLLM column further
+## Tensor parallelism does not narrow the vLLM column
 
-The capture path reads rank 0's payload alone, so a point whose last axis vLLM shards comes back as a
-slice: `z`, `value`, `mlp_act` and the four QK-norm points are refused on a multi-GPU pod rather than
-returned short, and so is the attention recompute (q/k/v are head-sharded). Everything `d_model` wide
-is all-reduced before the hook sees it, and `router_logits` comes off a replicated gate, so those are
-unaffected.
+The capture path reads rank 0's payload alone, and at `num_gpus > 1` vLLM shards `z`, `value`,
+`mlp_act`, the four QK-norm points and the q/k/v behind the attention recompute by head or by neuron.
+The worker gathers those across ranks at collect time (`interp_engine.vllm_capture._tp`), so rank 0
+hands back the same full-width tensor a single card would have, in the same layout; a KV head that
+vLLM replicates rather than shards is kept once. Everything `d_model` wide is all-reduced before the
+hook sees it, and `router_logits` comes off a replicated gate, so those never needed gathering.
+Verified against the eager reference at TP=2 by the validator (`validator/`, `NUM_GPUS=2`) and by
+`tests/test_multigpu.py`.
 
 ## The last seven rows need a hyper-connection trunk
 

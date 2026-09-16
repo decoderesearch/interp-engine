@@ -867,6 +867,24 @@ def test_mlp_out_wrap_copies_and_adds_the_module_output():
     assert torch.equal(buf[3:], torch.zeros(1, 2))
 
 
+def test_a_derived_site_is_a_post_tap_whatever_side_its_point_names():
+    """A fused QK-norm site reads the qkv projection's *output*, though `q_norm_in` is an input
+    point: `derive` decides the side, and the buffer holds what it computes, not the module's tensor."""
+
+    class Proj(torch.nn.Module):
+        def forward(self, hidden):  # noqa: ANN001
+            return hidden * 2, None  # `(output, bias)`, as vLLM's linears return
+
+    proj = Proj()
+    buf = torch.zeros(4, 2)
+    site = _Site(address=Address("q_norm_in", 0), buf=buf, module=proj, derive=lambda packed: packed[..., :2] + 1)
+    _wrap_module(proj, [(site, "read")])
+    out, _ = proj(torch.ones(3, 6))
+    assert torch.allclose(out, torch.full((3, 6), 2.0)), "the module's own output is untouched"
+    assert torch.allclose(buf[:3], torch.full((3, 2), 3.0)), "derived from the output, not copied from the input"
+    assert torch.equal(buf[3:], torch.zeros(1, 2))
+
+
 def test_a_batched_hidden_state_is_copied_by_row():
     """GPT-BigCode, OLMo-2, Starcoder2 and SmolLM3 call attention with `(1, tokens, d_model)` rather
     than the flattened `(tokens, d_model)` every buffer is sized in."""

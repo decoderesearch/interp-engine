@@ -66,6 +66,8 @@ const EXTRA: string[] = [
   "meta-llama/Llama-3.3-70B-Instruct",
   "deepseek-ai/DeepSeek-V4-Flash",
   "Qwen/Qwen3.6-27B",
+  "moonshotai/Kimi-K2.5",
+  "moonshotai/Kimi-K2.6",
 ];
 
 /** How many resolutions are in flight at once. Each is a handful of small requests. */

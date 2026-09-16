@@ -45,6 +45,7 @@ from interp_engine.vllm_capture._payload import (
     hook_site,
     select_stream,
 )
+from interp_engine.vllm_capture._tp import gather_attn_role, gather_capture
 from interp_engine.vllm_capture._tree import (
     _GLOBAL_POINTS,
     _KWARG_INPUT_POINTS,
@@ -53,6 +54,8 @@ from interp_engine.vllm_capture._tree import (
     _resolve_global_module,
     _worker_model,
     absent_point_reason,
+    fused_qk_norm_derivation,
+    fused_qk_norm_write_reason,
     resolve_capture_module,
     scale_capture,
     value_span,
@@ -247,6 +250,22 @@ def _mk_out_point_hook(demux: _Demux, site: Address):
         if isinstance(output, tuple):
             return (new, *output[1:])
         return new
+
+    return _hook
+
+
+def _mk_derived_out_hook(demux: _Demux, site: Address, derive):  # noqa: ANN001
+    """A point computed from a module's output rather than read off it -- the fused QK-norm points,
+    cut and normalized off the qkv projection (``_tree.fused_qk_norm_derivation``).
+
+    Capture-only, like :func:`_mk_layer_return_hook`: what ``derive`` returns is a fresh tensor the
+    model never sees, so a steer written into it would reach nothing. :func:`_write_site` refuses
+    the write at registration rather than letting it land silently here.
+    """
+
+    def _hook(_m, _a, output):  # noqa: ANN001
+        _process_point(demux, site, derive(output[0] if isinstance(output, tuple) else output))
+        return output
 
     return _hook
 
@@ -446,6 +465,10 @@ def _install_hook(worker: object, demux: _Demux, site: Address):
             raise ValueError(f"vLLM capture point {name!r} is not present on this model: {reason}")
         require_available(model, name, layer)
         return mhc_taps(worker).add(site, mhc(demux, site))
+    derive = fused_qk_norm_derivation(L, name)
+    if derive is not None:
+        # An output hook whichever table the point's own module would have put it in.
+        return resolve_capture_module(model, L, name).register_forward_hook(_mk_derived_out_hook(demux, site, derive))
     pre = _DEMUX_PRE_HOOKS.get(name)
     if pre is not None:
         module = resolve_capture_module(model, L, name)
@@ -517,7 +540,8 @@ def worker_collect_request(worker: object, req_id: str) -> dict[str, tuple]:
     out: dict[str, tuple] = {}
     for key, tensors in caps.items():
         if tensors:
-            out[key] = encode_tensor_payload(scale_capture(model, key, torch.cat(tensors, dim=0)))
+            whole = gather_capture(model, key, torch.cat(tensors, dim=0))
+            out[key] = encode_tensor_payload(scale_capture(model, key, whole))
     return out
 
 
@@ -541,7 +565,8 @@ def worker_drain_request(worker: object, req_id: str) -> dict[str, tuple]:
     model = _worker_model(worker)
     for key, tensors in caps.items():
         if tensors:
-            out[key] = encode_tensor_payload(scale_capture(model, key, torch.cat(tensors, dim=0)))
+            whole = gather_capture(model, key, torch.cat(tensors, dim=0))
+            out[key] = encode_tensor_payload(scale_capture(model, key, whole))
             tensors.clear()
     return out
 
@@ -621,6 +646,11 @@ def _write_site(worker: object, spec: dict) -> Address:
     _refuse_mhc_steer(point)
     if point == "resid_mid":
         _refuse_unreachable_resid_mid_steer(worker, layer)
+    # A point recomputed off the qkv projection is a copy the model never reads (see
+    # `_mk_derived_out_hook`), so the write is refused where the error reaches the caller.
+    fused = fused_qk_norm_write_reason(cast(torch.nn.Module, _get_layers(_worker_model(worker))[layer]), point)
+    if fused is not None:
+        raise ValueError(f"cannot steer {point!r} on layer {layer}: {fused}")
     if point in MHC_KERNEL_POINTS:
         # Whether this *model* can be written at this point, which for the stream stack means whether
         # the fused kernel's second half can be re-run. Separate from the refusal above, which is about the
@@ -723,9 +753,10 @@ def worker_collect_attn_request(worker: object, req_id: str) -> dict[str, tuple]
     for layer, steps in store.items():
         if not steps:
             continue
-        q = torch.cat([s[0] for s in steps], dim=0)
-        k = torch.cat([s[1] for s in steps], dim=0)
-        v = torch.cat([s[2] for s in steps], dim=0)
+        # Each rank holds its own heads of q/k/v; gathered here so rank 0 returns them all.
+        q = gather_attn_role(layer_list[layer], "q", torch.cat([s[0] for s in steps], dim=0))
+        k = gather_attn_role(layer_list[layer], "k", torch.cat([s[1] for s in steps], dim=0))
+        v = gather_attn_role(layer_list[layer], "v", torch.cat([s[2] for s in steps], dim=0))
         out[attn_payload_key("q", layer)] = encode_tensor_payload(q)
         out[attn_payload_key("k", layer)] = encode_tensor_payload(k)
         out[attn_payload_key("v", layer)] = encode_tensor_payload(v)

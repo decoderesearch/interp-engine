@@ -48,6 +48,19 @@ from interp_engine.tokenize import Tokenize
 
 logger = logging.getLogger(__name__)
 
+#: Config -> model mappings that say transformers can *build* a checkpoint natively: the causal-LM
+#: one, then the multimodal ones `_load_hf_model` falls back to. Looked up by name because the
+#: vision-to-seq mapping exists on transformers 4.x and not on 5.x.
+_NATIVE_MODEL_MAPPINGS: tuple[Any, ...] = tuple(
+    mapping
+    for mapping in (
+        MODEL_FOR_CAUSAL_LM_MAPPING,
+        getattr(transformers, "MODEL_FOR_IMAGE_TEXT_TO_TEXT_MAPPING", None),
+        getattr(transformers, "MODEL_FOR_VISION_2_SEQ_MAPPING", None),
+    )
+    if mapping is not None
+)
+
 #: The mHC rows resolved together, off whichever hyper-connection modules the block spells.
 #: `resid_streams` is not here: it is the block's own output, which `resid_post` already names.
 _STREAM_POINTS: frozenset[str] = frozenset(
@@ -82,12 +95,115 @@ def resolve_trust_remote_code(hf_model_id: str, requested: bool | None) -> bool:
         cfg = AutoConfig.from_pretrained(hf_model_id, trust_remote_code=False)
     except Exception:  # noqa: BLE001 - the config class itself is remote-only: nothing to prefer
         return True
-    # `AutoConfig` succeeding only means transformers knows the *config*. The causal-LM mapping is
-    # what says it also has a model to build: `PhiMoEConfig` is native while the class that
+    # `AutoConfig` succeeding only means transformers knows the *config*. The model mappings are
+    # what say it also has a model to build: `PhiMoEConfig` is native while the class that
     # resolves from it is transformers' own `PhimoeForCausalLM`, so the config probe alone would
-    # wrongly clear a checkpoint whose model still had to come from the hub. A composite
-    # (multimodal) config is absent from this mapping too, which lands on the conservative answer.
-    return type(cfg) not in MODEL_FOR_CAUSAL_LM_MAPPING
+    # wrongly clear a checkpoint whose model still had to come from the hub. The two multimodal
+    # mappings are the ones `_load_hf_model` falls back to for a composite config: Kimi-K2.6's
+    # `Kimi_K25Config` is in neither causal-LM mapping and in the image-text-to-text one, and its
+    # bundled `modeling_deepseek.py` no longer imports against current transformers.
+    return not any(type(cfg) in mapping for mapping in _NATIVE_MODEL_MAPPINGS)
+
+
+def _ct_helpers() -> tuple[Any, Any] | None:
+    """compressed-tensors' module predicate and per-module decompressor, or None when not installed."""
+    try:
+        from compressed_tensors.compressors.base import decompress_module  # pyright: ignore[reportMissingImports]
+        from compressed_tensors.quantization.utils import is_module_quantized  # pyright: ignore[reportMissingImports]
+    except ImportError:
+        return None
+    return is_module_quantized, decompress_module
+
+
+def _holds_offloaded_weights(module: nn.Module) -> bool:
+    """Whether accelerate's offload map has a real tensor for any parameter of ``module``.
+
+    An offloaded module is meta on the module tree either way; only the map says whether the
+    weights exist. A module no shard filled sits in the map as the same meta placeholders.
+    """
+    align = getattr(module, "_hf_hook", None)
+    if not getattr(align, "offload", False):
+        return False
+    weights = getattr(align, "weights_map", None)
+    if weights is None:
+        return False
+    for param_name, _ in module.named_parameters(recurse=False):
+        try:
+            value = weights[param_name]
+        except (KeyError, IndexError):
+            continue
+        device = getattr(value, "device", None)
+        if device is not None and device.type != "meta":
+            return True
+    return False
+
+
+def _settle_compressed_tensors(hf_model: nn.Module) -> None:
+    """Run compressed-tensors' first-forward decompression now, skipping what it cannot touch.
+
+    transformers leaves a ``compressed-tensors`` checkpoint's linear layers packed until the first
+    forward, when a pre-hook decompresses every module marked quantized. That hook dies on a module
+    whose packed tensors were never loaded: Kimi-K2.6 marks its vision tower and projector quantized
+    because the checkpoint's ``ignore`` patterns (``vision_tower.*``) miss the ``model.`` prefix the
+    native class puts in front of them, so 164 ``Linear`` modules carry ``weight_packed`` and
+    ``weight_shape`` tensors no shard fills -- and the text stack never runs them. Decompressing here
+    lets those be skipped and named, where the hook would raise on the first forward.
+
+    "Never loaded" is read off the loading report (:data:`MISSING_KEYS_ATTR`), not off the module:
+    such a module is meta when accelerate never placed it, meta in the offload map when it did and
+    the card was full, and a real tensor of fresh init values when it landed on a card -- and the
+    third looks exactly like a loaded module until compressed-tensors chokes on its zero
+    ``weight_shape``. A loaded module accelerate offloaded to host RAM is refused instead: its packed
+    tensors live in the offload map, and decompressing there is not something this handles.
+    """
+    hook = getattr(hf_model, "ct_decompress_hook", None)
+    helpers = _ct_helpers()
+    if hook is None or helpers is None:
+        return
+    is_module_quantized, decompress_module = helpers
+    quantizer = getattr(hf_model, "hf_quantizer", None)
+    fmt = getattr(getattr(quantizer, "compressor", None), "force_compression_format", None)
+    missing = getattr(hf_model, MISSING_KEYS_ATTR, frozenset())
+    skipped: list[str] = []
+    for name, module in hf_model.named_modules(remove_duplicate=True):
+        if not is_module_quantized(module):
+            continue
+        never_loaded = any(f"{name}.{param}" in missing for param, _ in module.named_parameters(recurse=False))
+        if never_loaded or any(p.device.type == "meta" for p in module.parameters(recurse=False)):
+            if not never_loaded and _holds_offloaded_weights(module):
+                raise RuntimeError(
+                    f"{name}: compressed-tensors weights offloaded to host RAM cannot be decompressed; "
+                    "give the load enough GPU memory to keep this module resident"
+                )
+            skipped.append(name)
+            continue
+        decompress_module(module, fmt)
+    hook.remove()
+    del hf_model.ct_decompress_hook
+    if skipped:
+        logger.warning(
+            "%d module(s) marked quantized had no packed weights loaded and stay as built (first: %s)",
+            len(skipped),
+            skipped[0],
+        )
+
+
+def _load_tokenizer(hf_model_id: str, trust_remote: bool) -> Any:
+    """The checkpoint's tokenizer, bundled code allowed when the native route cannot build one.
+
+    The model and its tokenizer do not have to come from the same place. Kimi-K2.6 has a native
+    model class and a tokenizer that exists only as the checkpoint's ``tokenization_kimi.py``: with
+    remote code off, transformers tries to convert it and fails. A tokenizer's bundled code is a
+    few hundred lines over ``tiktoken`` or ``sentencepiece`` and does not break the way frozen
+    modeling code does, so it is the safe half to fall back on -- the model stays native.
+    """
+    try:
+        return AutoTokenizer.from_pretrained(hf_model_id, trust_remote_code=trust_remote)
+    except Exception as exc:  # noqa: BLE001 - whatever the native route raised, the bundled one is next
+        if trust_remote:
+            raise
+        logger.info("Native tokenizer for %s failed (%s); loading the checkpoint's own", hf_model_id, exc)
+        return AutoTokenizer.from_pretrained(hf_model_id, trust_remote_code=True)
 
 
 def _release_failed_attempt(exc: Exception) -> Exception:
@@ -240,6 +356,24 @@ def _check_hub_kernels(hf_model_id: str, quant_method: str | None, config: Any) 
     )
 
 
+#: Attribute set on every model :func:`_load_hf_model` returns: the checkpoint keys transformers
+#: reported missing, i.e. parameters it initialized because no shard filled them.
+MISSING_KEYS_ATTR = "ie_missing_keys"
+
+
+def _from_pretrained(cls: Any, hf_model_id: str, load_kwargs: dict[str, Any]) -> nn.Module:
+    """``cls.from_pretrained`` with the loading report kept: which keys no shard filled.
+
+    ``_settle_compressed_tensors`` needs that list. A module transformers marked quantized but
+    never loaded packed weights for cannot be told apart on the module tree once it sits on a card
+    -- its tensors are as real as any other, only freshly initialized -- and the report is the one
+    place transformers says so.
+    """
+    hf_model, info = cls.from_pretrained(hf_model_id, output_loading_info=True, **load_kwargs)
+    setattr(hf_model, MISSING_KEYS_ATTR, frozenset(info.get("missing_keys", ()) or ()))
+    return hf_model
+
+
 def _load_hf_model(hf_model_id: str, load_kwargs: dict[str, Any], *, trust_remote_code: bool) -> nn.Module:
     """Load the raw HF model, transparently handling multimodal ``*ForConditionalGeneration`` repos.
 
@@ -252,7 +386,7 @@ def _load_hf_model(hf_model_id: str, load_kwargs: dict[str, Any], *, trust_remot
     vision/audio towers are never hooked or run (text-only forward passes ignore them).
     """
     try:
-        return AutoModelForCausalLM.from_pretrained(hf_model_id, **load_kwargs)
+        return _from_pretrained(AutoModelForCausalLM, hf_model_id, load_kwargs)
     except AttributeError as err:
         # A composite config reached a text-only model class, which then failed reading a text
         # attribute off it. transformers narrows composite -> text itself, but only when the
@@ -270,12 +404,18 @@ def _load_hf_model(hf_model_id: str, load_kwargs: dict[str, Any], *, trust_remot
             hf_model_id,
             err,
         )
-        return AutoModelForCausalLM.from_pretrained(hf_model_id, config=text_cfg, **load_kwargs)
+        return _from_pretrained(AutoModelForCausalLM, hf_model_id, {**load_kwargs, "config": text_cfg})
     except ValueError as err:
         msg = str(err)
         # Only a genuine "this AutoModel can't map this architecture" error should trigger the
-        # multimodal fallback; anything else (bad kwargs, corrupt weights) must surface.
-        if "Unrecognized configuration class" not in msg and "AutoModelForCausalLM" not in msg:
+        # multimodal fallback; anything else (bad kwargs, corrupt weights) must surface. The third
+        # spelling is transformers refusing, with remote code off, a checkpoint whose `auto_map`
+        # names a bundled causal LM and whose native class hangs off another auto class: Kimi-K2.6
+        # maps `AutoModelForCausalLM` to its own code while transformers builds it natively only as
+        # image-text-to-text.
+        if not any(
+            s in msg for s in ("Unrecognized configuration class", "AutoModelForCausalLM", "contains custom code")
+        ):
             raise
         logger.info("AutoModelForCausalLM can't map %s; trying multimodal text-stack load", hf_model_id)
 
@@ -286,7 +426,7 @@ def _load_hf_model(hf_model_id: str, load_kwargs: dict[str, Any], *, trust_remot
         model_cls = getattr(transformers, arch_name, None)
         if model_cls is not None and hasattr(model_cls, "from_pretrained"):
             try:
-                return model_cls.from_pretrained(hf_model_id, **load_kwargs)
+                return _from_pretrained(model_cls, hf_model_id, load_kwargs)
             except Exception as e:  # noqa: BLE001 - fall through to the auto classes
                 last_err = _release_failed_attempt(e)
     # Fallback: the multimodal auto classes (these also yield a *ForConditionalGeneration).
@@ -294,7 +434,7 @@ def _load_hf_model(hf_model_id: str, load_kwargs: dict[str, Any], *, trust_remot
         auto_cls = getattr(transformers, auto_name, None)
         if auto_cls is not None:
             try:
-                return auto_cls.from_pretrained(hf_model_id, **load_kwargs)
+                return _from_pretrained(auto_cls, hf_model_id, load_kwargs)
             except Exception as e:  # noqa: BLE001
                 last_err = _release_failed_attempt(e)
     raise RuntimeError(f"Could not load {hf_model_id!r} as a causal LM or a multimodal text stack") from last_err
@@ -421,6 +561,7 @@ class EagerModel:
                 f", device_map={placement}" if placement is not None else "",
             )
             hf_model = _load_hf_model(hf_model_id, load_kwargs, trust_remote_code=trust_remote)
+            _settle_compressed_tensors(hf_model)
 
         self.hf_model: nn.Module = hf_model  # type: ignore[assignment]
         self.hf_model.eval()
@@ -437,7 +578,7 @@ class EagerModel:
         _check_hub_kernels(hf_model_id, self.quant_method, self.config)
 
         if tokenizer is None:
-            tokenizer = AutoTokenizer.from_pretrained(hf_model_id, trust_remote_code=trust_remote)
+            tokenizer = _load_tokenizer(hf_model_id, trust_remote)
         # Annotated `Any` (not inferred from the `Any | None` parameter): a tokenizer is always
         # present past this point, and callers should not have to narrow away a `None` that
         # cannot occur. It stays untyped because multimodal archs pass a processor here.

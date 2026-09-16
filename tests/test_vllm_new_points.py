@@ -36,7 +36,7 @@ from interp_engine.vllm_capture import (
 )
 from interp_engine.vllm_capture._hooks import flat_value
 from interp_engine.vllm_capture._tree import value_span
-from interp_engine.vllm_capture.attn import worker_capture_attn, worker_collect_attn
+from interp_engine.vllm_capture.attn import worker_capture_attn, worker_collect_attn, worker_resolvable_attn
 from interp_engine.vllm_capture.capture import (
     worker_collect_capture,
     worker_install_capture,
@@ -94,24 +94,39 @@ class _QKVLinear(_Linear):
 
 
 class _Attention(nn.Module):
-    def __init__(self, *, qk_norm: str) -> None:
+    """``gated`` is Qwen3-Next's output gate: the projection carries ``[q | gate]`` per query head, so
+    it states twice the heads, and the module states the real count beside ``attn_output_gate``."""
+
+    def __init__(self, *, qk_norm: str, gated: bool = False) -> None:
         super().__init__()
-        self.qkv_proj = _QKVLinear(D_MODEL, heads=N_HEADS, kv_heads=N_HEADS, head_size=HEAD_DIM)
+        self.qkv_proj = _QKVLinear(D_MODEL, heads=N_HEADS * (2 if gated else 1), kv_heads=N_HEADS, head_size=HEAD_DIM)
         self.o_proj = _Linear(N_HEADS * HEAD_DIM, D_MODEL)
         # Per-head on Qwen3 (`self.q_norm(q.view(..., n_heads, head_dim))`), flat on OLMo-2.
         self.q_norm = _FusedNorm(HEAD_DIM if qk_norm == "per_head" else N_HEADS * HEAD_DIM)
         self.k_norm = _FusedNorm(HEAD_DIM if qk_norm == "per_head" else N_HEADS * HEAD_DIM)
         self.qk_norm = qk_norm
+        self.attn_output_gate = gated
+        self.num_heads, self.num_kv_heads, self.head_dim = N_HEADS, N_HEADS, HEAD_DIM
 
     def forward(self, positions: torch.Tensor, hidden_states: torch.Tensor) -> torch.Tensor:
         qkv, _ = self.qkv_proj(hidden_states)
-        q, k, _v = qkv.chunk(3, dim=-1)
+        gate = None
+        if self.attn_output_gate:
+            width = N_HEADS * HEAD_DIM
+            q_gate, k, _v = qkv.split([2 * width, width, width], dim=-1)
+            q, gate = q_gate.reshape(-1, N_HEADS, 2 * HEAD_DIM).chunk(2, dim=-1)
+            q, gate = q.reshape(-1, width), gate.reshape(-1, width)
+        else:
+            q, k, _v = qkv.chunk(3, dim=-1)
         if self.qk_norm == "per_head":
-            q = self.q_norm(q.view(-1, N_HEADS, HEAD_DIM)).view(q.shape)
-            k = self.k_norm(k.view(-1, N_HEADS, HEAD_DIM)).view(k.shape)
+            q = self.q_norm(q.reshape(-1, N_HEADS, HEAD_DIM)).reshape(q.shape)
+            k = self.k_norm(k.reshape(-1, N_HEADS, HEAD_DIM)).reshape(k.shape)
         else:
             q, k = self.q_norm(q), self.k_norm(k)
-        out, _ = self.o_proj(q + k)
+        mixed = q + k
+        if gate is not None:
+            mixed = mixed * torch.sigmoid(gate)
+        out, _ = self.o_proj(mixed)
         return out
 
 
@@ -144,9 +159,9 @@ class _SparseMLP(nn.Module):
 class _PreNormLayer(nn.Module):
     """Llama/Qwen3-shaped: fused add+norm, and the attention called by KEYWORD."""
 
-    def __init__(self, *, sparse: bool = False) -> None:
+    def __init__(self, *, sparse: bool = False, gated: bool = False) -> None:
         super().__init__()
-        self.self_attn = _Attention(qk_norm="per_head")
+        self.self_attn = _Attention(qk_norm="per_head", gated=gated)
         self.mlp = _SparseMLP() if sparse else _DenseMLP()
         self.input_layernorm = _FusedNorm(D_MODEL)
         self.post_attention_layernorm = _FusedNorm(D_MODEL)
@@ -552,25 +567,69 @@ def test_an_embedding_spelled_in_the_singular_is_still_the_embedding():
     assert out["embeddings"].shape == (TOKENS, D_MODEL)
 
 
-def test_a_qk_norm_the_fused_kernel_reads_instead_of_calling_is_refused_with_a_reason():
+_QK_NORM_SITES = ["q_norm_in.0", "q_norm_out.0", "k_norm_in.0", "k_norm_out.0"]
+
+
+@pytest.mark.parametrize("gated", [False, True], ids=["plain", "output-gated"])
+def test_a_qk_norm_the_fused_kernel_reads_instead_of_calling_is_read_off_the_projection(gated: bool):
     """Qwen3-Next's fused kernel takes ``q_norm.weight``, so the module resolves and never fires.
 
-    Every other refusal here is a module that could not be found. This one is present, hookable and
-    silent -- the capture came back without the key and nothing anywhere said why.
+    The four points are served from the qkv projection's output instead: the q and k columns are the
+    norms' input, and calling the norm on them is their output. This layer still calls its norms with
+    the flag set, which is what makes the check exact -- the same layer, hooked both ways on the same
+    input, has to give the same four tensors. The gated case is where the slice can go wrong: the
+    projection carries ``[q | gate]`` per head, so a plain first-third cut is half queries, half gate.
     """
+    layer = _PreNormLayer(gated=gated)
+    worker = _worker(layer)
+    from_modules = _run(worker, _QK_NORM_SITES)
+    layer.self_attn.use_fused_qk_norm_rope_gate = True
+    assert all(v == "" for v in worker_resolvable_points(worker, _QK_NORM_SITES).values())
+    derived = _run(worker, _QK_NORM_SITES)
+    for key in _QK_NORM_SITES:
+        assert derived[key].shape == (TOKENS, N_HEADS, HEAD_DIM), key
+        torch.testing.assert_close(derived[key], from_modules[key], msg=key)
+
+
+def test_the_demux_serves_a_fused_qk_norm_off_the_projection_too():
+    """The other installer, which is the one `VLLMModel` uses; the two have drifted before."""
+    layer = _PreNormLayer(gated=True)
+    worker = _worker(layer)
+    from_modules = _run(worker, ["k_norm_out.0"])["k_norm_out.0"]
+    layer.self_attn.use_fused_qk_norm_rope_gate = True
+    site = Address("k_norm_out", 0)
+    demux = _steering_demux("r0", site, bump=0.0)
+    demux.steer_mods.clear()  # capture only: a steer here is refused at registration
+    handle = _install_hook(worker, demux, site)
+    torch.manual_seed(0)
+    trunk = worker.model_runner.model.model
+    trunk(torch.arange(TOKENS), torch.randint(0, VOCAB, (TOKENS,)))
+    handle.remove()
+    (rows,) = demux.captures["r0"]["k_norm_out.0"]
+    torch.testing.assert_close(rows, from_modules)
+
+
+def test_a_fused_qk_norm_is_read_only():
+    """The derived tensor is a copy the model never sees, so a write to it is refused up front."""
+    from interp_engine.vllm_capture.requests import _write_site
+
     layer = _PreNormLayer()
     layer.self_attn.use_fused_qk_norm_rope_gate = True
-    verdict = worker_resolvable_points(_worker(layer), ["q_norm_in.0", "k_norm_out.0", "attn_out.0"])
-    assert "fused kernel" in verdict["q_norm_in.0"]
-    assert "fused kernel" in verdict["k_norm_out.0"]
+    with pytest.raises(ValueError, match="fused kernel"):
+        _write_site(_worker(layer), {"layer": 0, "point": "q_norm_out"})
+    # Off the fused path the same write is not this refusal's business.
+    assert _write_site(_worker(_PreNormLayer()), {"layer": 0, "point": "q_norm_out"}) == Address("q_norm_out", 0)
+
+
+def test_a_fused_qk_norm_whose_geometry_does_not_add_up_is_refused_at_resolve():
+    """A projection that disagrees with its attention module about the head count is refused where
+    the caller can see it, rather than sliced at a guessed offset inside a forward on the worker."""
+    layer = _PreNormLayer(gated=True)
+    layer.self_attn.use_fused_qk_norm_rope_gate = True
+    layer.self_attn.num_heads = N_HEADS + 1
+    verdict = worker_resolvable_points(_worker(layer), ["q_norm_in.0", "attn_out.0"])
+    assert "do not agree" in verdict["q_norm_in.0"]
     assert verdict["attn_out.0"] == "", "only the four QK-norm points are affected"
-
-
-def test_the_unfused_path_on_the_same_family_still_serves_them():
-    """The flag is per model and per platform, so the refusal has to read it rather than the family."""
-    verdict = worker_resolvable_points(_worker(_PreNormLayer()), ["q_norm_in.0", "k_norm_out.0"])
-    assert verdict["q_norm_in.0"] == ""
-    assert verdict["k_norm_out.0"] == ""
 
 
 # --- the two decoder-layer return conventions --------------------------------
@@ -849,4 +908,36 @@ def test_a_layer_the_resolver_refuses_leaves_no_interception_on_the_layers_befor
         worker_capture_attn(worker, [0, 1])
 
     assert not model.model.layers[0].self_attn.attn._forward_pre_hooks
+    assert getattr(worker, "_np_attn_capture", None) is None
+
+
+class _MlaAttn(nn.Module):
+    """DeepSeek-V2/V3 and Kimi-K2 in vLLM: the op is `mla_attn`, over a compressed latent, no `attn`."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.mla_attn = _PagedOp()
+
+
+def test_resolvable_attn_answers_per_layer_without_installing_anything():
+    """The ask-first RPC: both call conventions resolve, MLA and a bare module say why not.
+
+    A refusal must come back as a value here because at TP>1 a worker raise inside
+    ``collective_rpc`` leaves the other ranks' replies queued for the next RPC to misread --
+    Kimi-K2.6 at TP=8 lost every point of its cell to exactly that.
+    """
+    worker = _attn_worker(_NativeAttn(), _FallbackAttn(), _MlaAttn(), _FallbackAttn())
+    model = worker.model_runner.model
+    # The fixture builds a fallback op for every non-native layer; a native MLA family has none, and
+    # layer 3 stands for a module neither convention resolves.
+    del model.attention_instances[2], model.attention_instances[3]
+
+    verdict = worker_resolvable_attn(worker, [0, 1, 2, 3])
+
+    assert verdict["0"] == "" and verdict["1"] == ""
+    assert "latent attention" in verdict["2"]
+    assert "attention op" in verdict["3"]
+    assert set(verdict) == {"0", "1", "2", "3"}, "string keys, one per asked layer"
+    assert not model.model.layers[0].self_attn.attn._forward_pre_hooks
+    assert "forward" not in model.attention_instances[1].__dict__
     assert getattr(worker, "_np_attn_capture", None) is None

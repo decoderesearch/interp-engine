@@ -157,6 +157,20 @@ tp = load_model("Qwen/Qwen3-32B", backend="vllm", num_gpus=4)  # tensor_parallel
 `num_gpus` becomes `tensor_parallel_size` on vLLM and `device_map="auto"` on eager. Arbitrary
 vLLM engine args go through `extra_vllm_kwargs`, not `**kwargs`.
 
+## Multi-GPU
+
+`num_gpus` defaults to 1 and is never inferred: sharding a model that fits one card is a choice, so
+`load_model` waits to be told. Every point is served at any count. vLLM shards heads and MLP neurons
+across ranks, and the worker gathers `q`, `k`, `v`, `z`, `mlp_act` and the attention scores back
+together before they leave the worker, so a capture at `num_gpus=4` has the same shapes and the
+same values as one at `num_gpus=1`. Steering and the logit lens work the same way. The validator
+checked this against the eager reference at `num_gpus=2` (`Qwen/Qwen3.8-27B` on 2x A40) and ran
+`vllm` and `vllm-static` at `num_gpus=8` (`moonshotai/Kimi-K2.6` on 8x H200).
+
+The validator and benchmark drivers (`validator/comparison/run_all_models.sh`,
+`benchmarks/run_all.sh`) are the exception: with nothing set they use every visible CUDA card, and
+`NUM_GPUS=1` / `--num-gpus 1` pins them to one.
+
 ## Lifecycle
 
 ```python

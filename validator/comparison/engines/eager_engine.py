@@ -72,6 +72,71 @@ def _resolvable(model, point: str, layer: int | None, announced: set[str]) -> bo
     return True
 
 
+def _host_in_use_bytes() -> int:
+    """Host memory this cgroup holds that a load cannot reclaim: anonymous pages and shm.
+
+    Not ``memory.current``, which also counts the page cache -- reclaimable, and after a checkpoint
+    copy it can be hundreds of GB that would price the host as nearly full. 0 when unreadable.
+    """
+    try:
+        with open("/sys/fs/cgroup/memory.stat") as f:
+            stat = dict(line.split() for line in f if " " in line)
+        return int(stat["anon"]) + int(stat["shmem"])
+    except (OSError, KeyError, ValueError):
+        pass
+    for path in ("/sys/fs/cgroup/memory.current", "/sys/fs/cgroup/memory/memory.usage_in_bytes"):
+        try:
+            with open(path) as f:
+                return int(f.read().strip())
+        except (OSError, ValueError):
+            continue
+    return 0
+
+
+def offload_budget(hf_id: str, dtype: str, num_gpus: int) -> dict[int | str, int] | None:
+    """Per-device byte budgets that spill the reference onto host RAM when the cards cannot hold it.
+
+    transformers dequantizes every routed expert of a compressed-tensors checkpoint at load, so a
+    native-INT4 MoE such as Kimi-K2.6 is 2.1 TB of bf16 in eager -- more than 8x H200 hold, while
+    the same box has 2 TB of host RAM. accelerate's ``device_map="auto"`` already spills to the CPU
+    when the cards fill, but it packs the first card to its limit, and the first card is where every
+    offloaded layer executes: it needs room for one full layer's weights on top of what lives there.
+    So card 0 keeps 55% for placement and the others 85%, the fraction the validator budgets weights
+    at everywhere else -- and not more, because the load dequantizes each expert group on the card it
+    lands on and needs a projection-sized scratch there (10.5 GiB on Kimi), which a card packed to
+    92% ran out of. Host RAM takes the rest. The capture is the same bf16 arithmetic on the same
+    cards, only slower; nothing about the numbers changes.
+
+    None when the weights fit the cards at 85%, so the ordinary path is untouched.
+    """
+    from interp_engine.model import resolve_trust_remote_code
+    from transformers import AutoConfig
+
+    from comparison import sizing
+
+    try:
+        cfg = AutoConfig.from_pretrained(hf_id, trust_remote_code=resolve_trust_remote_code(hf_id, None))
+        need = sizing.weight_bytes(cfg, dtype)
+    except Exception:  # noqa: BLE001 - an unreadable config falls back to accelerate's own placement
+        return None
+    cards = sizing.gpu_memory_bytes(num_gpus)
+    if not need or not cards or need <= int(cards * 0.85):
+        return None
+    per_card = cards // num_gpus
+    budget: dict[int | str, int] = {0: int(per_card * 0.55)}
+    budget.update({i: int(per_card * 0.85) for i in range(1, num_gpus)})
+    host = sizing.host_memory_bytes() - _host_in_use_bytes()
+    budget["cpu"] = max(0, int(host * 0.9))
+    print(
+        f"[eager/offload] {hf_id}: {sizing.gib(need)} of {dtype} weights exceed {sizing.gib(cards)} on "
+        f"{num_gpus} cards -> {sizing.gib(sum(v for k, v in budget.items() if k != 'cpu'))} placed on the "
+        f"cards, up to {sizing.gib(budget['cpu'])} offloaded to host RAM"
+    )
+    if need > sum(budget.values()):
+        print(f"[eager/offload] {hf_id}: the host cannot hold the remainder either; the load will fail")
+    return budget
+
+
 def capture(
     hf_id: str,
     input_ids: list[int],
@@ -80,6 +145,7 @@ def capture(
     saes: tuple[SaeSpec, ...] = (),
     device: str = "cpu",
     dtype: str = "float32",
+    num_gpus: int = 1,
 ) -> tuple[dict[str, np.ndarray], list[dict]]:
     import torch
     from interp_engine import EagerModel, deepgemm_fallback_kwargs, run_with_cache
@@ -88,12 +154,22 @@ def capture(
     # where it is the difference between measuring the row and losing it: the library refuses that
     # combination rather than choosing an experts implementation on a caller's behalf, and `eager` is
     # the reference, so its skip would take every other engine's cell in the row down with it.
+    #
+    # More than one GPU: accelerate places the layers (`device_map="auto"`), the same route
+    # `load_model(num_gpus=N)` takes, and `device` must then stay unset or the load would pull the
+    # sharded model back onto one card. Hooks fire on whichever card each module lives on. When even
+    # all the cards cannot hold the weights, `offload_budget` lets accelerate spill layers to host RAM.
+    model_kwargs = deepgemm_fallback_kwargs(hf_id)
+    budget = offload_budget(hf_id, dtype, num_gpus) if num_gpus > 1 else None
+    if budget is not None:
+        model_kwargs = {**model_kwargs, "max_memory": budget}
     model = EagerModel(
         hf_id,
         dtype=dtype,
-        device=device,
+        device=None if num_gpus > 1 else device,
+        device_map="auto" if num_gpus > 1 else None,
         attn_implementation="eager",
-        model_kwargs=deepgemm_fallback_kwargs(hf_id),
+        model_kwargs=model_kwargs,
     )
     ids = torch.tensor([input_ids], device=model.device)
 

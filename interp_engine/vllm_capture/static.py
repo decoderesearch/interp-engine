@@ -34,6 +34,7 @@ from interp_engine.vllm_capture._hooks import (
     value_columns,
 )
 from interp_engine.vllm_capture._payload import attn_payload_key, decode_capture_payload, encode_tensor_payload
+from interp_engine.vllm_capture._tp import gather_attn_role, gather_capture
 from interp_engine.vllm_capture._tree import (
     _INPUT_POINTS,
     _KWARG_INPUT_POINTS,
@@ -43,6 +44,8 @@ from interp_engine.vllm_capture._tree import (
     _absent_mhc_reason,
     _get_layers,
     _worker_model,
+    fused_qk_norm_derivation,
+    fused_qk_norm_write_reason,
     resolve_capture_module,
     scale_capture,
 )
@@ -585,21 +588,26 @@ def kv_cache_width(
     head_dim: int = 0,
     v_head_dim: int = 0,
     d_model: int = 0,
+    latent_width: int = 0,
 ) -> int:
     """KV-cache elements per token per layer, K and V together, for the whole model.
 
     The floor term of the static ladder below: whatever room is left after weights and buffers
     still has to hold a KV cache, and this is what one token of it costs.
 
-    ``2 * d_model`` -- the fallback when a caller has no head dims -- is the *pre-GQA* worst case
-    and is wrong by 8x on both models where static sizing is tight: Llama-3.3-70B caches 8 kv heads
-    of 128 rather than 8192, and DeepSeek-V4-Flash one 512-wide latent head rather than 4096. That
-    factor is the difference between fitting vLLM's default capture size and refusing to start.
+    ``latent_width`` wins when set: an MLA trunk caches one latent row per token in place of K and
+    V (``facts.kv_latent_width``), 576 wide on DeepSeek-V3 and Kimi-K2 where the head dims would
+    price 64 heads. ``2 * d_model`` -- the fallback when a caller has no head dims -- is the
+    *pre-GQA* worst case and is wrong by 8x where static sizing is tight: Llama-3.3-70B caches 8 kv
+    heads of 128 rather than 8192. That factor is the difference between fitting vLLM's default
+    capture size and refusing to start.
 
     Model-wide head counts are what this wants, deliberately. Gemma-4 varies both by layer, and a
     floor that averages them is off by far less than the graph allowance it sits beside; asking per
     layer here would buy accuracy the term does not have anyway.
     """
+    if int(latent_width) > 0:
+        return int(latent_width)
     heads = max(int(n_kv_heads), 0)
     if heads <= 0 or int(head_dim) <= 0:
         return 2 * max(int(d_model), 1)
@@ -692,6 +700,11 @@ class _Site:
     module: torch.nn.Module | None = None
     modify: Callable[[torch.Tensor], torch.Tensor] | None = None
     lens_scope: dict[str, Any] | None = None
+    #: Computes the point from :attr:`module`'s output instead of copying it: the fused QK-norm
+    #: points, cut and normalized off the qkv projection (``_tree.fused_qk_norm_derivation``). A
+    #: site with one is read-only and is always a *post* tap, whichever side its point's own module
+    #: would have been read from.
+    derive: Callable[[torch.Tensor], torch.Tensor] | None = None
     #: ``(max_n, *width)``: the per-token shape this site serves. A read ``buf`` is allocated at
     #: exactly this shape because every row differs. A write ``delta`` is one constant vector per
     #: token, so it is allocated ``(1, *width)`` and broadcast at add time. The row cap therefore
@@ -1068,6 +1081,8 @@ def worker_install_static(worker: object) -> None:
             continue
         key = format_address(address)
         site = sites.get(key)
+        if kind == "write" and (fused := fused_qk_norm_write_reason(layer, address.name)) is not None:
+            raise ValueError(f"cannot static-write {key}: {fused}")
         if site is None:
             is_mhc = address.name in MHC_KERNEL_POINTS
             module = None if is_mhc else resolve_capture_module(model, layer, address.name)
@@ -1099,6 +1114,7 @@ def worker_install_static(worker: object) -> None:
                 need_buf=kind == "read" or key in read_keys,
                 need_delta=kind == "write",
             )
+            site.derive = fused_qk_norm_derivation(layer, address.name)
             sites[key] = site
         # Cross-seeding: a point asked for as both a read and a write is one site with both
         # buffers. Both come off `site.shape`, which is the shape `_alloc_site` was given --
@@ -1303,7 +1319,11 @@ def _wrap_module(
 ) -> None:
     """Replace ``module.forward`` with a wrap that ``copy_`` / ``add_`` on static buffers."""
     orig = module.forward
-    pre = [(s, k) for s, k in actions if s.address.name in _INPUT_POINTS or s.address.name in _KWARG_INPUT_POINTS]
+    pre = [
+        (s, k)
+        for s, k in actions
+        if s.derive is None and (s.address.name in _INPUT_POINTS or s.address.name in _KWARG_INPUT_POINTS)
+    ]
     pre_ids = {id(s) for s, _ in pre}
     post = [(s, k) for s, k in actions if id(s) not in pre_ids]
 
@@ -1441,6 +1461,14 @@ def _run_post(
                 _copy_rows(site.buf, tensor, n)
             continue
         if not isinstance(hidden, torch.Tensor):
+            continue
+        if site.derive is not None:
+            # Read-only by construction (the install refuses a write), so there is no delta to apply.
+            tensor = site.derive(hidden)
+            n = _rows(tensor, site)
+            if n and kind == "read" and site.buf is not None:
+                _require_matching_width(tensor, site.buf, site)
+                _copy_rows(site.buf, tensor, n)
             continue
         live = _row_view(_value_view(hidden, site), site)
         resid = _row_view(residual, site)
@@ -1964,19 +1992,26 @@ def _encode_harvest(static: StaticState, req_id: str, worker: object) -> dict[st
     model = _worker_model(worker)
     out: dict[str, tuple] = {}
     attn_layers: set[int] = set()
+    layers = None
+    # Sharded points and the attention roles are gathered across ranks before they are encoded:
+    # every rank runs this collect, so the all-gather is a legal collective here.
     for key, chunks in rows.items():
         if not chunks:
             continue
         tensor = chunks[0] if len(chunks) == 1 else torch.cat(chunks, dim=0)
-        out[key] = encode_tensor_payload(scale_capture(model, key, tensor))
         address = parse_address(key)
         if address.name in ATTN_STATIC_ROLES and address.layer is not None:
             attn_layers.add(int(address.layer))
+            layers = _get_layers(model) if layers is None else layers
+            tensor = gather_attn_role(layers[int(address.layer)], address.name, tensor)
+        else:
+            tensor = gather_capture(model, key, tensor)
+        out[key] = encode_tensor_payload(scale_capture(model, key, tensor))
     if attn_layers:
         from interp_engine.vllm_capture.attn import _attn_sinks
 
         layer_list = _get_layers(model)
-        for layer in attn_layers:
+        for layer in sorted(attn_layers):  # one order on every rank: the sinks gather is a collective
             sinks = _attn_sinks(layer_list[layer])
             if sinks is not None:
                 out[attn_payload_key("sinks", layer)] = encode_tensor_payload(sinks)

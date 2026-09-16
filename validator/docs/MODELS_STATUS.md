@@ -85,6 +85,7 @@ the family is filed under a weaker claim.
 | architecture | checkpoints |
 | --- | --- |
 | `DeepseekV4ForCausalLM` | `deepseek-ai/DeepSeek-V4-Flash-0731` |
+| `KimiK25ForConditionalGeneration` | `moonshotai/Kimi-K2.6` |
 
 ## Resolves, unverified numerically
 

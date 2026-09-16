@@ -763,6 +763,8 @@ REFERENCE_GAPS: tuple[dict, ...] = (
             "deepseek-ai/DeepSeek-V4-*",
             "ibm-granite/granite-3.0-*a400m*",
             "microsoft/Phi-mini-MoE-*",
+            # Same per-layer shape as LFM2: layer 0 is the one dense layer and hands back all three.
+            "moonshotai/Kimi-K2*",
             "openai/gpt-oss-*",
         ),
         "points": ("mlp_act", "mlp_pre", "mlp_pre_linear"),
@@ -863,7 +865,7 @@ ENGINE_GAPS: tuple[dict, ...] = (
     },
     {
         "engines": ("vllm", "vllm-static"),
-        "models": ("deepseek-ai/DeepSeek-V2-*", "deepseek-ai/DeepSeek-V4-*"),
+        "models": ("deepseek-ai/DeepSeek-V2-*", "deepseek-ai/DeepSeek-V4-*", "moonshotai/Kimi-K2*"),
         "points": ("attn_scores",),
         "reason": (
             "multi-head latent attention: the block has no `self_attn.attn` to read q/k off, because the "

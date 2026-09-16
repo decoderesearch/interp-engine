@@ -111,7 +111,7 @@ Two repos on the Hub illustrate how little you can rely on:
 | repo | `config.json` says | reality |
 | --- | --- | --- |
 | `nvidia/Llama-3.3-70B-Instruct-FP4` | nothing — no `quantization_config` at all, `torch_dtype: bfloat16` | NVFP4. The scheme is in `hf_quant_config.json`, which ModelOpt writes instead. |
-| `RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8` | `quant_method: compressed-tensors` | FP8. `compressed-tensors` is a container that carries fp8, int8 and int4 alike, so the method name has no width in it. |
+| `RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8` | `quant_method: compressed-tensors` | FP8. `compressed-tensors` is a container that carries fp8, int8 and int4 alike, so the method name has no width in it. The width is one level down, in `config_groups.*.weights.num_bits`, and the reader appends it: `compressed-tensors fp8` here, `compressed-tensors int4` on Kimi-K2.6, whose 1T of W4A16 experts would otherwise be priced at one byte a parameter. |
 
 Read either one at face value and you get the size wrong by a factor of two to three, in the direction
 that OOMs. The sizer therefore asks three sources in order — the config, then the sidecar file, then
@@ -236,7 +236,13 @@ output token, so a prompt of exactly `max_model_len` is refused with a validatio
 
 **Grouped-query attention is what makes long contexts affordable**, and it is why the head dimensions
 matter rather than `d_model`. Llama-3.3-70B caches 8 KV heads of 128 rather than 8192 wide; assuming
-`2 x d_model` overstates it by 8x, and a DeepSeek MLA trunk by more.
+`2 x d_model` overstates it by 8x.
+
+**Multi-head latent attention caches neither keys nor values.** A DeepSeek-V3 or Kimi-K2 layer caches
+the `kv_lora_rank`-wide latent both are expanded from plus the `qk_rope_head_dim` positional key part
+beside it: one 576-wide row per token where the head dims would price 64 heads of K and V, 21x as
+much. `kv_latent_width` is that row, read from the config, and it replaces the head-dim figure wherever
+a config states `kv_lora_rank`.
 
 ---
 
@@ -366,15 +372,32 @@ does not divide the KV head count.
 **The cache shards by KV head, not by card.** How far it divides is a property of the attention shape
 rather than of the machine, and the two ends are far apart: Llama-3.3-70B's 8 KV heads go 2-per-rank
 at TP=4 and the cache really is a quarter on each card, while a DeepSeek MLA trunk caches one
-512-wide latent head that cannot be cut at all — vLLM replicates it, and four cards hold four copies
+576-wide latent row that cannot be cut at all — vLLM replicates it, and four cards hold four copies
 of the same cache. So MLA models get no context relief from more cards, only weight relief. Past the
 head count the saving stops entirely: vLLM pads 8 heads up to 16 ranks by duplicating them, so 16
 cards cost what 8 cost.
 
-**None of the multi-GPU arithmetic has been measured.** Every row in [VERIFIED.md](VERIFIED.md) ran
-on a single card, so both halves of this section — the even weight split and the head-wise cache
-split — are arithmetic rather than observation, and every estimate above `num_gpus=1` says so in its
-warnings.
+**Two multi-GPU configurations have been measured.** `Qwen/Qwen3.8-27B` at `num_gpus=2` on 2x A40
+([VERIFIED.md](VERIFIED.md), the `tp2` rows) ran on `vllm`, `vllm-static` and `eager`: the even
+weight split came out as priced (25.87 GiB predicted per rank, 25.99 GiB consumed), the margin
+outside the pool held on both vLLM backends, the replicated static buffers and graph pool fit beside
+the sharded weights, and the eager peak per card landed at 0.98x of its estimate. The cache count on
+that run came out under the estimate (0.62x hooked, 0.89x
+static), for the reason section 4 warns about on a hybrid trunk rather than for a tensor-parallel
+one: 48 of its 64 layers hold a recurrent state that no term here prices, and vLLM 0.29 pages that
+state out of the same pool as the attention cache (its `align` mode sets the attention block to 784
+tokens so the two page sizes match), so the tokens it reports are what is left after those pages.
+`moonshotai/Kimi-K2.6` at `num_gpus=8` on 8x H200 (the `tp8` rows) ran on `vllm` and
+`vllm-static`: 595 GB of native-INT4 weights split into 69.28 GiB predicted per rank against 71.31
+GiB loaded, and the margin outside the pool held on both (0.60x and 0.49x of what was reserved). Its
+cache count came out **2.5x over** the estimate as recorded, and that time the estimate was the one
+that was wrong: Kimi is an MLA trunk, and `kv_cache_width` priced its 64 heads of `head_dim +
+v_head_dim` where vLLM caches one 576-wide latent row per rank (section 4). The records keep the
+prediction the harness made on the day; re-priced with `kv_latent_width`, the same two specs predict
+856,079 and 708,282 tokens against the 813,296 and 653,152 built (0.95x and 0.92x). What remains is
+the activation peak vLLM's profile run subtracts from the pool before it sizes the cache, which no
+term here prices and which a 1T MoE at 2,048 batched tokens makes visible. Every other count is still
+arithmetic, and every estimate above `num_gpus=1` says so in its warnings.
 
 ---
 

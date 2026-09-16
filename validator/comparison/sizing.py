@@ -60,11 +60,15 @@ def weight_bytes(config: Any, dtype: str) -> int:
     return _DTYPE_BYTES.get(dtype, 4) * estimated_param_count(config)
 
 
-def gpu_memory_bytes() -> int:
-    """Total VRAM of GPU 0 via ``nvidia-smi``, or 0 if it can't be read.
+def gpu_memory_bytes(num_gpus: int = 1) -> int:
+    """Total VRAM of the first ``num_gpus`` cards via ``nvidia-smi``, or 0 if it can't be read.
 
     Asked out-of-process deliberately: this runs before any engine is imported, and initializing a
     CUDA context in the parent just to ask torch would change how vLLM and SGLang start up.
+
+    Summed across cards because that is what a sharded load has to fit into. Fewer cards than asked
+    for reads as 0 ("unknown") rather than as the ones present: the load would fail on its own terms
+    and a smaller budget here would only pick the wrong dtype first.
     """
     try:
         out = subprocess.run(
@@ -73,7 +77,10 @@ def gpu_memory_bytes() -> int:
             text=True,
             timeout=10,
         )
-        return int(float(out.stdout.strip().splitlines()[0])) * 1024**2
+        cards = [int(float(line)) for line in out.stdout.strip().splitlines() if line.strip()]
+        if len(cards) < num_gpus:
+            return 0
+        return sum(cards[:num_gpus]) * 1024**2
     except Exception:  # noqa: BLE001 - no GPU, no nvidia-smi, unparseable output: all "unknown"
         return 0
 
@@ -105,14 +112,14 @@ def host_memory_bytes() -> int:
     return min(limits) if limits else 0
 
 
-def memory_budget_bytes(device: str, fraction: float = 0.85) -> int:
+def memory_budget_bytes(device: str, fraction: float = 0.85, num_gpus: int = 1) -> int:
     """Weight budget on ``device``: a fraction of what exists, leaving room for activations, kernel
-    workspace and (on GPU) the CUDA context.
+    workspace and (on GPU) the CUDA context. ``num_gpus`` cards are summed on CUDA.
 
     Returns 0 when the size cannot be determined, which every caller must read as "don't
     second-guess the checkpoint" rather than as "no room".
     """
-    total = gpu_memory_bytes() if device.startswith("cuda") else host_memory_bytes()
+    total = gpu_memory_bytes(num_gpus) if device.startswith("cuda") else host_memory_bytes()
     return int(total * fraction) if total else 0
 
 

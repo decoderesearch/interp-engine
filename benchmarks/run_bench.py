@@ -209,8 +209,12 @@ def _load_kwargs(
     m: ModelSpec,
     *,
     gpu_memory_utilization: float = GPU_MEMORY_UTILIZATION,
+    num_gpus: int = 1,
 ) -> dict[str, Any]:
     """Variant kwargs plus the per-backend knobs that only one backend accepts.
+
+    ``num_gpus`` is ``load_model``'s own knob and goes through as is: tensor parallelism on vLLM,
+    accelerate's layer placement on eager, where it takes the place of ``device="cuda"``.
 
     ``max_model_len`` and ``gpu_memory_utilization`` are vLLM-only, and passing them to the eager
     constructor would raise. Kept here rather than duplicated into every vLLM variant so the variant
@@ -234,6 +238,8 @@ def _load_kwargs(
     kwargs = dict(v.kwargs)
     if kwargs.get("static_writes") == STEER_WRITES:
         kwargs["static_writes"] = [_steer_site(v, m)]
+    if num_gpus > 1:
+        kwargs["num_gpus"] = num_gpus
     # Every vLLM backend, not just the hooked one: these are engine settings, and a graph variant that
     # silently lost `max_model_len` would be measured against a different context than the row beside
     # it. `VLLM_BACKENDS` is the engine's own list, so a fourth backend is covered the day it lands.
@@ -270,9 +276,10 @@ def _load_kwargs(
             if isinstance(declared_model_kwargs, dict):
                 merged.update(declared_model_kwargs)
             kwargs["model_kwargs"] = merged
-        # A device_map places the weights itself, and `load_model` drops `device` when one is given.
-        # Setting it anyway would put a `device="cuda"` in the recorded kwargs that had no effect.
-        if "device_map" not in kwargs:
+        # A device_map places the weights itself, and `load_model` drops `device` when one is given
+        # -- as it does at `num_gpus > 1`, which is a device_map. Setting it anyway would put a
+        # `device="cuda"` in the recorded kwargs that had no effect.
+        if "device_map" not in kwargs and num_gpus == 1:
             kwargs.setdefault("device", "cuda")
     return kwargs
 
@@ -284,10 +291,11 @@ async def run_cell(
     *,
     command: str,
     gpu_memory_utilization: float = GPU_MEMORY_UTILIZATION,
+    num_gpus: int = 1,
 ) -> dict[str, Any]:
     from interp_engine import load_model
 
-    stamp = env_stamp()
+    stamp = env_stamp(num_gpus=num_gpus)
     record: dict[str, Any] = {
         "schema": SCHEMA,
         "started_at": datetime.now(UTC).isoformat(timespec="seconds"),
@@ -298,7 +306,7 @@ async def run_cell(
         "env": dataclasses.asdict(stamp),
         "workloads": {},
     }
-    kwargs = _load_kwargs(variant, model_spec, gpu_memory_utilization=gpu_memory_utilization)
+    kwargs = _load_kwargs(variant, model_spec, gpu_memory_utilization=gpu_memory_utilization, num_gpus=num_gpus)
     record["variant"]["kwargs"] = {k: str(val) for k, val in kwargs.items()}
     record["model"]["native_dtype"] = _native_dtype(model_spec.hf_id)
 
@@ -392,8 +400,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             f"model's own declared fraction, or {GPU_MEMORY_UTILIZATION} where it has none"
         ),
     )
+    p.add_argument(
+        "--num-gpus",
+        type=int,
+        default=1,
+        help="shard the model across this many cards (vLLM tensor parallelism; accelerate placement "
+        "on eager). Stamped on the cell, since a two-card number is not a one-card number",
+    )
     p.add_argument("--list", action="store_true", help="print the models, variants and workloads and exit")
-    return p.parse_args(argv)
+    args = p.parse_args(argv)
+    if args.num_gpus < 1:
+        p.error("--num-gpus must be at least 1")
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -455,6 +473,7 @@ def main(argv: list[str] | None = None) -> int:
             workload_keys,
             command=command,
             gpu_memory_utilization=bench_spec.gpu_memory_utilization_for(model_spec.key, args.gpu_memory_utilization),
+            num_gpus=args.num_gpus,
         )
     )
 

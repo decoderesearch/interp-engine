@@ -152,9 +152,10 @@ def load_model(
             doubles the context or concurrency a card holds. Refused on the eager backend, which
             has no paged cache to set the dtype of.
         num_gpus: Shard across this many GPUs on one node -- vLLM ``tensor_parallel_size``,
-            eager accelerate ``device_map="auto"``. Note that vLLM with ``num_gpus > 1``
-            cannot serve per-head ``z`` or DFA, because attention heads are sharded across
-            ranks and the off-kernel recompute would only see one shard.
+            eager accelerate ``device_map="auto"``. The vLLM worker gathers the head- and
+            neuron-sharded points (``z``, ``value``, ``mlp_act``, the QK-norm points, the q/k
+            behind the attention recompute) across ranks at collect, so the served point set
+            and every tensor's width are the same as on one GPU.
         trust_remote_code: Passed to both the config probe and the backend. The default ``None``
             means "only where the checkpoint has no alternative": eager prefers a native
             transformers class over a checkpoint's bundled copy of one when both exist, since the

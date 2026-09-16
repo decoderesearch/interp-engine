@@ -11,6 +11,7 @@ from __future__ import annotations
 import torch
 
 from interp_engine.vllm_capture._payload import attn_payload_key, encode_tensor_payload
+from interp_engine.vllm_capture._tp import gather_attn_role, gather_sinks
 from interp_engine.vllm_capture._tree import _attn_module, _get_layers, _worker_model
 
 # --- worker-side attention q/k/v capture + off-kernel probs recompute --------
@@ -43,6 +44,40 @@ def _attn_op_module(layer: torch.nn.Module) -> torch.nn.Module:
     if op is None:
         raise RuntimeError("Could not locate the attention op (self_attn.attn) on the layer")
     return op
+
+
+def attn_absent_reason(model: torch.nn.Module, layer: torch.nn.Module, index: int) -> str:
+    """Why ``attn_scores`` cannot be recorded at ``layer``, or ``""`` when it can.
+
+    The same question :func:`_install_attn_capture` answers by raising, asked without installing
+    anything. Ask it first: under tensor parallelism a worker exception inside ``collective_rpc``
+    is not consumed cleanly -- the ranks that did not raise leave their replies queued, and the
+    *next* RPC reads those instead of its own. So at TP>1 a refusal has to come back as a value.
+    """
+    attn = _attn_module(layer)
+    if getattr(attn, "attn", None) is not None:
+        return ""
+    instances = getattr(model, "attention_instances", None)
+    if isinstance(instances, dict) and instances.get(index) is not None:
+        return ""
+    if getattr(attn, "mla_attn", None) is not None:
+        return (
+            "multi-head latent attention: the kernel attends over a compressed KV it decompresses "
+            "internally, so there is no `self_attn.attn` to read post-RoPE q/k off and nothing to "
+            "recompute the scores from"
+        )
+    return "Could not locate the attention op (self_attn.attn) on the layer"
+
+
+def worker_resolvable_attn(worker: object, layers: list[int]) -> dict[str, str]:
+    """``{str(layer): "" | why not}`` for ``attn_scores`` at each of ``layers``.
+
+    The attention counterpart of ``worker_resolvable_points``; string keys because the reply
+    crosses the RPC boundary the same way.
+    """
+    model = _worker_model(worker)
+    layer_list = _get_layers(model)
+    return {str(int(i)): attn_absent_reason(model, layer_list[int(i)], int(i)) for i in layers}
 
 
 class _WrappedForward:
@@ -108,7 +143,8 @@ def _attn_sinks(layer: torch.nn.Module) -> torch.Tensor | None:
     Attention-sink models (gpt-oss) add one extra learned logit per head to the softmax
     denominator, so attention over the real tokens deliberately sums to less than 1. It is
     a ``nn.Parameter``, which means no config field exposes it and the recompute has to
-    read the loaded weight.
+    read the loaded weight -- this rank's heads of it, so under tensor parallelism the
+    slices are gathered before they leave the device. Every rank calls this at collect.
     """
     attn = _attn_module(layer)
     for holder in (attn, getattr(attn, "attn", None)):
@@ -117,7 +153,7 @@ def _attn_sinks(layer: torch.nn.Module) -> torch.Tensor | None:
         for name in _ATTN_SINK_ATTRS:
             found = getattr(holder, name, None)
             if isinstance(found, torch.Tensor):
-                return found.detach().float().flatten().cpu()
+                return gather_sinks(found.detach().float().flatten()).cpu()
     return None
 
 
@@ -164,10 +200,12 @@ def worker_collect_attn(worker: object) -> dict[str, tuple]:
     worker._np_attn_capture = None  # type: ignore[attr-defined]
     layer_list = _get_layers(_worker_model(worker))
     out: dict[str, tuple] = {}
+    # Each rank holds its own heads of q/k/v; gathered here so rank 0 returns them all.
     for layer_idx, (q, k, v) in store.items():
-        out[attn_payload_key("q", layer_idx)] = encode_tensor_payload(q)
-        out[attn_payload_key("k", layer_idx)] = encode_tensor_payload(k)
-        out[attn_payload_key("v", layer_idx)] = encode_tensor_payload(v)
+        layer = layer_list[layer_idx]
+        out[attn_payload_key("q", layer_idx)] = encode_tensor_payload(gather_attn_role(layer, "q", q))
+        out[attn_payload_key("k", layer_idx)] = encode_tensor_payload(gather_attn_role(layer, "k", k))
+        out[attn_payload_key("v", layer_idx)] = encode_tensor_payload(gather_attn_role(layer, "v", v))
         sinks = _attn_sinks(layer_list[layer_idx])
         if sinks is not None:
             out[attn_payload_key("sinks", layer_idx)] = encode_tensor_payload(sinks)

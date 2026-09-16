@@ -52,6 +52,9 @@ class CaptureMeta:
     reason: str = ""
     dtype: str = ""  # dtype the engine was asked to load (native; e.g. "float32"/"bfloat16")
     device: str = ""  # "cuda" | "cpu"
+    # How many cards the checkpoint was sharded across (tensor parallelism on the fused engines,
+    # accelerate placement on the hooked ones). 1 on every meta predating the field.
+    num_gpus: int = 1
     points: list[str] = field(default_factory=list)  # dump keys actually captured
     # Requested dump keys the engine did NOT return. A partial capture is a real result (a fused
     # engine has no `attn_out` on a linear-attention layer) but it must not read as a full pass, so

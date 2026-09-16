@@ -156,6 +156,13 @@ def test_explicit_head_dim_wins_over_the_derived_one():
     assert resolved.head_dim == 256
 
 
+def test_an_mla_config_states_what_one_token_of_cache_holds():
+    """DeepSeek-V3 / Kimi-K2: the 512-wide latent plus the 64-wide RoPE key part, not K and V."""
+    mla = resolve_facts(FakeConfig(num_attention_heads=64, hidden_size=7168, kv_lora_rank=512, qk_rope_head_dim=64))
+    assert mla.kv_latent_width == 576
+    assert resolve_facts(FakeConfig(num_attention_heads=32, hidden_size=4096)).kv_latent_width == 0
+
+
 def test_kv_heads_default_to_query_heads_when_absent():
     resolved = resolve_facts(FakeConfig(num_attention_heads=12, hidden_size=768))
     assert resolved.n_kv_heads == 12

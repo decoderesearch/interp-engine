@@ -77,6 +77,20 @@ const CASES: Expectation[] = [
     why: "variant shards under original/, and the silent-dequantization trap this module exists for",
   },
   {
+    id: "RedHatAI/Qwen3-32B-quantized.w4a16",
+    source: "safetensors-index",
+    onDiskGib: 17.8846,
+    paramCount: 33_005_918_080,
+    quantMethod: "compressed-tensors int4",
+    dequantizedGib: 61.4783,
+    vllmGib: 17.8846,
+    dims: { nLayers: 64, dModel: 5120, nKvHeads: 8, headDim: 128 },
+    why:
+      "W4A16 in a compressed-tensors container: the width comes from config_groups, and the Hub's " +
+      "I32 aggregate arrives already unpacked (31.2e9 for 3.9e9 stored words), so it must not be " +
+      "unpacked again",
+  },
+  {
     id: "google/gemma-3-12b-pt",
     source: "file-sizes",
     onDiskGib: 22.7007,

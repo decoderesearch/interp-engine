@@ -88,7 +88,7 @@ def _residual_streams(hf_id: str) -> int:
         return 1
 
 
-def _native_dtype(hf_id: str, device: str = "cuda") -> str:
+def _native_dtype(hf_id: str, device: str = "cuda", num_gpus: int = 1) -> str:
     """The checkpoint's native precision (config dtype) so we compare engines in the dtype the model
     actually ships in — never forcing float32, except for the float16 eager-attention overflow in
     ``facts.FP16_EAGER_OVERFLOW_ARCHS``. The reference engine pins `eager` on purpose, so every rule
@@ -131,12 +131,13 @@ def _native_dtype(hf_id: str, device: str = "cuda") -> str:
             # never learned it.
             print(f"[dtype] {hf_id}: quantized checkpoint has no float32 kernels -> bfloat16 (all engines)")
             return "bfloat16"
-        budget = sizing.memory_budget_bytes(device)
+        budget = sizing.memory_budget_bytes(device, num_gpus=num_gpus)
         need = sizing.weight_bytes(cfg, "float32")
         if budget and need > budget:
+            cards = f"{num_gpus}x {device}" if num_gpus > 1 else device
             print(
                 f"[dtype] {hf_id}: float32 weights ~{sizing.gib(need)} exceed the "
-                f"{sizing.gib(budget)} {device} budget -> bfloat16 (all engines)"
+                f"{sizing.gib(budget)} {cards} budget -> bfloat16 (all engines)"
             )
             return "bfloat16"
         return "float32"
@@ -158,12 +159,24 @@ def _vllm_downgrades_fp32(hf_id: str) -> bool:
 
 
 def run_one(
-    engine: str, hf_id: str, dumps: str, device: str, registry: dict[str, ModelSpec] | None = None
+    engine: str,
+    hf_id: str,
+    dumps: str,
+    device: str,
+    registry: dict[str, ModelSpec] | None = None,
+    num_gpus: int = 1,
 ) -> CaptureMeta:
     """Capture one (engine, checkpoint) cell. Any HF repo id works, listed in the sweep or not: the
-    registry only carries the extras a bare id cannot say (gated, which SAEs to spot-check)."""
+    registry only carries the extras a bare id cannot say (gated, which SAEs to spot-check).
+
+    ``num_gpus`` shards the checkpoint across that many cards -- tensor parallelism on the fused
+    engines, accelerate's layer placement on the hooked ones -- and is recorded on the cell, since a
+    capture from two cards is a different claim from one card's.
+    """
     m = (registry or MODELS_BY_ID).get(hf_id) or ModelSpec(hf_id=hf_id)
-    dtype = _native_dtype(m.hf_id, device)  # native dtype we ask the adapter to load
+    if num_gpus > 1 and not device.startswith("cuda"):
+        raise ValueError(f"--num-gpus {num_gpus} needs --device cuda; got {device!r}")
+    dtype = _native_dtype(m.hf_id, device, num_gpus)  # native dtype we ask the adapter to load
     # Record the dtype the engine actually runs, not just the native one:
     #  - SGLang can't serve float32 (its adapter forces bf16).
     #  - vLLM's fp32 Triton attention kernel can't fit head_dim>128, so the vLLM adapter downgrades a
@@ -188,6 +201,7 @@ def run_one(
             reason=reason,
             dtype=meta_dtype,
             device=device,
+            num_gpus=num_gpus,
             captured_at=captured_at,
             versions=versions,
             capability=capability,
@@ -216,6 +230,7 @@ def run_one(
             saes=m.saes,
             device=device,
             dtype=dtype,
+            num_gpus=num_gpus,
         )
     except Exception as exc:  # noqa: BLE001 - record, don't crash the whole matrix
         reason = f"{type(exc).__name__}: {exc}"
@@ -263,12 +278,21 @@ def main() -> None:
         help="path to a JSON list of HF repo ids (default comparison/sweep_models.json) for the broad sweep",
     )
     ap.add_argument("--device", default="cpu")
+    ap.add_argument(
+        "--num-gpus",
+        type=int,
+        default=1,
+        help="shard the checkpoint across this many CUDA cards (tensor parallelism on vLLM/SGLang, "
+        "accelerate placement on the hooked engines); recorded on the cell",
+    )
     args = ap.parse_args()
+    if args.num_gpus < 1:
+        ap.error("--num-gpus must be at least 1")
 
     registry = load_sweep(args.models_json) if args.models_json else MODELS_BY_ID
     ids = [args.model] if args.model else ([m.hf_id for m in MODELS] if registry is MODELS_BY_ID else list(registry))
     for hf_id in ids:
-        meta = run_one(args.engine, hf_id, args.dumps, args.device, registry)
+        meta = run_one(args.engine, hf_id, args.dumps, args.device, registry, num_gpus=args.num_gpus)
         if meta.status != "ok":
             # persist skip/error meta too, so the aggregator can report N/A cells with a reason
             write_capture(args.dumps, meta, {})

@@ -213,6 +213,7 @@ def capture(
     saes: tuple[SaeSpec, ...] = (),  # noqa: ARG001 - SAE spot-check stays on eager engines
     device: str = "cuda",  # noqa: ARG001 - vLLM auto-detects device
     dtype: str = "float32",
+    num_gpus: int = 1,
 ) -> tuple[dict[str, np.ndarray], list[dict]]:
     import os
     import sys
@@ -239,6 +240,7 @@ def capture(
         model=hf_id,
         worker_extension_cls=WORKER_EXTENSION_CLS,
         dtype=dtype,
+        tensor_parallel_size=num_gpus,
         max_model_len=max(len(input_ids) + 8, 32),
         gpu_memory_utilization=float(os.environ.get("IE_VLLM_GPU_UTIL", "0.7")),
         trust_remote_code=True,
@@ -274,6 +276,16 @@ def capture(
             print(message, file=sys.stderr, flush=True)
     wanted = [address for address in wanted if not verdict.get(address)]
     attn_layers = _softmax_attention_layers(hf_id, layers) if "attn_scores" in points else []
+    if attn_layers:
+        # Asked the same way `resolvable_points` is asked above, and for a stronger reason than
+        # politeness: a layer with no attention op to hook (multi-head latent attention) raises inside
+        # `capture_attn`, and at TP>1 that raise is not consumed cleanly -- the ranks that did not
+        # raise leave their replies queued, and `collect_capture` reads those instead of its own,
+        # costing the whole cell. Kimi-K2.6 at TP=8 lost every point that way.
+        attn_verdict = llm.collective_rpc("resolvable_attn", args=(attn_layers,))[0]
+        for why in sorted({why for why in attn_verdict.values() if why}):
+            print(f"[vllm/{hf_id}] point 'attn_scores' unavailable: {why}", file=sys.stderr, flush=True)
+        attn_layers = [layer for layer in attn_layers if not attn_verdict.get(str(layer))]
     if not wanted and not attn_layers:
         return {}, []
     if wanted:
@@ -307,9 +319,8 @@ def capture(
         TokensPrompt(prompt_token_ids=list(input_ids)),
         SamplingParams(max_tokens=1, temperature=0.0),
     )
-    # One payload per TP rank; the validator runs single-GPU, so rank 0 is the whole capture. It would
-    # not be under tensor parallelism for the head- and neuron-sharded points (`mlp_act`, the QK-norm
-    # quartet), which is `interp_engine.points.tp_sharded()` and what a serving pod refuses there.
+    # One payload per TP rank, and rank 0 is the whole capture at any TP size: the worker gathers the
+    # head- and neuron-sharded points (`interp_engine.points.tp_sharded()`) across ranks at collect.
     # `collect_capture` removes the hooks as it collects.
     captured = decode_capture_payload(llm.collective_rpc("collect_capture")[0]) if wanted else {}
 

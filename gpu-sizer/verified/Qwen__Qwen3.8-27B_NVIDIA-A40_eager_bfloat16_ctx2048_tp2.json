@@ -1,0 +1,132 @@
+{
+  "model_id": "Qwen/Qwen3.8-27B",
+  "backend": "eager",
+  "outcome": "pass",
+  "spec": {
+    "backend": "eager",
+    "dtype": "bfloat16",
+    "quantization": "",
+    "kv_cache_dtype": "auto",
+    "max_model_len": 2048,
+    "max_num_batched_tokens": 0,
+    "max_num_seqs": 0,
+    "gpu_memory_utilization": 0.0,
+    "num_gpus": 2,
+    "static_sites": 0,
+    "static_points": [],
+    "enforce_eager": null,
+    "batch_size": 1,
+    "seq_len": 2032,
+    "requires_grad": false,
+    "attn_implementation": "sdpa",
+    "n_capture_points": 0
+  },
+  "gpu": {
+    "name": "NVIDIA A40",
+    "total_bytes": 47768928256,
+    "total_gib": 44.49,
+    "compute_capability": [
+      8,
+      6
+    ],
+    "ecc_enabled": true,
+    "provenance": "measured on this host (ECC enabled)"
+  },
+  "estimate": {
+    "fits": true,
+    "total_bytes": 32177330518,
+    "pool_bytes": 0,
+    "outside_bytes": 0,
+    "headroom_bytes": 15591597738,
+    "kv_capacity_tokens": 0,
+    "terms": [
+      {
+        "name": "weights",
+        "bytes": 27781427952,
+        "side": "eager"
+      },
+      {
+        "name": "logits",
+        "bytes": 3027517440,
+        "side": "eager"
+      },
+      {
+        "name": "hidden_states",
+        "bytes": 20807680,
+        "side": "eager"
+      },
+      {
+        "name": "mlp_intermediate",
+        "bytes": 166461440,
+        "side": "eager"
+      },
+      {
+        "name": "workspace",
+        "bytes": 536870912,
+        "side": "eager"
+      },
+      {
+        "name": "cuda_context",
+        "bytes": 644245094,
+        "side": "eager"
+      }
+    ],
+    "warnings": [
+      "2-GPU figures are unverified: every configuration measured so far ran on a single card, so tensor parallelism here is arithmetic no hardware has checked"
+    ],
+    "weights_source": "safetensors-index"
+  },
+  "measured": {
+    "baseline_bytes": 0,
+    "post_load_bytes": 29535240192,
+    "post_reserve_bytes": 0,
+    "post_warmup_bytes": 29614931968,
+    "peak_bytes": 31611420672,
+    "per_device_peak_bytes": [
+      27050115072,
+      31611420672
+    ],
+    "pool_claimed_bytes": 0,
+    "outside_measured_bytes": 31611420672,
+    "torch_peak_bytes": 25656930304,
+    "kv_cache_tokens": 0,
+    "samples": 208
+  },
+  "stress": {
+    "max_concurrency_passed": 2,
+    "first_failing_concurrency": 0,
+    "prompt_tokens": 2032,
+    "requests_ok": 2,
+    "requests_failed": 0,
+    "latencies_ms": [
+      1785.0169020020985,
+      1772.3413780040573
+    ],
+    "failure_kind": "",
+    "failure_detail": ""
+  },
+  "reservations": {
+    "per_rank_bytes": 0,
+    "host_bytes": 0,
+    "before_engine": false,
+    "note": "--reserve-gib / --host-reserve-gib, held for real by the harness process; a per-rank share above rank 0 carries this process's extra CUDA context with it"
+  },
+  "engine_env": {},
+  "engine_env_note": "",
+  "cannot_verify": [
+    "fp8",
+    "nvfp4"
+  ],
+  "expected": "pass",
+  "why": "accelerate's layer placement across two cards; the eager arm at num_gpus=2",
+  "error": "",
+  "versions": {
+    "torch": "2.13.0+cu130",
+    "transformers": "5.17.0",
+    "vllm": "0.29.0",
+    "interp_engine": "1.8.0",
+    "driver": "595.91.07"
+  },
+  "duration_s": 68.6,
+  "recorded_at": "2026-09-14T23:35:20Z"
+}

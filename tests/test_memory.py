@@ -8,6 +8,8 @@ measured are quoted in the assertions that were calibrated against them.
 
 from __future__ import annotations
 
+import types
+
 import pytest
 
 from interp_engine import memory as mem
@@ -35,6 +37,7 @@ def facts(
     n_experts: int = 0,
     tied_embeddings: bool = False,
     architecture: str = "TestForCausalLM",
+    kv_latent_width: int = 0,
 ) -> mem.ModelMemoryFacts:
     """A plausible dense GQA model, with knobs for the shapes that behave differently."""
     return mem.ModelMemoryFacts(
@@ -54,6 +57,7 @@ def facts(
         v_head_dim=0,
         vocab_size=vocab_size,
         intermediate_size=intermediate_size or d_model * 4,
+        kv_latent_width=kv_latent_width,
         n_experts=n_experts,
         layer_types=layer_types,
         sliding_window=sliding_window,
@@ -97,6 +101,7 @@ def test_kv_cache_width_matches_the_engine_copy():
         {"n_kv_heads": 8, "head_dim": 128, "v_head_dim": 64},
         {"n_kv_heads": 1, "head_dim": 256},
         {"d_model": 4096},
+        {"n_kv_heads": 64, "head_dim": 64, "v_head_dim": 128, "latent_width": 576},
     ):
         assert mem.kv_cache_width(**kwargs) == static.kv_cache_width(**kwargs), kwargs
 
@@ -214,6 +219,41 @@ def test_mixed_precision_experts_unpack_at_their_own_dtype_not_the_schemes():
     assert mem.logical_param_count(_DSV4_ELEMENTS, "fp8", "fp4") == _DSV4_PARAMS
     # Without the field the containers stay packed, which is the bug this pins.
     assert mem.logical_param_count(_DSV4_ELEMENTS, "fp8") < _DSV4_PARAMS / 1.8
+
+
+def test_compressed_tensors_takes_its_width_from_the_config_groups():
+    """`compressed-tensors` is a container; `config_groups.*.weights` says what it packs at.
+
+    Kimi-K2.6 stores 1T of W4A16 experts as 127e9 int32 words. Read as a bare `compressed-tensors`
+    they are priced at one byte a parameter, which halves the dequantized size an eager load would
+    need and says a node fits that does not.
+    """
+    kimi = types.SimpleNamespace(
+        quantization_config={
+            "quant_method": "compressed-tensors",
+            "format": "pack-quantized",
+            "config_groups": {"group_0": {"weights": {"num_bits": 4, "type": "int", "group_size": 32}}},
+        },
+        dtype="bfloat16",
+    )
+    method, _ = mem._quant_method(kimi)
+    assert method == "compressed-tensors int4"
+    assert mem.scheme_width(method) == 0.5
+    elements = {"BF16": 43_902_267_888, "I32": 126_835_891_200}
+    assert mem.logical_param_count(elements, method) == 43_902_267_888 + 126_835_891_200 * 8
+    assert mem.WeightBytes(param_count=1, on_disk_bytes=1, quant_method=method).quant_family() == "int4"
+
+    fp8 = types.SimpleNamespace(
+        quantization_config={
+            "quant_method": "compressed-tensors",
+            "config_groups": {"group_0": {"weights": {"num_bits": 8, "type": "float"}}},
+        }
+    )
+    assert mem._quant_method(fp8)[0] == "compressed-tensors fp8"
+    assert mem.scheme_width("compressed-tensors fp8") == 1.0
+    # No groups: the bare container name, at the one-byte width it always had.
+    bare = types.SimpleNamespace(quantization_config={"quant_method": "compressed-tensors"})
+    assert mem._quant_method(bare)[0] == "compressed-tensors"
 
 
 def test_ue8m0_block_scales_are_never_counted_as_parameters():
@@ -611,6 +651,22 @@ def test_gqa_is_not_approximated_by_d_model():
     naive = mem.kv_cache_width(d_model=4096)
     assert gqa == 2048
     assert naive == 8192
+
+
+def test_an_mla_trunk_is_priced_at_its_latent_row_not_its_heads():
+    """Kimi-K2.6 at TP=8 built 2.5x the tokens the head-dim figure predicted: vLLM caches the 576-wide
+    latent (plus RoPE key part) once per token, not 64 heads of K and V. The latent wins when set."""
+    heads = mem.kv_cache_width(n_kv_heads=64, head_dim=64, v_head_dim=128)
+    assert heads == 64 * (64 + 128)
+    assert mem.kv_cache_width(n_kv_heads=64, head_dim=64, v_head_dim=128, latent_width=576) == 576
+    kimi = facts(n_layers=61, n_kv_heads=64, head_dim=64, kv_latent_width=576)
+    assert kimi.kv_width == 576
+    assert mem.kv_bytes_per_token(kimi) == 61 * 576 * 2
+
+
+def test_an_mla_cache_is_never_sharded():
+    """One latent row has no heads to split across ranks; vLLM replicates it, so more cards buy no context."""
+    assert mem.kv_shards(facts(n_kv_heads=64, head_dim=64, kv_latent_width=576), 8) == 1
 
 
 def test_kv_floor_is_linear_in_context():

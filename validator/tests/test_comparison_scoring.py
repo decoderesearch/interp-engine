@@ -1053,7 +1053,7 @@ def stub_capture(monkeypatch, tmp_path):
         module.capture = lambda **kwargs: (arrays, [])  # type: ignore[attr-defined]
         monkeypatch.setitem(sys.modules, "comparison.engines.stub_engine", module)
         monkeypatch.setitem(run_engine._ENGINE_MODULE, "eager", "comparison.engines.stub_engine")
-        monkeypatch.setattr(run_engine, "_native_dtype", lambda hf_id, device="cuda": "float32")
+        monkeypatch.setattr(run_engine, "_native_dtype", lambda hf_id, device="cuda", num_gpus=1: "float32")
 
         inputs = tmp_path / "inputs" / "stub"
         inputs.mkdir(parents=True, exist_ok=True)

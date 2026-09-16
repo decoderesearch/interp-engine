@@ -61,7 +61,10 @@ export interface WeightBytes {
    * of its quantized GEMMs down. {@link WeightBytes.elementsByDtype} is what the tensors really are.
    */
   storedDtype: string;
-  /** `quantization_config.quant_method`, lowercased. Empty on an unquantized checkpoint. */
+  /**
+   * `quantization_config.quant_method`, lowercased. A `compressed-tensors` container carries the
+   * width its `config_groups` declare: `compressed-tensors int4`. Empty on an unquantized checkpoint.
+   */
   quantMethod: string;
   /**
    * `config.expert_dtype` when an MoE checkpoint stores its routed experts narrower than the rest of
@@ -88,6 +91,12 @@ export interface ModelMemoryFacts {
   vHeadDim: number;
   vocabSize: number;
   intermediateSize: number;
+  /**
+   * What an MLA trunk caches per token per layer instead of K and V: the latent plus the RoPE'd key
+   * part, 576 on DeepSeek-V3 and Kimi-K2. 0 where the cache holds K and V. One row, not one per
+   * head, so it is also what says the cache cannot be sharded ({@link kvShards}).
+   */
+  kvLatentWidth: number;
   /**
    * Routed experts per sparse layer; 0 on a dense trunk. Feeds the static tap widths —
    * `router_logits` is as wide as the expert bank — and says whether a layer's MLP is a fused kernel
@@ -273,6 +282,10 @@ export function schemeWidth(quantMethod: string): number | null {
  * is only correct when the counts came from the shards' own headers — see {@link resolveModel},
  * where the Hub's aggregate arrives already unpacked and must not be unpacked twice.
  *
+ * `hubAggregate` says the counts are the Hub's rather than the headers'. The Hub reports a
+ * pack-quantized `I32` bucket as parameters, not words — Kimi-K2.6's 127e9 int32 words arrive as
+ * 1015e9 — while it leaves `U8` as stored bytes, so only that one tag is taken as already unpacked.
+ *
  * An unquantized checkpoint is unaffected: its buckets are all float, so containers and parameters
  * are the same thing.
  */
@@ -280,6 +293,7 @@ export function logicalParamCount(
   elementsByDtype: Record<string, number>,
   quantMethod = "",
   expertDtype = "",
+  hubAggregate = false,
 ): number {
   const widths = [schemeWidth(quantMethod), schemeWidth(expertDtype)].filter(
     (width): width is number => width !== null,
@@ -289,11 +303,13 @@ export function logicalParamCount(
   for (const [tag, count] of Object.entries(elementsByDtype)) {
     const upper = tag.toUpperCase();
     if (SCALE_TAGS.has(upper)) continue;
-    const container = INDEX_TAGS.has(upper)
-      ? undefined
-      : CONTAINER_DTYPES[upper];
+    const container =
+      INDEX_TAGS.has(upper) || (hubAggregate && upper === "I32")
+        ? undefined
+        : CONTAINER_DTYPES[upper];
     if (container === undefined || native === null) {
-      // A float bucket, or a scheme we do not recognize: one element is one parameter.
+      // A float bucket, a scheme we do not recognize, or a count the Hub already unpacked: one
+      // element is one parameter.
       total += count;
       continue;
     }
@@ -762,9 +778,41 @@ function configQuantMethod(config: Json): string {
     const q = asRecord(holder.quantization_config);
     if (!q) continue;
     const method = q.quant_method ?? q.quantization;
-    if (typeof method === "string" && method) return method.toLowerCase();
+    if (typeof method === "string" && method) {
+      const named = method.toLowerCase();
+      const scheme =
+        named === "compressed-tensors" ? compressedTensorsScheme(q) : "";
+      return scheme ? `${named} ${scheme}` : named;
+    }
   }
   return "";
+}
+
+/**
+ * The weight format a `compressed-tensors` config really declares: `int4`, `int8` or `fp8`.
+ *
+ * `compressed-tensors` is a container, and the width it packs at sits one level down in
+ * `config_groups.*.weights` as `num_bits` and `type`. Read as a bare `compressed-tensors`,
+ * Kimi-K2.6's W4A16 experts are priced at one byte a parameter — half the true dequantized size,
+ * and the wrong answer to whether an eager load fits. The narrowest group wins, since on a mixed
+ * checkpoint that is what the bulk of the weights are packed at. Mirrors
+ * `memory._compressed_tensors_scheme`. Empty when no group says.
+ */
+function compressedTensorsScheme(q: Json): string {
+  const raw = q.config_groups;
+  const groups: unknown[] = Array.isArray(raw)
+    ? raw
+    : Object.values(asRecord(raw) ?? {});
+  let best: [number, string] | null = null;
+  for (const group of groups) {
+    const weights = asRecord(asRecord(group)?.weights);
+    const bits = weights?.num_bits;
+    if (bits !== 4 && bits !== 8) continue;
+    const kind =
+      String(weights?.type ?? "int").toLowerCase() === "float" ? "fp" : "int";
+    if (best === null || bits < best[0]) best = [bits, `${kind}${bits}`];
+  }
+  return best?.[1] ?? "";
 }
 
 /** The stored dtype. `dtype` first: transformers v5 renamed `torch_dtype` and warns on the old name. */
@@ -863,6 +911,7 @@ interface TrunkDims {
   nKvHeads: number;
   headDim: number;
   vHeadDim: number;
+  kvLatentWidth: number;
   vocabSize: number;
   intermediateSize: number;
   nExperts: number;
@@ -882,6 +931,7 @@ const NO_DIMS: TrunkDims = {
   nKvHeads: 0,
   headDim: 0,
   vHeadDim: 0,
+  kvLatentWidth: 0,
   vocabSize: 0,
   intermediateSize: 0,
   nExperts: 0,
@@ -893,6 +943,20 @@ const NO_DIMS: TrunkDims = {
   tiedEmbeddings: false,
   derivedDims: [],
 };
+
+/**
+ * Elements one token of KV cache holds per layer under MLA, or 0 where keys and values are cached.
+ *
+ * DeepSeek's multi-head latent attention caches the `kv_lora_rank`-wide latent both K and V are
+ * expanded from, plus the `qk_rope_head_dim` positional key part beside it — one 576-wide row per
+ * token on DeepSeek-V3 and Kimi-K2, in place of 64 heads of K and V. Mirrors
+ * `interp_engine.facts.kv_latent_width`.
+ */
+function kvLatentWidth(cfg: Json): number {
+  const rank = firstInt(cfg, ["kv_lora_rank"]);
+  if (!rank) return 0;
+  return rank + firstInt(cfg, ["qk_rope_head_dim"]);
+}
 
 /** Mirrors the memory-relevant half of `interp_engine.facts.resolve_facts`. */
 function trunkDims(config: Json): TrunkDims {
@@ -930,6 +994,7 @@ function trunkDims(config: Json): TrunkDims {
     nKvHeads: effectiveKvHeads(cfg, nHeads),
     headDim,
     vHeadDim: firstInt(cfg, ["v_head_dim"]) || headDim,
+    kvLatentWidth: kvLatentWidth(cfg),
     vocabSize:
       firstInt(cfg, ["vocab_size"]) || firstInt(config, ["vocab_size"]),
     // `moe_intermediate_size` after the dense name rather than instead of it: a sparse family that
@@ -1211,6 +1276,7 @@ export async function resolveModel(
         elementsByDtype,
         quantMethod,
         fromHeaders ? expertDtype : "",
+        !fromHeaders,
       )
     : 0;
 
@@ -1284,11 +1350,14 @@ export function kvPrecision(
 /**
  * KV-cache elements per token per layer, K and V together.
  *
- * `2 * dModel` — the fallback when no head dims are known — is the *pre-GQA* worst case and is
- * wrong by 8x on the models where sizing is tight, which is why it is a fallback and why
+ * The latent row wins when the trunk is MLA: its head dims describe tensors that never reach the
+ * cache, and pricing them predicted 0.4x the tokens Kimi-K2.6 built at TP=8. `2 * dModel` — the
+ * fallback when no head dims are known — is the *pre-GQA* worst case and is wrong by 8x on the
+ * models where sizing is tight, which is why it is a fallback and why
  * {@link ModelMemoryFacts.trunkDimsKnown} exists to be checked first.
  */
 export function kvCacheWidth(facts: ModelMemoryFacts): number {
+  if (facts.kvLatentWidth > 0) return facts.kvLatentWidth;
   if (facts.nKvHeads && facts.headDim) {
     return facts.nKvHeads * (facts.headDim + (facts.vHeadDim || facts.headDim));
   }

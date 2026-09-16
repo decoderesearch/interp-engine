@@ -305,6 +305,16 @@ const FAMILIES: Architecture[] = [
     exampleModels: ["deepseek-ai/DeepSeek-V3", "deepseek-ai/DeepSeek-R1"],
   },
   {
+    id: "KimiK25ForConditionalGeneration",
+    label: "Kimi K2.5",
+    released: "2026-01",
+    significance:
+      "Kimi K2.5 put a vision encoder in front of Kimi K2's trillion-parameter trunk and kept training it on some fifteen trillion mixed visual and text tokens, with the experts held at INT4 through quantization-aware post-training rather than quantized afterwards. The weights ship in that native INT4, which halves what a node has to hold and made a frontier open model something eight GPUs can serve.",
+    traits: ["mla", "gated_mlp", "moe", "shared_experts"],
+    exampleModels: ["moonshotai/Kimi-K2.6", "moonshotai/Kimi-K2.5"],
+    note: "DeepSeek V3's block, unchanged, under a multimodal wrapper: the decoder is model.language_model, so points resolve one level deeper than on DeepSeek itself. Only the routed experts are INT4; attention, the shared expert and the one dense layer stay bf16. Every K2.5/K2.6/K2.7 checkpoint declares this class.",
+  },
+  {
     id: "DeepseekV4ForCausalLM",
     label: "DeepSeek V4",
     released: "2026-04",
