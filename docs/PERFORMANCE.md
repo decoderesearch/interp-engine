@@ -69,6 +69,40 @@ version we have evidence for**, not the version to run:
   or a worker-attribute rename that `_walk_trunk` no longer finds. Both surface as a loud refusal
   rather than a wrong number, which is why an unbounded floor is safe here.
 
+### FlashInfer needs a compiler on PATH, or the prebuilt kernels
+
+On Blackwell GPUs (compute capability 10.0 and up) vLLM selects FlashInfer as the attention backend,
+and FlashInfer compiles its kernels on first use. vLLM enables it only when `nvcc` is on PATH or the
+`flashinfer-cubin` package is installed; with neither, the engine fails after the weights load with
+`RuntimeError: FlashInfer backend is not available`, from a stub that names no cause.
+
+The usual cause is not a missing compiler but a missing PATH entry. The compiler sits at
+`/usr/local/cuda/bin/nvcc`, the image puts that directory on PATH, and the operator's interactive
+shell has it, but the process that launches the server does not: a non-interactive `ssh host cmd`
+never runs `.bashrc` (where RunPod images source `/etc/rp_environment`), a tmux server keeps the
+PATH it was started with, and a service manager gives its children its own. Everything under that
+launcher, vLLM's engine core included, inherits the stripped PATH.
+
+`load_model` runs `check_flashinfer` before the engine is built, so this is refused in milliseconds
+rather than after a 27B load. The message prints the PATH the process has and both fixes:
+
+```bash
+export PATH=/usr/local/cuda/bin:$PATH   # in whatever launches the server, not only in your shell
+```
+
+or, for a box with no compiler at all, the prebuilt kernels (both at the exact `flashinfer-python`
+version vLLM pins, from FlashInfer's index rather than PyPI; the `cu` suffix follows the CUDA build
+of the torch wheel, `cu130` for torch 2.13):
+
+```bash
+pip install flashinfer-cubin==0.6.16.post3 flashinfer-jit-cache==0.6.16.post3 \
+  --extra-index-url https://flashinfer.ai/whl --extra-index-url https://flashinfer.ai/whl/cu130
+```
+
+A prebuilt package at another version is refused on every GPU, because FlashInfer itself raises on
+that pair at import. On pre-Blackwell GPUs FlashInfer is opt-in, so a missing kernel source is a
+warning. `VLLM_HAS_FLASHINFER_CUBIN=1` skips the check, as it does in vLLM.
+
 What is genuinely **free** — do not attribute slowness to these:
 
 - **Attention pattern / DFA recompute** runs only on the attention endpoint, never on generation.

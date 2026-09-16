@@ -284,6 +284,7 @@ mistake you made.
 | `... cannot run from inside a running event loop` | a sync free function or `sync_model` call from async code | `await` the method it wraps; the message names it |
 | `ForeignEventLoop` | a vLLM model awaited from a loop other than the one that built its engine — usually a startup run under `asyncio.run` | build the engine on the loop that serves requests, or use `sync_model`; `shutdown()` is exempt |
 | `... needs vLLM, but vLLM is not installed` | missing extra, or a non-Linux/CUDA box | `pip install 'interp-engine[vllm]'`, or `backend="eager"`; gate on `vllm_installed()` to branch instead of catching |
+| `This GPU ... needs FlashInfer` / `... do not match flashinfer-python` | Blackwell box whose process has no `nvcc` on PATH and no prebuilt kernels (the message prints the PATH it saw), or a kernel package from another FlashInfer release | the message carries the fix: `export PATH=/usr/local/cuda/bin:$PATH` in whatever launches the server, or the `pip install flashinfer-cubin==X flashinfer-jit-cache==X` line with the two FlashInfer indexes; see [PERFORMANCE.md](PERFORMANCE.md#flashinfer-needs-a-compiler-on-path-or-the-prebuilt-kernels) |
 | a `TypeError` about an unexpected keyword | `load_model` forwards unknown kwargs verbatim to the backend constructor | check which backend you got; `requires_grad` is eager-only |
 
 ## When you are not sure, ask the model
