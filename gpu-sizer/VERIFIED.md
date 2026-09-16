@@ -36,12 +36,16 @@ fires on every row is a marker everyone learns to skip.
 | `Qwen/Qwen3-8B` | NVIDIA GeForce RTX 5090 | `vllm` | bfloat16 +fp8 | 8192 | 0.9 | - | 134,816 | 134,866 | 1.00 | 1.04 | 0.56x | 4 |
 | `Qwen/Qwen3-8B` | NVIDIA GeForce RTX 5090 | `vllm` | bfloat16 +fp8 kv:fp8 | 8192 | 0.9 | - | 269,648 | 269,733 | 1.00 | 1.81 | 0.98x | 4 |
 | `Qwen/Qwen3-8B` | NVIDIA GeForce RTX 5090 | `vllm-static` | bfloat16 | 8192 | 0.9 | - | 68,528 | 51,713 | 1.33 | 1.96 | 1.05x | 4 |
+| `Qwen/Qwen3.8-27B` | NVIDIA A40 x2 | `vllm` | bfloat16 | 8192 | 0.9 | - | 252,024 | 404,118 | 0.62 ! | 0.00 | 0.00x | 4 |
+| `Qwen/Qwen3.8-27B` | NVIDIA A40 x2 | `vllm-static` | bfloat16 | 8192 | 0.9 | - | 146,974 | 165,787 | 0.89 ! | 1.97 | 0.83x | 4 |
 | `RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8` | NVIDIA B200 | `vllm` | auto | 8192 | 0.9 | - | 1,239,520 | 1,242,299 | 1.00 | 1.83 | 0.24x | 4 |
 | `google/gemma-3-12b-pt` | NVIDIA A40 | `vllm` | bfloat16 | 8192 | 0.9 | - | 60,714 | 41,552 | 1.46 | 0.37 | 0.16x | 8 |
 | `google/gemma-3-12b-pt` | NVIDIA B200 | `vllm` | bfloat16 | 8192 | 0.9 | - | 537,580 | 341,096 | 1.58 | 0.59 | 0.08x | 4 |
 | `google/gemma-3-12b-pt` | NVIDIA B200 | `vllm-static` | bfloat16 | 8192 | 0.9 | - | 353,467 | 326,666 | 1.08 | 0.00 | 0.00x | 4 |
 | `google/gemma-3-1b-pt` | NVIDIA A40 | `vllm` | bfloat16 | 4096 | 0.9 | - | 1,399,779 | 1,377,704 | 1.02 | 0.98 | 0.41x | 8 |
 | `google/gemma-3-1b-pt` | NVIDIA B200 | `vllm` | bfloat16 | 4096 | 0.9 | - | 5,892,717 | 5,801,739 | 1.02 | 1.96 | 0.25x | 4 |
+| `moonshotai/Kimi-K2.6` | NVIDIA H200 NVL x8 | `vllm` | auto | 8192 | 0.9 | - | 813,296 | 321,029 | 2.53 | 3.71 | 0.60x | 4 |
+| `moonshotai/Kimi-K2.6` | NVIDIA H200 NVL x8 | `vllm-static` | auto | 8192 | 0.9 | - | 653,152 | 265,605 | 2.46 | 3.03 | 0.49x | 4 |
 | `nvidia/Llama-3.3-70B-Instruct-FP4` | NVIDIA B200 | `vllm` | auto | 8192 | 0.9 | - | 785,104 | 788,591 | 1.00 | 2.72 | 0.35x | 4 |
 | `openai-community/gpt2` | NVIDIA A40 | `vllm` | bfloat16 | 1024 | 0.9 | - | 1,151,632 | 1,141,323 | 1.01 | 0.34 | 0.14x | 8 |
 | `openai-community/gpt2` | NVIDIA B200 | `vllm` | bfloat16 | 1024 | 0.9 | - | 4,658,272 | 4,655,972 | 1.00 | 1.35 | 0.17x | 4 |
@@ -63,6 +67,8 @@ instead of rediscovering the crash and filing it as a capacity limit.
 | model | GPU | setting | what it works around |
 | --- | --- | --- | --- |
 | `RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8` | NVIDIA B200 | `VLLM_FLASHINFER_AUTOTUNE_SKIP_OPS=fp8_gemm` | FlashInfer's fp8_gemm autotune segfaults on sm_100 (vLLM 0.27.1, FlashInfer 0.6.16.post3), after the weights and KV cache are built -- a kernel gap, not a capacity one |
+| `moonshotai/Kimi-K2.6` | NVIDIA H200 NVL x8 | `NCCL_NVLS_ENABLE=0` | NVLink SHARP multicast fails inside torch.distributed init on this host |
+| `moonshotai/Kimi-K2.6` | NVIDIA H200 NVL x8 | `NCCL_NVLS_ENABLE=0` | NVLink SHARP multicast fails inside torch.distributed init on this host |
 
 ## eager
 
@@ -75,6 +81,7 @@ the estimate was conservative.
 | `Qwen/Qwen3-4B` | NVIDIA A40 | bfloat16 | 32752 | sdpa | 37.8 | 21.4 | 0.57 |
 | `Qwen/Qwen3-4B` | NVIDIA B200 | bfloat16 | 2032 | sdpa | 10.4 | 9.1 | 0.88 |
 | `Qwen/Qwen3-4B` | NVIDIA GeForce RTX 5090 | bfloat16 | 2032 | sdpa | 10.4 | 9.0 | 0.86 |
+| `Qwen/Qwen3.8-27B` | NVIDIA A40 x2 | bfloat16 | 2032 | sdpa | 30.0 | 29.4 | 0.98 |
 | `google/gemma-3-12b-pt` | NVIDIA A40 | bfloat16 | 8176 | sdpa | 36.3 | 29.0 | 0.80 |
 
 ## Configurations that do NOT work
@@ -109,6 +116,6 @@ Run `python gpu-sizer/verify.py --run-pending` on suitable hardware.
 
 ## What these runs cover
 
-- Cards exercised: NVIDIA A40, NVIDIA B200, NVIDIA GeForce RTX 5090
-- Records: 29 passing, 5 failing
+- Cards exercised: NVIDIA A40, NVIDIA B200, NVIDIA GeForce RTX 5090, NVIDIA H200 NVL
+- Records: 34 passing, 5 failing
 - Every quantization scheme this catalog tracks has a card behind it here. fp8, nvfp4 cannot be verified on some of the cards above, so read those schemes off the rows whose GPU supports them rather than off the table as a whole.

@@ -171,7 +171,8 @@ def test_load_retries_with_the_text_config_when_narrowing_was_skipped(monkeypatc
         seen.append(kwargs.get("config"))
         if "config" not in kwargs:
             raise AttributeError("'FakeConfig' object has no attribute 'vocab_size'")
-        return sentinel
+        # transformers returns (model, report) under output_loading_info, which the loader asks for.
+        return (sentinel, {"missing_keys": []}) if kwargs.get("output_loading_info") else sentinel
 
     monkeypatch.setattr(model_mod.AutoModelForCausalLM, "from_pretrained", fake_from_pretrained)
     monkeypatch.setattr(model_mod, "_composite_text_config", lambda *a, **k: text_config)

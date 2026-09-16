@@ -550,8 +550,8 @@ export function concurrentSequences(est: MemoryEstimate): number {
  * **Not the rank count**, which is the assumption to get rid of. vLLM shards the cache by *KV head*,
  * so how far it divides is a property of the attention shape rather than of the machine:
  * Llama-3.3-70B's 8 KV heads go 2-per-rank at TP=4 and the cache really is a quarter on each card,
- * while a DeepSeek MLA trunk caches a single 512-wide latent head, which cannot be cut at all — vLLM
- * replicates it, and four cards hold four copies of the same cache.
+ * while a DeepSeek MLA trunk caches a single 576-wide latent row (`kvLatentWidth`), which cannot be
+ * cut at all — vLLM replicates it, and four cards hold four copies of the same cache.
  *
  * `min` covers both ends, including the case past the second one: vLLM pads a head count up to the
  * rank count by duplicating heads, so 8 heads across 16 ranks still costs what 8 ranks cost rather
@@ -563,7 +563,8 @@ export function concurrentSequences(est: MemoryEstimate): number {
  */
 export function kvShards(facts: ModelMemoryFacts, numGpus: number): number {
   const tp = Math.max(Math.trunc(numGpus), 1);
-  if (facts.nKvHeads <= 0 || facts.headDim <= 0) return 1;
+  if (facts.kvLatentWidth > 0 || facts.nKvHeads <= 0 || facts.headDim <= 0)
+    return 1;
   return Math.min(tp, facts.nKvHeads);
 }
 
@@ -959,13 +960,13 @@ export function estimate(
   const warnings: string[] = [];
   const advice: string[] = [];
 
-  // Every row in `gpu-sizer/VERIFIED.md` was measured on one card. The single-GPU arithmetic is
-  // calibrated against hardware; how it divides across ranks is not, and the two terms it is most
-  // likely to be wrong about -- the weights, which TP shards unevenly, and the cache, which it
-  // shards for some attention shapes and replicates for others -- are the two largest.
+  // Tensor parallelism has two hardware measurements behind it (`gpu-sizer/VERIFIED.md`): Qwen3.8-27B
+  // at TP=2 on 2x A40 and Kimi-K2.6 at TP=8 on 8x H200, where the per-rank weight split and the margin
+  // outside the pool came out as priced. Every other count is still arithmetic. The Kimi run is also
+  // what showed the cache term had to price an MLA trunk's latent row rather than its heads.
   if (tp > 1) {
     warnings.push(
-      `${tp}-GPU figures are unverified: every configuration measured so far ran on a single card, so tensor parallelism here is arithmetic no hardware has checked`,
+      `${tp}-GPU figures rest on two measurements: tensor parallelism has been checked on hardware at num_gpus=2 (Qwen3.8-27B on 2x A40) and num_gpus=8 (Kimi-K2.6 on 8x H200), where the weight split and the margin outside the pool held; other counts are still arithmetic`,
     );
   }
 

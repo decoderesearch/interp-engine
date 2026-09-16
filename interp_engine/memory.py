@@ -902,8 +902,9 @@ class WeightBytes:
     on_disk_bytes: int
     #: The dtype the checkpoint is stored in, e.g. ``bfloat16``. Empty when unknown.
     stored_dtype: str = ""
-    #: ``quantization_config.quant_method`` when there is one: ``mxfp4``, ``fp8``,
-    #: ``compressed-tensors``, ``awq``, ``gptq``. Empty on an unquantized checkpoint.
+    #: ``quantization_config.quant_method`` when there is one: ``mxfp4``, ``fp8``, ``awq``, ``gptq``.
+    #: A ``compressed-tensors`` container carries the width its ``config_groups`` declare, as
+    #: ``compressed-tensors int4`` or ``compressed-tensors fp8``. Empty on an unquantized checkpoint.
     quant_method: str = ""
     #: ``config.expert_dtype`` when an MoE checkpoint stores its routed experts narrower than the rest
     #: of itself, e.g. ``fp4`` beside a ``fp8`` scheme. Empty everywhere else.
@@ -1050,6 +1051,9 @@ def _quant_method(config: Any) -> tuple[str, str]:
         elif q is not None:
             method = str(getattr(q, "quant_method", "") or getattr(q, "quantization", "") or "")
         if method:
+            scheme = _compressed_tensors_scheme(q) if method.lower() == "compressed-tensors" else ""
+            if scheme:
+                method = f"{method} {scheme}"
             break
     stored = ""
     for holder in (config, text_config(config)):
@@ -1060,6 +1064,41 @@ def _quant_method(config: Any) -> tuple[str, str]:
             stored = str(dt).replace("torch.", "")
             break
     return method.lower(), stored
+
+
+def _compressed_tensors_scheme(quantization_config: Any) -> str:
+    """The weight format a ``compressed-tensors`` config really declares: ``int4``, ``int8``, ``fp8``.
+
+    ``compressed-tensors`` is a container, and the width it packs at sits one level down in
+    ``config_groups.*.weights`` as ``num_bits`` and ``type``. Read as a bare ``compressed-tensors``,
+    Kimi-K2.6's W4A16 experts are priced at one byte a parameter -- half the true dequantized size,
+    and the wrong answer to whether an eager load fits. The narrowest group wins, since on a mixed
+    checkpoint that is what the bulk of the weights are packed at. Empty when no group says.
+    """
+    groups = _get(quantization_config, "config_groups")
+    if isinstance(groups, dict):
+        groups = list(groups.values())
+    if not isinstance(groups, (list, tuple)):
+        return ""
+    best: tuple[int, str] | None = None
+    for group in groups:
+        weights = _get(group, "weights")
+        if weights is None:
+            continue
+        bits = _get(weights, "num_bits")
+        if not isinstance(bits, int) or bits not in (4, 8):
+            continue
+        kind = "fp" if str(_get(weights, "type") or "int").lower() == "float" else "int"
+        if best is None or bits < best[0]:
+            best = (bits, f"{kind}{bits}")
+    return best[1] if best else ""
+
+
+def _get(holder: Any, key: str) -> Any:
+    """One field of a config that may be a dict or an object."""
+    if isinstance(holder, dict):
+        return holder.get(key)
+    return getattr(holder, key, None)
 
 
 def _expert_dtype(config: Any) -> str:
@@ -1403,6 +1442,10 @@ class ModelMemoryFacts:
     v_head_dim: int
     vocab_size: int
     intermediate_size: int
+    #: What an MLA trunk caches per token per layer instead of K and V: the latent plus the RoPE'd
+    #: key part, 576 on DeepSeek-V3 and Kimi-K2. 0 where the cache holds K and V. One row, not one
+    #: per head, so it is also what says the cache cannot be sharded (:func:`kv_shards`).
+    kv_latent_width: int = 0
     #: Routed experts per sparse layer; 0 on a dense trunk. Here for the static tap widths --
     #: ``router_logits`` is as wide as the expert bank -- and because it is what says a layer's MLP is
     #: a fused kernel rather than three Linears, which decides whether ``mlp_act`` exists at all.
@@ -1431,7 +1474,11 @@ class ModelMemoryFacts:
     def kv_width(self) -> int:
         """KV-cache elements per token per layer, K and V together."""
         return kv_cache_width(
-            n_kv_heads=self.n_kv_heads, head_dim=self.head_dim, v_head_dim=self.v_head_dim, d_model=self.d_model
+            n_kv_heads=self.n_kv_heads,
+            head_dim=self.head_dim,
+            v_head_dim=self.v_head_dim,
+            d_model=self.d_model,
+            latent_width=self.kv_latent_width,
         )
 
     @property
@@ -1494,17 +1541,25 @@ class ModelMemoryFacts:
         return self.n_layers > 0 and self.d_model > 0
 
 
-def kv_cache_width(*, n_kv_heads: int = 0, head_dim: int = 0, v_head_dim: int = 0, d_model: int = 0) -> int:
+def kv_cache_width(
+    *, n_kv_heads: int = 0, head_dim: int = 0, v_head_dim: int = 0, d_model: int = 0, latent_width: int = 0
+) -> int:
     """KV-cache elements per token per layer, K and V together, for the whole model.
+
+    ``latent_width`` wins when set: an MLA trunk caches one latent row per token in place of K and V
+    (:func:`facts.kv_latent_width`), and its head dims describe tensors that never reach the cache.
+    Kimi-K2.6 at TP=8 on 8x H200 built 2.5x the tokens the head-dim figure predicted.
 
     ``2 * d_model`` -- the fallback when a caller has no head dims -- is the *pre-GQA* worst case and
     is wrong by 8x on the models where sizing is tight: Llama-3.3-70B caches 8 kv heads of 128 rather
-    than 8192, and a DeepSeek MLA trunk one 512-wide latent head rather than 4096. That factor is the
-    difference between fitting a default capture size and refusing to start, so pass the head dims.
+    than 8192. That factor is the difference between fitting a default capture size and refusing to
+    start, so pass the head dims.
 
     Mirrors ``vllm_capture/static.kv_cache_width`` and is checked against it in the tests; this copy
     exists so that sizing a model needs neither torch nor vLLM.
     """
+    if int(latent_width) > 0:
+        return int(latent_width)
     heads = max(int(n_kv_heads), 0)
     if heads <= 0 or int(head_dim) <= 0:
         return 2 * max(int(d_model), 1)
@@ -1517,8 +1572,8 @@ def kv_shards(facts: ModelMemoryFacts, num_gpus: int) -> int:
     **Not the rank count**, which is the assumption to get rid of. vLLM shards the cache by *KV
     head*, so how far it divides is a property of the attention shape rather than of the machine:
     Llama-3.3-70B's 8 KV heads go 2-per-rank at TP=4 and the cache really is a quarter on each card,
-    while a DeepSeek MLA trunk caches a single 512-wide latent head, which cannot be cut at all --
-    vLLM replicates it, and four cards hold four copies of the same cache.
+    while a DeepSeek MLA trunk caches a single 576-wide latent row (``kv_latent_width``), which
+    cannot be cut at all -- vLLM replicates it, and four cards hold four copies of the same cache.
 
     ``min`` covers both ends, including the case past the second one: vLLM pads a head count up to
     the rank count by duplicating heads, so 8 heads across 16 ranks still costs what 8 ranks cost
@@ -1530,7 +1585,7 @@ def kv_shards(facts: ModelMemoryFacts, num_gpus: int) -> int:
     lack.
     """
     tp = max(int(num_gpus), 1)
-    if facts.n_kv_heads <= 0 or facts.head_dim <= 0:
+    if facts.kv_latent_width > 0 or facts.n_kv_heads <= 0 or facts.head_dim <= 0:
         return 1
     return min(tp, facts.n_kv_heads)
 
@@ -2206,14 +2261,15 @@ def estimate(
     warnings: list[str] = []
     advice: list[str] = []
 
-    # Every row in `gpu-sizer/VERIFIED.md` was measured on one card. The single-GPU arithmetic is
-    # calibrated against hardware; how it divides across ranks is not, and the two terms it is most
-    # likely to be wrong about -- the weights, which TP shards unevenly, and the cache, which it shards
-    # for some attention shapes and replicates for others -- are the two largest.
+    # Tensor parallelism has two hardware measurements behind it (`gpu-sizer/VERIFIED.md`): Qwen3.8-27B
+    # at TP=2 on 2x A40 and Kimi-K2.6 at TP=8 on 8x H200, where the per-rank weight split and the margin
+    # outside the pool came out as priced. Every other count is still arithmetic. The Kimi run is also
+    # what showed the cache term had to price an MLA trunk's latent row rather than its heads.
     if tp > 1:
         warnings.append(
-            f"{tp}-GPU figures are unverified: every configuration measured so far ran on a single card, "
-            f"so tensor parallelism here is arithmetic no hardware has checked"
+            f"{tp}-GPU figures rest on two measurements: tensor parallelism has been checked on hardware "
+            f"at num_gpus=2 (Qwen3.8-27B on 2x A40) and num_gpus=8 (Kimi-K2.6 on 8x H200), where the "
+            f"weight split and the margin outside the pool held; other counts are still arithmetic"
         )
 
     # Only the eager backend expands a quantized checkpoint to the requested dtype; vLLM reads the same
@@ -2693,6 +2749,7 @@ def model_memory_facts(
         v_head_dim=f.v_head_dim,
         vocab_size=f.vocab_size,
         intermediate_size=intermediate,
+        kv_latent_width=f.kv_latent_width,
         n_experts=f.n_experts,
         layer_types=f.layer_types,
         sliding_window=f.sliding_window,

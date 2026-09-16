@@ -48,6 +48,7 @@ def capture(
     saes: tuple[SaeSpec, ...] = (),  # noqa: ARG001 - SAE spot-check stays on eager engines
     device: str = "cuda",  # noqa: ARG001 - SGLang auto-detects device
     dtype: str = "bfloat16",
+    num_gpus: int = 1,
 ) -> tuple[dict[str, np.ndarray], list[dict]]:
     import sglang as sgl
 
@@ -95,6 +96,7 @@ def capture(
     engine = sgl.Engine(
         model_path=hf_id,
         dtype=sg_dtype,  # SGLang serves half precision only
+        tp_size=num_gpus,
         disable_cuda_graph=True,  # so forward hooks fire (CUDA graphs would bypass them)
         context_length=max(len(input_ids) + 8, 32),
         mem_fraction_static=float(os.environ.get("IE_SGLANG_MEM_FRACTION", "0.93")),

@@ -11,6 +11,9 @@
 #   bash benchmarks/run_all.sh --models gemma-2-2b,qwen3-4b --variants eager,vllm
 #   bash benchmarks/run_all.sh --workloads generate,capture_mid --no-report
 #   bash benchmarks/run_all.sh --gpu-memory-utilization 0.7   # smaller card, or more worker scratch
+#   bash benchmarks/run_all.sh --num-gpus 1 --models qwen3.8-27b   # pin a multi-card box to one card
+#
+# Every cell is sharded across every visible CUDA card unless --num-gpus says otherwise.
 #   BENCH_PYTHON=/path/to/venv/bin/python bash benchmarks/run_all.sh
 #
 # With no --models, the sweep runs every model in the spec that this card can hold and names the ones
@@ -43,6 +46,7 @@ MODELS=""
 VARIANTS=""
 WORKLOADS=""
 GPU_MEM_UTIL=""
+NUM_GPUS=""
 RUN_REPORT=1
 SKIP_EXISTING=0
 
@@ -52,6 +56,7 @@ while [[ $# -gt 0 ]]; do
     --variants) VARIANTS="$2"; shift 2 ;;
     --workloads) WORKLOADS="$2"; shift 2 ;;
     --gpu-memory-utilization) GPU_MEM_UTIL="$2"; shift 2 ;;
+    --num-gpus) NUM_GPUS="$2"; shift 2 ;;
     --python) PYTHON="$2"; shift 2 ;;
     --no-report) RUN_REPORT=0; shift ;;
     # Resume a sweep that was interrupted. Off by default: a normal rerun should replace stale
@@ -70,13 +75,30 @@ if ! "$PYTHON" -c 'import interp_engine' 2>/dev/null; then
   exit 2
 fi
 
-# Total VRAM on the card this sweep will use, in GiB, or empty if there is no nvidia-smi to ask.
-# GiB rather than the vendor's GB, to match `min_gpu_gib` in the spec and the `gpu_total_gib` every
-# cell records -- a "180 GB" B200 reads as 179 GiB here, and comparing the two units is how a row
-# gets dropped on the one card that fits it.
+# No --num-gpus means every card the process can see: CUDA_VISIBLE_DEVICES when set, else what
+# nvidia-smi lists, else 1.
+if [[ -z "$NUM_GPUS" ]]; then
+  if [[ -n "${CUDA_VISIBLE_DEVICES+x}" ]]; then
+    NUM_GPUS=$(echo "$CUDA_VISIBLE_DEVICES" | tr ',' '\n' | grep -c .)
+  else
+    NUM_GPUS=$(nvidia-smi -L 2>/dev/null | grep -c '^GPU')
+  fi
+  (( NUM_GPUS > 0 )) || NUM_GPUS=1
+fi
+if ! [[ "$NUM_GPUS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "error: --num-gpus must be a positive integer (got '$NUM_GPUS')" >&2
+  exit 2
+fi
+
+# Total VRAM this sweep will use, in GiB, or empty if there is no nvidia-smi to ask: the first
+# --num-gpus cards summed, since that is what a sharded load has to fit into. GiB rather than the
+# vendor's GB, to match `min_gpu_gib` in the spec and the `gpu_total_gib` every cell records -- a
+# "180 GB" B200 reads as 179 GiB here, and comparing the two units is how a row gets dropped on the
+# one card that fits it.
 gpu_total_gib() {
   local mib
-  mib="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')"
+  mib="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null \
+    | head -n "$NUM_GPUS" | tr -d ' ' | awk '{ s += $1 } END { if (NR) print s }')"
   [[ -z "$mib" ]] && return 0
   awk -v mib="$mib" 'BEGIN { printf "%.1f", mib / 1024 }'
 }
@@ -171,6 +193,7 @@ for pair in "${PAIRS[@]}"; do
   args=(--model "$model" --variant "$variant")
   [[ -n "$WORKLOADS" ]] && args+=(--workloads "$WORKLOADS")
   [[ -n "$GPU_MEM_UTIL" ]] && args+=(--gpu-memory-utilization "$GPU_MEM_UTIL")
+  (( NUM_GPUS > 1 )) && args+=(--num-gpus "$NUM_GPUS")
 
   # TOKENIZERS_PARALLELISM: the tokenizer is forked by vLLM's workers and warns on every cell
   # otherwise. VLLM_LOGGING_LEVEL: vLLM's per-step INFO logging would bury the workload lines.
@@ -200,6 +223,7 @@ if (( RUN_REPORT )); then
   [[ -n "$VARIANTS" ]] && sweep_cmd="$sweep_cmd --variants $VARIANTS"
   [[ -n "$WORKLOADS" ]] && sweep_cmd="$sweep_cmd --workloads $WORKLOADS"
   [[ -n "$GPU_MEM_UTIL" ]] && sweep_cmd="$sweep_cmd --gpu-memory-utilization $GPU_MEM_UTIL"
+  (( NUM_GPUS > 1 )) && sweep_cmd="$sweep_cmd --num-gpus $NUM_GPUS"
   "$PYTHON" -m benchmarks.report_bench --sweep-command "$sweep_cmd"
 fi
 

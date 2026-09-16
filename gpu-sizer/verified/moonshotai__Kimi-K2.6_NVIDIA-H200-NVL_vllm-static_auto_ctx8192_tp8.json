@@ -1,0 +1,146 @@
+{
+  "model_id": "moonshotai/Kimi-K2.6",
+  "backend": "vllm-static",
+  "outcome": "pass",
+  "spec": {
+    "backend": "vllm-static",
+    "dtype": "auto",
+    "quantization": "",
+    "kv_cache_dtype": "auto",
+    "max_model_len": 8192,
+    "max_num_batched_tokens": 8192,
+    "max_num_seqs": 256,
+    "gpu_memory_utilization": 0.9,
+    "num_gpus": 8,
+    "static_sites": 0,
+    "static_points": [],
+    "enforce_eager": null,
+    "batch_size": 1,
+    "seq_len": 0,
+    "requires_grad": false,
+    "attn_implementation": "",
+    "n_capture_points": 0
+  },
+  "gpu": {
+    "name": "NVIDIA H200 NVL",
+    "total_bytes": 150217949184,
+    "total_gib": 139.9,
+    "compute_capability": [
+      9,
+      0
+    ],
+    "ecc_enabled": true,
+    "provenance": "measured on this host (ECC enabled)"
+  },
+  "estimate": {
+    "fits": true,
+    "total_bytes": 93611818711,
+    "pool_bytes": 86958855650,
+    "outside_bytes": 6652963061,
+    "headroom_bytes": 8368831858,
+    "kv_capacity_tokens": 265605,
+    "terms": [
+      {
+        "name": "vllm_overshoot",
+        "bytes": 644245094,
+        "side": "outside"
+      },
+      {
+        "name": "fragmentation",
+        "bytes": 6008717967,
+        "side": "outside"
+      },
+      {
+        "name": "cuda_context",
+        "bytes": 644245094,
+        "side": "pool"
+      },
+      {
+        "name": "weights",
+        "bytes": 74393524092,
+        "side": "pool"
+      },
+      {
+        "name": "static_buffers",
+        "bytes": 7164745728,
+        "side": "pool"
+      },
+      {
+        "name": "graph_pool",
+        "bytes": 3221225472,
+        "side": "pool"
+      },
+      {
+        "name": "kv_cache_floor",
+        "bytes": 1535115264,
+        "side": "pool"
+      }
+    ],
+    "warnings": [
+      "8-GPU figures rest on one measurement: tensor parallelism has been checked on hardware only at num_gpus=2 (Qwen3.8-27B on 2x A40), where the weight split and the margin outside the pool held; other counts, and a cache that is replicated rather than sharded, are still arithmetic"
+    ],
+    "weights_source": "safetensors-metadata"
+  },
+  "measured": {
+    "baseline_bytes": 0,
+    "post_load_bytes": 137630842880,
+    "post_reserve_bytes": 0,
+    "post_warmup_bytes": 138274668544,
+    "peak_bytes": 138452926464,
+    "per_device_peak_bytes": [
+      138452926464,
+      138274668544,
+      138274668544,
+      138274668544,
+      138274668544,
+      138274668544,
+      138274668544,
+      138274668544
+    ],
+    "pool_claimed_bytes": 135196154265,
+    "outside_measured_bytes": 3256772199,
+    "torch_peak_bytes": 0,
+    "kv_cache_tokens": 653152,
+    "samples": 483
+  },
+  "stress": {
+    "max_concurrency_passed": 4,
+    "first_failing_concurrency": 0,
+    "prompt_tokens": 8176,
+    "requests_ok": 4,
+    "requests_failed": 0,
+    "latencies_ms": [
+      8762.441135942936,
+      12223.305107094347,
+      18091.233304701746,
+      20616.371845826507
+    ],
+    "failure_kind": "",
+    "failure_detail": ""
+  },
+  "reservations": {
+    "per_rank_bytes": 0,
+    "host_bytes": 0,
+    "before_engine": false,
+    "note": "--reserve-gib / --host-reserve-gib, held for real by the harness process; a per-rank share above rank 0 carries this process's extra CUDA context with it"
+  },
+  "engine_env": {
+    "NCCL_NVLS_ENABLE": "0"
+  },
+  "engine_env_note": "NVLink SHARP multicast fails inside torch.distributed init on this host",
+  "cannot_verify": [
+    "nvfp4"
+  ],
+  "expected": "pass",
+  "why": "first 8-way row: a 1T MoE with native INT4 experts and an MLA cache, sharded over TP=8",
+  "error": "",
+  "versions": {
+    "torch": "2.13.0+cu130",
+    "transformers": "5.17.0",
+    "vllm": "0.29.0",
+    "interp_engine": "1.8.0",
+    "driver": "580.95.05"
+  },
+  "duration_s": 578.3,
+  "recorded_at": "2026-09-15T07:18:34Z"
+}

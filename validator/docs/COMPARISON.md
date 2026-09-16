@@ -265,10 +265,31 @@ bash comparison/run_all_models.sh                # full sweep, no aggregate
 AGGREGATE=1 bash comparison/run_all_models.sh    # full sweep, then refresh the table below
 MODE=retry bash comparison/run_all_models.sh     # redo only dumps missing or status != ok, then aggregate
 EVICT=0 MODE=retry bash comparison/run_all_models.sh   # ...and keep the weights
+NUM_GPUS=1 JSON=one_model.json bash comparison/run_all_models.sh   # one card on a multi-card box
 ```
 
 `MODE=retry` is the one to reach for most of the time: it rebuilds only the cells that are missing or
 failed, so a sweep interrupted halfway costs only what it did not finish.
+
+Every checkpoint is sharded across every visible CUDA card unless `NUM_GPUS` says otherwise
+(`CUDA_VISIBLE_DEVICES` when set, else what `nvidia-smi` lists). `NUM_GPUS=n` shards across `n`
+cards instead: tensor parallelism on vLLM and SGLang,
+accelerate's layer placement (`device_map="auto"`) on eager, TransformerLens 3's bridge and nnsight,
+and TransformerLens' own `n_devices` split on `tlens_v2`. The count is recorded on every cell
+(`num_gpus` in the JSON, `2x NVIDIA A40` in the heading), because a capture from two cards is a
+different claim from one card's. The vLLM worker gathers the head- and neuron-sharded points across
+ranks at collect, so the fused columns serve the same point set at any count; the first two-card run,
+`Qwen/Qwen3.8-27B` on 2x A40, agreed with the single-B200 cells on every point compared.
+
+When even every card together cannot hold the reference, `eager` spills to host RAM rather than
+skipping the row. transformers dequantizes a `compressed-tensors` checkpoint's experts to the load
+dtype, so `moonshotai/Kimi-K2.6` is 2.1 TB of bf16 on 8x H200 (1.1 TB): `eager_engine.offload_budget`
+fills the cards and hands accelerate the remainder as CPU-offloaded layers, which it copies onto the
+first card one layer at a time during the forward. The first card is kept half empty for exactly that
+copy. The arithmetic is the same bf16 on the same cards, only slower -- the Kimi cell loaded for two
+and a quarter hours (1.2 TB of it into host RAM) and ran its forward in two minutes -- and the host
+has to hold what the cards do not. Its vLLM cells then agreed with that reference on every point
+compared, which is what made the row scorable at all.
 
 Every engine is attempted for every model, whatever the other engines did — the reference included.
 `eager` failing does not gate its row: its failure is often a fact about `.venv-cmp` rather than about

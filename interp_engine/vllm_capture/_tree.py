@@ -8,8 +8,9 @@ which module a point reads from is answerable without loading the hook machinery
 
 from __future__ import annotations
 
+import functools
 from collections import deque
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import cast
 
 import torch
@@ -646,25 +647,104 @@ def _architecture(model: torch.nn.Module) -> str:
 #: QK-norm modules whose weights a fused kernel reads without ever calling them. vLLM's Qwen3-Next
 #: takes ``fused_qk_rmsnorm_rope_gate`` whenever output gating is on, RoPE is neox-style, the
 #: platform is CUDA and the model is text-only -- and that kernel is handed ``q_norm.weight`` rather
-#: than ``q_norm``. The modules are right there and resolve without complaint, so this is the one
-#: refusal that cannot be phrased as a lookup failure: without it the hooks install, never fire, and
-#: the point vanishes from the capture with nothing anywhere saying why.
+#: than ``q_norm``. The modules are right there and resolve without complaint, so a hook on them
+#: installs and never fires, and the point vanishes from the capture with nothing saying why.
+#:
+#: On such a layer the four points are read off the packed qkv projection instead, which both paths
+#: call: its output holds the norms' *input*, and calling the norm module on that slice gives their
+#: *output* (:func:`derive_fused_qk_norm`). Capture-only -- the norm's output is consumed inside the
+#: kernel, so there is no tensor a write to it could land on.
 _FUSED_QK_NORM_FLAGS = ("use_fused_qk_norm_rope_gate",)
 _QK_NORM_POINTS = frozenset({"q_norm_in", "q_norm_out", "k_norm_in", "k_norm_out"})
 
 
-def _fused_qk_norm_reason(layer: torch.nn.Module | None, name: str) -> str | None:
-    """Why this layer's QK-norm points cannot be hooked, or None when they can."""
-    if name not in _QK_NORM_POINTS or layer is None:
-        return None
+def qk_norm_is_fused(layer: torch.nn.Module) -> bool:
+    """Whether a fused kernel runs this layer's QK norms without calling the modules."""
     attn = next((getattr(layer, attr) for attr in _ATTN_ATTRS if hasattr(layer, attr)), None)
-    if attn is None or not any(getattr(attn, flag, False) for flag in _FUSED_QK_NORM_FLAGS):
+    return attn is not None and any(getattr(attn, flag, False) for flag in _FUSED_QK_NORM_FLAGS)
+
+
+def reads_off_qkv_projection(layer: torch.nn.Module, name: str) -> bool:
+    """Whether ``name`` is served from the qkv projection's output on this layer, not its own module."""
+    return name in _QK_NORM_POINTS and qk_norm_is_fused(layer)
+
+
+def _fused_qk_geometry(layer: torch.nn.Module) -> tuple[int, int, int, bool]:
+    """``(n_heads, n_kv_heads, head_dim, gated)`` for slicing q and k out of the packed projection.
+
+    Read off the projection, which states its own rank-local geometry, and checked against the
+    attention module where it states a head count too. With output gating the projection carries
+    twice the query heads: each head's ``2 * head_dim`` chunk is ``[q | gate]``, which is how both
+    vLLM's kernel and HF's ``Qwen3NextAttention`` cut it. A geometry that does not add up is refused
+    here rather than sliced at a guess -- every wrong offset is another head at the right width.
+    """
+    attn = _attn_module(layer)
+    proj = _attn_qkv_proj(layer)
+    if value_span(proj) is None:
+        raise ValueError(
+            f"{type(proj).__name__} states no head geometry, so q and k cannot be located in its output "
+            "and the QK-norm points cannot be read from it on this fused layer."
+        )
+    stated, kv, head_dim = (int(getattr(proj, name)) for name in _QKV_GEOMETRY)
+    gated = bool(getattr(attn, "attn_output_gate", False))
+    n_heads = stated // 2 if gated else stated
+    claimed = getattr(attn, "num_heads", None)
+    if (gated and stated % 2) or (isinstance(claimed, int) and claimed != n_heads):
+        raise ValueError(
+            f"{type(attn).__name__} states num_heads={claimed} and attn_output_gate={gated}, but its "
+            f"projection carries {stated} query heads: the two do not agree, so the QK-norm points are "
+            "refused on this layer rather than read at a guessed offset."
+        )
+    return n_heads, kv, head_dim, gated
+
+
+def derive_fused_qk_norm(layer: torch.nn.Module, name: str, packed: torch.Tensor) -> torch.Tensor:
+    """``name`` computed from the packed qkv projection's output, on a layer whose norms are fused.
+
+    Returns the tensor the norm module's own hook would have seen: per head, ``[tokens, heads,
+    head_dim]``, or flat where the norm's weight spans the whole row (``facts.qk_norm_shape``). For
+    the ``_out`` points the norm module is *called* on that slice, so the arithmetic is its own --
+    Qwen3-Next's is Gemma's ``(1 + weight)`` scale, which a re-implementation here would have to
+    know -- and pre-RoPE, which is where the module runs on the unfused path.
+    """
+    from interp_engine.facts import QKNormShape, qk_norm_shape
+
+    n_heads, kv, head_dim, gated = _fused_qk_geometry(layer)
+    which = name[0]
+    q_width = n_heads * (2 if gated else 1) * head_dim
+    if which == "q":
+        cols = packed[..., :q_width].reshape(-1, n_heads, (2 if gated else 1) * head_dim)[..., :head_dim]
+        heads = n_heads
+    else:
+        cols = packed[..., q_width : q_width + kv * head_dim].reshape(-1, kv, head_dim)
+        heads = kv
+    if qk_norm_shape(_attn_module(layer), head_dim) is QKNormShape.FLAT:
+        cols = cols.reshape(-1, heads * head_dim)
+    cols = cols.contiguous()
+    if name.endswith("_in"):
+        return cols
+    return _qk_norm_module(layer, which)(cols)
+
+
+def fused_qk_norm_derivation(layer: torch.nn.Module, name: str) -> Callable[[torch.Tensor], torch.Tensor] | None:
+    """How to read ``name`` off the qkv projection's output on this layer, or None when its own
+    module is called and an ordinary hook serves it. Resolving the geometry here, at install, is what
+    keeps a shape the projection cannot account for from raising inside a forward on the worker."""
+    if not reads_off_qkv_projection(layer, name):
+        return None
+    _fused_qk_geometry(layer)
+    return functools.partial(derive_fused_qk_norm, layer, name)
+
+
+def fused_qk_norm_write_reason(layer: torch.nn.Module, name: str) -> str | None:
+    """Why ``name`` cannot be written on this layer, or None when a write reaches the model."""
+    if not reads_off_qkv_projection(layer, name):
         return None
     return (
-        f"{type(attn).__name__} folds the QK norms, the rotary embedding and the output gate into one "
-        "fused kernel, which is handed the norms' weights rather than called on them. The modules are "
-        "present and hookable and would simply never fire, so the point is refused instead. The eager "
-        "backend serves it on this family."
+        f"{type(_attn_module(layer)).__name__} computes the QK norms inside a fused kernel, so this "
+        "point is read off the qkv projection and recomputed rather than taken from a module the model "
+        "goes on to use. A write to it would reach nothing. Capture of the point is unaffected; steer "
+        "'attn_in' or the residual points instead."
     )
 
 
@@ -768,18 +848,17 @@ def absent_point_reason(model: torch.nn.Module, name: str, layer: torch.nn.Modul
     feed-forward and nothing else -- see :func:`_has_position_mixer`.
 
     The other shape it catches is a module that exists but is never *called*, because a fused kernel
-    took over its arithmetic and was handed the module itself or its weights -- see
-    :func:`_fused_qk_norm_reason` and :func:`_fused_o_proj_reason`. ``layer`` is what those two need,
-    and is optional because the parallel-block case is a property of the model rather than of any one
-    block.
+    took over its arithmetic and was handed the module itself -- see :func:`_fused_o_proj_reason`.
+    ``layer`` is what that needs, and is optional because the parallel-block case is a property of
+    the model rather than of any one block. (The fused QK norms are the same shape of problem and
+    are *not* refused: their input is the qkv projection's output, which is a module boundary, so
+    :func:`derive_fused_qk_norm` serves them from there.)
 
     And the last is a module that is called, and returns a whole tensor, that is nonetheless a
     *fraction* of what the point names -- Gemma-4's dense MLP beside its experts, see
     :func:`_split_feed_forward_reason`. That one is the only case here the sweep could not have
     caught, because both engines produce the same half.
     """
-    if (fused := _fused_qk_norm_reason(layer, name)) is not None:
-        return fused
     if (fused_o := _fused_o_proj_reason(layer, name)) is not None:
         return fused_o
     if (split := _split_feed_forward_reason(layer, name)) is not None:
@@ -926,7 +1005,12 @@ def _resolve_module(layer: torch.nn.Module, name: str) -> torch.nn.Module:
         return _mlp_down_proj(layer)
     if name == "router_logits":
         return _moe_router(layer)
-    if name in ("q_norm_in", "q_norm_out", "k_norm_in", "k_norm_out"):
+    if name in _QK_NORM_POINTS:
+        # Where a fused kernel runs the norms, the module to hook is the projection whose output
+        # feeds them; the geometry check refuses a layer the slice cannot be placed on.
+        if qk_norm_is_fused(layer):
+            _fused_qk_geometry(layer)
+            return _attn_qkv_proj(layer)
         return _qk_norm_module(layer, name[0])
     # The residual contribution. Aliases the raw point where the architecture has no post-norm, so
     # a caller can always ask for the composing quantity without branching on the family.

@@ -152,6 +152,7 @@ from interp_engine.vllm_capture.attn import (
     recompute_attn_scores,
     worker_capture_attn,
     worker_collect_attn,
+    worker_resolvable_attn,
 )
 from interp_engine.vllm_capture.capture import (
     worker_addresses,
@@ -253,6 +254,7 @@ __all__ = [
     "worker_register_capture",
     "worker_register_lens",
     "worker_register_steering",
+    "worker_resolvable_attn",
     "worker_resolvable_points",
     "worker_set_static_delta",
     "worker_set_lens_jacobians",

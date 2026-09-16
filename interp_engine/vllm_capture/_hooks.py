@@ -8,7 +8,7 @@ hooks (steering then capture) in :mod:`~interp_engine.vllm_capture.requests` ins
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
 import torch
 
@@ -215,11 +215,23 @@ def _make_tensor_recorder(store: dict, key: str, accumulate: bool = False, strea
     return _record
 
 
-def _make_output_hook(store: dict, key: str, name: str, accumulate: bool = False, stream: int | None = None):
+def _make_output_hook(
+    store: dict,
+    key: str,
+    name: str,
+    accumulate: bool = False,
+    stream: int | None = None,
+    derive: Callable[[torch.Tensor], torch.Tensor] | None = None,
+):
+    """``derive`` computes the point from the module's output instead of reading it whole: the fused
+    QK-norm points, cut and normalized off the qkv projection (``_tree.fused_qk_norm_derivation``)."""
+
     def _hook(_m, _args, output):  # noqa: ANN001
         if not accumulate and key in store:
             return  # keep the first (prefill) capture
-        if name == "resid_post":
+        if derive is not None:
+            t = derive(output[0] if isinstance(output, tuple) else output).detach().clone()
+        elif name == "resid_post":
             t = _sum_residual(output, _m).detach().clone()
         elif name in LAYER_RETURN_INDEX:
             t = layer_return_tensor(output, name).detach().clone()

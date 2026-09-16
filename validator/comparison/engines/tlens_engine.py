@@ -157,13 +157,18 @@ def capture(
     saes: tuple[SaeSpec, ...] = (),
     device: str = "cpu",
     dtype: str = "float32",
+    num_gpus: int = 1,
 ) -> tuple[dict[str, np.ndarray], list[dict]]:
     import torch
     from transformer_lens import HookedTransformer
 
     _check_host_memory(hf_id, dtype)
+    # `n_devices` is TransformerLens' own layer-wise split across cards; the input goes to the
+    # first card, and the model moves activations between the rest itself. Not every family
+    # survives it: TransformerLens 3.9.0 fails Qwen3 at `resid_mid + mlp_out` with the two halves on
+    # different cards, which the sweep records as this cell's error rather than working around.
     model = HookedTransformer.from_pretrained_no_processing(
-        _TLENS_NAME.get(hf_id, hf_id), device=device, dtype=getattr(torch, dtype)
+        _TLENS_NAME.get(hf_id, hf_id), device=device, dtype=getattr(torch, dtype), n_devices=num_gpus
     )
     tokens = torch.tensor([input_ids], device=device)
 

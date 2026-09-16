@@ -407,6 +407,7 @@ def compute_results(dumps: str, models=MODELS) -> dict:
                 "reason": meta.reason if meta else "",
                 "dtype": getattr(meta, "dtype", "") if meta else "",
                 "device": getattr(meta, "device", "") if meta else "",
+                "num_gpus": int(getattr(meta, "num_gpus", 1) or 1) if meta else 1,
             }
             if meta:
                 # Each cell is dated by its own capture, so a cell only changes date when it is re-run.

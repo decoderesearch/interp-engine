@@ -42,6 +42,14 @@ dependencies = [
     # importable: the harness invokes each venv's interpreter directly, so the venv's bin/ is not
     # prepended the way `activate` would -- see run_all_models.sh, which puts it there.
     "ninja",
+    # Kimi-K2.6's tokenizer is checkpoint code (`tokenization_kimi.py`) built on tiktoken, and
+    # tiktoken reads a local `tiktoken.model` through blobfile. `tokenize_inputs` runs in this venv,
+    # so without both the whole Kimi row is skipped before any engine starts.
+    "tiktoken",
+    "blobfile",
+    # transformers refuses a `compressed-tensors` checkpoint (Kimi-K2.6's native INT4 experts)
+    # without this, so the eager reference could not load one at all.
+    "compressed-tensors>=0.15.0",
 ]
 
 [project.optional-dependencies]

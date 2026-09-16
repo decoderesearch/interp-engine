@@ -244,7 +244,7 @@ class InterpModel(Protocol):
         Neither backend has these as module boundaries -- a fused kernel never forms the score
         matrix -- so both reconstruct them: eager from ``output_attentions``, which requires the
         model to have been loaded with eager attention, and vLLM off-kernel from captured
-        post-RoPE q/k, which is single-GPU only. Each names its own refusal.
+        post-RoPE q/k, gathered across ranks under tensor parallelism. Each names its own refusal.
         """
         ...
 

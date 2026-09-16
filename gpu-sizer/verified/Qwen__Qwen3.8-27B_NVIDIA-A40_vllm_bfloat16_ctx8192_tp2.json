@@ -1,0 +1,130 @@
+{
+  "model_id": "Qwen/Qwen3.8-27B",
+  "backend": "vllm",
+  "outcome": "pass",
+  "spec": {
+    "backend": "vllm",
+    "dtype": "bfloat16",
+    "quantization": "",
+    "kv_cache_dtype": "auto",
+    "max_model_len": 8192,
+    "max_num_batched_tokens": 2048,
+    "max_num_seqs": 256,
+    "gpu_memory_utilization": 0.9,
+    "num_gpus": 2,
+    "static_sites": 0,
+    "static_points": [],
+    "enforce_eager": null,
+    "batch_size": 1,
+    "seq_len": 0,
+    "requires_grad": false,
+    "attn_implementation": "",
+    "n_capture_points": 0
+  },
+  "gpu": {
+    "name": "NVIDIA A40",
+    "total_bytes": 47768928256,
+    "total_gib": 44.49,
+    "compute_capability": [
+      8,
+      6
+    ],
+    "ecc_enabled": true,
+    "provenance": "measured on this host (ECC enabled)"
+  },
+  "estimate": {
+    "fits": true,
+    "total_bytes": 31249110726,
+    "pool_bytes": 28694108502,
+    "outside_bytes": 2555002224,
+    "headroom_bytes": 2221890602,
+    "kv_capacity_tokens": 404118,
+    "terms": [
+      {
+        "name": "vllm_overshoot",
+        "bytes": 644245094,
+        "side": "outside"
+      },
+      {
+        "name": "fragmentation",
+        "bytes": 1910757130,
+        "side": "outside"
+      },
+      {
+        "name": "cuda_context",
+        "bytes": 644245094,
+        "side": "pool"
+      },
+      {
+        "name": "weights",
+        "bytes": 27781427952,
+        "side": "pool"
+      },
+      {
+        "name": "kv_cache_floor",
+        "bytes": 268435456,
+        "side": "pool"
+      }
+    ],
+    "warnings": [
+      "2-GPU figures are unverified: every configuration measured so far ran on a single card, so tensor parallelism here is arithmetic no hardware has checked",
+      "48 of 64 layers are recurrent and cache no tokens, so only 16 are charged for the KV cache. The fixed-size state those layers hold is sized by max_num_seqs rather than by context and is NOT priced here, so the capacity below is an upper bound by an unmeasured margin"
+    ],
+    "weights_source": "safetensors-index"
+  },
+  "measured": {
+    "baseline_bytes": 0,
+    "post_load_bytes": 42673897472,
+    "post_reserve_bytes": 0,
+    "post_warmup_bytes": 42673897472,
+    "peak_bytes": 42673897472,
+    "per_device_peak_bytes": [
+      42673897472,
+      42673897472
+    ],
+    "pool_claimed_bytes": 42992035430,
+    "outside_measured_bytes": 0,
+    "torch_peak_bytes": 0,
+    "kv_cache_tokens": 252024,
+    "samples": 333
+  },
+  "stress": {
+    "max_concurrency_passed": 4,
+    "first_failing_concurrency": 0,
+    "prompt_tokens": 8176,
+    "requests_ok": 4,
+    "requests_failed": 0,
+    "latencies_ms": [
+      6971.780787003809,
+      10936.131863003538,
+      14906.873726999038,
+      17159.82164300658
+    ],
+    "failure_kind": "",
+    "failure_detail": ""
+  },
+  "reservations": {
+    "per_rank_bytes": 0,
+    "host_bytes": 0,
+    "before_engine": false,
+    "note": "--reserve-gib / --host-reserve-gib, held for real by the harness process; a per-rank share above rank 0 carries this process's extra CUDA context with it"
+  },
+  "engine_env": {},
+  "engine_env_note": "",
+  "cannot_verify": [
+    "fp8",
+    "nvfp4"
+  ],
+  "expected": "pass",
+  "why": "first tensor-parallel row: the even weight split and head-wise cache split, checked on hardware at TP=2",
+  "error": "",
+  "versions": {
+    "torch": "2.13.0+cu130",
+    "transformers": "5.17.0",
+    "vllm": "0.29.0",
+    "interp_engine": "1.8.0",
+    "driver": "595.91.07"
+  },
+  "duration_s": 113.6,
+  "recorded_at": "2026-09-14T23:31:48Z"
+}

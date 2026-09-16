@@ -26,6 +26,7 @@
  "microsoft/Phi-3-mini-4k-instruct": "Phi3ForCausalLM",
  "microsoft/Phi-mini-MoE-instruct": "PhiMoEForCausalLM",
  "mistralai/Mistral-7B-v0.1": "MistralForCausalLM",
+ "moonshotai/Kimi-K2.6": "KimiK25ForConditionalGeneration",
  "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16": "NemotronHForCausalLM",
  "openai-community/gpt2": "GPT2LMHeadModel",
  "openai/gpt-oss-20b": "GptOssForCausalLM",

@@ -185,11 +185,13 @@ combined output with the selection never materialized. Quantized gpt-oss draws t
   nothing to stand on and the point is refused rather than approximated.
 - **Not every dtype.** A float32-native checkpoint with `head_dim > 128` (Gemma-2 2b/9b) or a
   half-precision-only quantization (MXFP4 gpt-oss) is loaded bf16.
-- **The fused QK-norm-RoPE-gate kernel means no QK-norm points.** On Qwen3-Next's softmax-attention
-  layers, `q_norm`/`k_norm` exist as modules and are hookable, but the fused kernel is handed their
-  *weights* rather than being called on them, so a hook installs and never fires. The point is refused
-  with that as its reason (`vllm_capture._tree.absent_point_reason`), because a silent absence reads as
-  a capture bug; eager serves them on the same checkpoint.
+- **The QK-norm points are recomputed where a fused kernel runs the norms.** On Qwen3-Next's
+  softmax-attention layers under vLLM 0.29+, `q_norm`/`k_norm` exist as modules and are hookable, but
+  `fused_qk_rmsnorm_rope_gate` is handed their *weights* rather than called on them, so a hook there
+  installs and never fires. The four points are read off the qkv projection's output instead: its q
+  and k columns (de-interleaved from the output gate) are the norms' input, and calling the norm module
+  on that slice is their output (`vllm_capture._tree.derive_fused_qk_norm`). Capture-only, and one norm
+  call per hooked layer per forward; a write to them is refused, since the model never reads the copy.
 - **Kernel warmup is off** (`kernel_config={"enable_cutedsl_warmup": False}` in the validator).
   Precompiling every attention spec the model might use buys nothing for a single 13-token prefill, and
   on Blackwell it is what took DeepSeek-V2-Lite's cell down: the MLA prefill backend registers FA4

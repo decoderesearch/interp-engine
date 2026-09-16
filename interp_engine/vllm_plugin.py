@@ -70,6 +70,7 @@ from interp_engine.vllm_capture import (
     worker_register_static_capture,
     worker_register_static_write,
     worker_register_steering,
+    worker_resolvable_attn,
     worker_resolvable_points,
     worker_set_lens_jacobians,
     worker_set_static_delta,
@@ -171,6 +172,15 @@ class InterpWorkerExtension:
         return worker_install_lens_intervention(self, specs, steer_generated, skip_positions, prompt_len)
 
     # --- attention (off-kernel recompute inputs) -----------------------------
+    def resolvable_attn(self, layers: list[int]) -> dict[str, str]:
+        """Which of ``layers`` expose q/k/v to record -> ``{str(layer): "" | why not}``.
+
+        Ask before ``capture_attn`` / ``register_attn``. A layer with no attention op to hook
+        (multi-head latent attention) raises inside them, and at TP>1 a worker raise leaves the
+        other ranks' replies queued for the next RPC to misread.
+        """
+        return worker_resolvable_attn(self, layers)
+
     def capture_attn(self, layers: list[int]) -> None:
         return worker_capture_attn(self, layers)
 

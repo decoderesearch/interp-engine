@@ -180,6 +180,12 @@ def _verdict(model_entry: dict, engine: str) -> str:
 
 
 def gpu_info() -> dict:
+    """The cards this box has, as the cells record them.
+
+    ``name`` is the card, prefixed with the count when there is more than one (``2x NVIDIA A40``), so
+    a heading rendered from it says how many cards the row ran on. ``memory_total`` is per card, and
+    ``count`` says how many; a mixed box reports its first card and the count.
+    """
     try:
         out = subprocess.run(
             ["nvidia-smi", "--query-gpu=name,memory.total,compute_cap", "--format=csv,noheader"],
@@ -187,11 +193,16 @@ def gpu_info() -> dict:
             text=True,
             timeout=10,
         )
-        name, mem, cap = (x.strip() for x in out.stdout.strip().splitlines()[0].split(","))
+        rows = [line for line in out.stdout.strip().splitlines() if line.strip()]
+        name, mem, cap = (x.strip() for x in rows[0].split(","))
         # Capability, not just the marketing name: kernel gates are written against it, and it is what
         # makes two boxes comparable (a B200 and a B300 are both 10.x and agree bitwise; an RTX PRO 6000
         # is also Blackwell and does not).
-        return {"name": name, "memory_total": mem, "capability": cap}
+        info: dict = {"name": name, "memory_total": mem, "capability": cap}
+        if len(rows) > 1:
+            info["name"] = f"{len(rows)}x {name}"
+            info["count"] = len(rows)
+        return info
     except Exception:  # noqa: BLE001
         return {"name": "unknown", "memory_total": "unknown", "capability": "unknown"}
 
@@ -212,26 +223,29 @@ _ENGINE_IMAGE = {
 }
 
 
-def _capture_cmd(engine: str, hf_id: str) -> str:
+def _capture_cmd(engine: str, hf_id: str, num_gpus: int = 1) -> str:
+    # `--num-gpus` only when it was more than one: the flag did not exist when the single-card cells
+    # were recorded, and their commands stay as they were.
+    gpus = f" --num-gpus {num_gpus}" if num_gpus > 1 else ""
     if engine in _ENGINE_IMAGE:
-        return _DOCKER.format(image=_ENGINE_IMAGE[engine], engine=engine, model=hf_id)
+        return _DOCKER.format(image=_ENGINE_IMAGE[engine], engine=engine, model=hf_id) + gpus
     return (
         f"PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine {engine} "
-        f"--dumps dumps --model {hf_id} --device cuda"
+        f"--dumps dumps --model {hf_id} --device cuda{gpus}"
     )
 
 
-def _replicate_cmds(hf_id: str, engine: str) -> list[str]:
+def _replicate_cmds(hf_id: str, engine: str, num_gpus: int = 1) -> list[str]:
     # Recorded verbatim into every cell's JSON, so these must stay runnable from a plain checkout of
     # this repo alone -- no monorepo-relative paths. `.env` is the engine's own gitignored token file.
     # The reference capture is included because this cell *is* a comparison against it.
     cmds = [
         "export HF_TOKEN=$(grep -m1 '^HF_TOKEN=' .env | cut -d= -f2- | tr -d '\"')",
         f"PYTHONPATH=. .venv-cmp/bin/python -m comparison.tokenize_inputs --dumps dumps --models {hf_id}",
-        _capture_cmd(REFERENCE, hf_id),
+        _capture_cmd(REFERENCE, hf_id, num_gpus),
     ]
     if engine != REFERENCE:
-        cmds.append(_capture_cmd(engine, hf_id))
+        cmds.append(_capture_cmd(engine, hf_id, num_gpus))
     cmds.append("PYTHONPATH=. .venv-cmp/bin/python -m comparison.aggregate --dumps dumps")
     return cmds
 
@@ -297,12 +311,15 @@ def cell_record(hf_id: str, model_entry: dict, engine: str, run_block: dict) -> 
         "reason": st.get("reason", ""),
         "dtype": st.get("dtype", ""),
         "device": st.get("device", ""),
+        # Written only for a sharded capture: the single-card cells on disk carry no such key, and
+        # adding a `1` to every one of them would be schema for its own sake.
+        **({"num_gpus": int(st["num_gpus"])} if int(st.get("num_gpus") or 1) > 1 else {}),
         "versions": st.get("versions", {}),
         "known_bug": st.get("known_bug"),
         "points": points,
         **gaps,
         "sae": model_entry.get("saes", {}).get(engine, {}),
-        "run": {**run_block, "replicate": _replicate_cmds(hf_id, engine)},
+        "run": {**run_block, "replicate": _replicate_cmds(hf_id, engine, int(st.get("num_gpus") or 1))},
     }
 
 

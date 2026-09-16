@@ -345,6 +345,10 @@ def read_attn_dims(hf_model_id: str, trust_remote_code: bool = True) -> dict[str
         # Equal to `head_dim` when the family declares nothing, which is why
         # `value_head_dim_for_layer` compares the two rather than testing this for truth.
         "v_head_dim": model_facts.v_head_dim,
+        # What an MLA trunk caches per token per layer in place of K and V; 0 elsewhere. Sizes the
+        # static ladder's KV floor, where the head dims above would price 64 heads that never reach
+        # the cache.
+        "kv_latent_width": model_facts.kv_latent_width,
         # Gemma scales by `query_pre_attn_scalar` rather than head_dim, and the two are not
         # required to be equal. The model-wide value; ask `scaling_for_layer` per layer, since the
         # derivation is a function of a head width that Gemma-4 varies by layer.
@@ -542,17 +546,13 @@ def recompute_attn_from_payloads(payloads, layers, dims, tensor_parallel_size: i
     :class:`VLLMModel` reaches it through :meth:`VLLMModel.capture_attention`, while a caller
     driving ``vllm.LLM`` itself pairs it with the plugin's ``capture_attn`` / ``collect_attn`` and
     ``read_attn_dims``. Leaving it private meant the second of those had no way to finish the job.
+
+    ``tensor_parallel_size`` is accepted for callers that pass it and no longer changes the
+    arithmetic: the worker all-gathers q/k/v across ranks at collect
+    (:mod:`interp_engine.vllm_capture._tp`), so rank 0's payload holds every head at any TP size.
+    ``_heads_in`` still checks q's head count against ``dims`` and names a shard if one got through.
     """
-    if int(tensor_parallel_size) > 1:
-        # q/k/v are head-sharded across ranks, and we only read rank 0's payload, so the
-        # tensors here hold 1/tp of the heads while ``dims`` describes the whole model.
-        # The ``view`` below would fail on the element count anyway; raising here says why.
-        raise RuntimeError(
-            f"Attention recompute is not supported at tensor_parallel_size="
-            f"{int(tensor_parallel_size)}: q/k/v are sharded by head across ranks, so "
-            "rank 0 holds only its slice. Serve attention patterns and DFA from a "
-            "single-GPU pod (or the eager backend)."
-        )
+    del tensor_parallel_size
     p = payloads[0] if isinstance(payloads, list | tuple) else payloads
     out: dict[int, dict[str, torch.Tensor]] = {}
     for layer in layers:
@@ -1160,6 +1160,7 @@ class VLLMModel:
                 head_dim=int(dims.get("head_dim") or 0) if dims else 0,
                 v_head_dim=int(dims.get("v_head_dim") or 0) if dims else 0,
                 d_model=max(int(self._hidden_size), 1),
+                latent_width=int(dims.get("kv_latent_width") or 0) if dims else 0,
             ),
             n_layers=self.num_hidden_layers,
             tensor_parallel_size=self.tensor_parallel_size,
@@ -2712,6 +2713,17 @@ class VLLMModel:
         await self._ensure_engine()
         rid = self._new_request_id("np-attn")
         needed = attn_capture_layers(self._attn_dims, layers)
+        # Asked before anything is registered: a layer with no attention op to read q/k off
+        # (multi-head latent attention) would raise inside the worker, and under tensor parallelism
+        # that raise leaves the other ranks' replies queued for the collect below to misread.
+        verdict = (await self.engine.collective_rpc("resolvable_attn", args=(needed,)))[0]
+        absent = {int(layer): why for layer, why in verdict.items() if why}
+        if absent:
+            layer, why = min(absent.items())
+            raise ValueError(
+                f"Attention capture cannot serve attn_scores at layer {layer} on the vLLM backend: {why}. "
+                "Instead: capture_attention on an eager model, which forms the softmax explicitly."
+            )
         if static_attn:
             pts = [format_address(Address(ATTN_STATIC_POINT, layer)) for layer in needed]
             await self.engine.collective_rpc("register_static_capture", args=(rid, pts))

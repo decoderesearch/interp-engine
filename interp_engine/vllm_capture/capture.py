@@ -17,6 +17,7 @@ from interp_engine.vllm_capture._hooks import (
     _make_tensor_recorder,
 )
 from interp_engine.vllm_capture._payload import encode_tensor_payload
+from interp_engine.vllm_capture._tp import gather_capture
 from interp_engine.vllm_capture._tree import (
     _GLOBAL_POINTS,
     _INPUT_POINTS,
@@ -26,6 +27,7 @@ from interp_engine.vllm_capture._tree import (
     _resolve_global_module,
     _worker_model,
     absent_point_reason,
+    fused_qk_norm_derivation,
     resolve_capture_module,
     scale_capture,
 )
@@ -144,7 +146,16 @@ def worker_install_capture(worker: object, points: list[str], accumulate: bool =
             # a dozen requested addresses brought the whole install down. Ask
             # `worker_resolvable_points` first to avoid the situation entirely.
             raise type(exc)(f"cannot capture {key}: {exc}") from exc
-        if name in _KWARG_INPUT_POINTS:
+        # A point computed from the module's output rather than read off it, so it is an output hook
+        # whichever side the point's own module would have been read from.
+        derive = fused_qk_norm_derivation(layers[address.layer], name) if address.layer is not None else None
+        if derive is not None:
+            handles.append(
+                module.register_forward_hook(
+                    _make_output_hook(store, key, name, accumulate, address.stream, derive=derive)
+                )
+            )
+        elif name in _KWARG_INPUT_POINTS:
             handles.append(
                 module.register_forward_pre_hook(
                     _make_kwarg_pre_hook(store, key, accumulate, address.stream), with_kwargs=True
@@ -171,8 +182,11 @@ def worker_collect_capture(worker: object) -> dict[str, tuple]:
     for h in handles:
         h.remove()
     worker._np_capture = None  # type: ignore[attr-defined]
+    model = _worker_model(worker)
     out: dict[str, tuple] = {}
+    # Gathered before scaled: under tensor parallelism a head- or neuron-wide point arrives as this
+    # rank's shard, and every rank runs this collect, so the all-gather is a legal collective here.
     for key, value in store.items():
         tensor = torch.cat(value, dim=0) if isinstance(value, list) else value
-        out[key] = encode_tensor_payload(scale_capture(_worker_model(worker), key, tensor))
+        out[key] = encode_tensor_payload(scale_capture(model, key, gather_capture(model, key, tensor)))
     return out

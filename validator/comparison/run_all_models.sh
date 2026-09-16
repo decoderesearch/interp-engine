@@ -29,6 +29,10 @@
 #   LOCAL_ENGINE=<path>  score an *unreleased* interp-engine: this checkout runs in front of the
 #               installed wheel in every venv, and the run's dumps, cells and table move off the
 #               committed tree (see setup_local_engine, which will not let them land in it).
+#   NUM_GPUS=<n>  shard every checkpoint across n CUDA cards (default: every visible card): tensor
+#               parallelism on vLLM and SGLang, accelerate's layer placement on eager, TransformerLens
+#               and nnsight. Recorded on each cell, because a capture from two cards is a different
+#               claim. NUM_GPUS=1 pins a multi-card box to one card.
 #   DUMPS / RESULTS / README  where this run's dumps, cell JSONs and rendered table go. The defaults
 #               are the committed ones, or scratch paths under local-run/ when LOCAL_ENGINE is set.
 #
@@ -91,6 +95,21 @@ unset _bin
 MODE=${MODE:-full}             # full | retry | engine
 AGGREGATE=${AGGREGATE:-auto}   # auto | 0 | 1
 EVICT=${EVICT:-1}              # 1 = evict each checkpoint after capture
+# Cards per capture. Unset means every card the process can see: CUDA_VISIBLE_DEVICES when it is
+# set, else what nvidia-smi lists, else 1. Pin NUM_GPUS=1 to keep a multi-card box to one card.
+visible_gpus() {
+  if [ -n "${CUDA_VISIBLE_DEVICES+x}" ]; then
+    echo "$CUDA_VISIBLE_DEVICES" | tr ',' '\n' | grep -c .
+  else
+    nvidia-smi -L 2>/dev/null | grep -c '^GPU'
+  fi
+}
+visible=$(visible_gpus)
+NUM_GPUS=${NUM_GPUS:-$(( visible > 0 ? visible : 1 ))}
+case "$NUM_GPUS" in ''|*[!0-9]*|0) echo "NUM_GPUS must be a positive integer (got '$NUM_GPUS')" >&2; exit 2;; esac
+if [ "$NUM_GPUS" -gt 1 ]; then
+  [ "$visible" -ge "$NUM_GPUS" ] || { echo "NUM_GPUS=$NUM_GPUS but only $visible card(s) are visible" >&2; exit 2; }
+fi
 ENGINE=${ENGINE:-}             # MODE=engine: which column(s) to refresh
 VERSION=${VERSION:-}           # MODE=engine: upgrade to this version (or `latest`) first
 # Canonical order (see spec.ALL_ENGINES), minus the paused ones (spec.PAUSED_ENGINES). sglang is out
@@ -255,7 +274,8 @@ run_engine_for() {  # <engine> <hf_id>
   before=$(stat -c %Y "$meta" 2>/dev/null || echo 0)
   log=$(mktemp)
   timeout "$TIMEOUT" "$(py_for "$1")" -m comparison.run_engine \
-    --engine "$1" --dumps "$DUMPS" --model "$2" --models-json "$JSON" --device cuda 2>&1 | tee "$log"
+    --engine "$1" --dumps "$DUMPS" --model "$2" --models-json "$JSON" --device cuda \
+    --num-gpus "$NUM_GPUS" 2>&1 | tee "$log"
   rc=${PIPESTATUS[0]}
   # Compare the meta's mtime rather than its existence: a retry of a cell that already has a stale
   # meta from an earlier sweep must still be recorded as a crash.

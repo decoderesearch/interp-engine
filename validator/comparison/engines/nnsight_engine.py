@@ -248,11 +248,14 @@ def capture(
     saes: tuple[SaeSpec, ...] = (),
     device: str = "cpu",
     dtype: str = "float32",
+    num_gpus: int = 1,
 ) -> tuple[dict[str, np.ndarray], list[dict]]:
     import torch
     from nnterp import StandardizedTransformer
 
     torch_dtype = getattr(torch, dtype)
+    # Both load paths below take a `device_map`, so more than one GPU is accelerate's placement.
+    placement = "auto" if num_gpus > 1 else device
     # Asked before the probe below, which reads the config *with* remote code and so registers the
     # dynamic classes for the rest of the process.
     prefers_native = _prefers_native_implementation(hf_id)
@@ -330,13 +333,13 @@ def capture(
     if prefers_native:
         automodel = load_kwargs.pop("automodel", None)
         model = StandardizedTransformer(
-            _native_model(hf_id, automodel, dtype=torch_dtype, device=device),
+            _native_model(hf_id, automodel, dtype=torch_dtype, device=placement),
             attn_implementation="eager",
             **load_kwargs,
         )
     else:
         model = StandardizedTransformer(
-            hf_id, dtype=torch_dtype, device_map=device, attn_implementation="eager", **load_kwargs
+            hf_id, dtype=torch_dtype, device_map=placement, attn_implementation="eager", **load_kwargs
         )
     ids = torch.tensor([input_ids])
     arrays: dict[str, np.ndarray] = {}

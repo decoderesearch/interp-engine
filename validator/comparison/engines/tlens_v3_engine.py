@@ -45,8 +45,11 @@ def _quantized(hf_id: str) -> bool:
         return False
 
 
-def _booted(hf_id: str, device: str, dtype: str):
+def _booted(hf_id: str, device: str, dtype: str, num_gpus: int = 1):
     """The bridge, around a model loaded the way this checkpoint needs to be loaded.
+
+    On more than one GPU the bridge is handed ``device_map="auto"`` instead of a device, on both
+    paths below: accelerate places the layers, and a single named device would fight that.
 
     Unquantized checkpoints take the bridge's own load, with `dtype` up front: `boot_transformers`
     defaults to float32 and downcasting *after* the load materializes the whole fp32 model first,
@@ -77,15 +80,16 @@ def _booted(hf_id: str, device: str, dtype: str):
     from transformer_lens.model_bridge import TransformerBridge
 
     name = _TLENS_NAME.get(hf_id, hf_id)
+    placement = {"device_map": "auto"} if num_gpus > 1 else {"device": device}
     if not _quantized(hf_id):
-        return TransformerBridge.boot_transformers(name, dtype=getattr(torch, dtype), device=device)
+        return TransformerBridge.boot_transformers(name, dtype=getattr(torch, dtype), **placement)
 
     from transformers import AutoModelForCausalLM
 
     hf_model = AutoModelForCausalLM.from_pretrained(
         hf_id,
         dtype=getattr(torch, dtype),
-        device_map=device,
+        device_map="auto" if num_gpus > 1 else device,
         # The bridge sets this on its own load path and needs it for the same reason we do: scores
         # and patterns are only formed to be hooked under eager attention.
         attn_implementation="eager",
@@ -102,11 +106,13 @@ def capture(
     saes: tuple[SaeSpec, ...] = (),
     device: str = "cpu",
     dtype: str = "float32",
+    num_gpus: int = 1,
 ) -> tuple[dict[str, np.ndarray], list[dict]]:
     import torch
 
-    model = _booted(hf_id, device, dtype)
-    tokens = torch.tensor([input_ids], device=device)
+    model = _booted(hf_id, device, dtype, num_gpus)
+    # On a sharded model the first card is wherever the embedding landed, so ask the model.
+    tokens = torch.tensor([input_ids], device=next(model.parameters()).device if num_gpus > 1 else device)
 
     submod_caps, handles = register_submodule_capture(model, layers, points)
     cache_points = [p for p in points if p not in _SUBMODULE_POINT]

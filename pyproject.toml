@@ -260,5 +260,6 @@ markers = [
     "gpu: requires a CUDA GPU (skipped automatically when torch.cuda is unavailable)",
     "xl: needs multi-GB weights (gemma-2-2b, gpt-oss-20b, Qwen3.6-27B) — local/dispatch only, never per-PR",
     "gated: requires HF_TOKEN for gated model access (auto-skipped when the token is absent)",
+    "multigpu: needs two CUDA devices (skipped when torch.cuda.device_count() < 2); no CI runner has them yet, so run by hand",
     "hub: reads a real config from huggingface.co with no skip-on-failure guard, so it fails rather than skips when the hub is unreachable — deselected by the offline `floor` CI job",
 ]

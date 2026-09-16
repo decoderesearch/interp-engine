@@ -180,7 +180,7 @@ Canonical names, with the layer after a dot: `resid_post.10`. Extra coordinates 
 | `mlp_act`, `mlp_pre`, `mlp_pre_linear` | MLP internals, `d_mlp` wide | **eager only** |
 | `router_logits` | MoE routing scores, every expert | both |
 | `expert_weights`, `expert_indices` | the top-k the router selected, and its weights | **eager only** |
-| the QK-norm points | inside the attention module | both, single-GPU only (head-sharded) |
+| the QK-norm points | inside the attention module | both (head-sharded; gathered across TP ranks) |
 
 Eager-only is not an omission: vLLM's fused MLP and MoE kernels compute those tensors inline, so
 there is no module boundary to hook. This table is the working subset;
@@ -191,7 +191,8 @@ Attention is the one row that reads "both" with a caveat. No boundary holds a sc
 backend, so `capture_attention(model, tokens, layers)` is how you ask, and it returns the same
 `{layer: {"scores", "probs", "value"}}` either way — from `output_attentions` on eager (which needs
 the model loaded with `attn_implementation="eager"`) and from an off-kernel recompute over captured
-post-RoPE q/k on vLLM (single-GPU only). Different code paths, same contract; `value` there is the
+post-RoPE q/k on vLLM (gathered across ranks under tensor parallelism, so it works at any
+`num_gpus`). Different code paths, same contract; `value` there is the
 per-head, family-scaled tensor satisfying `probs @ value == z`, not the raw projection output.
 
 [ENGINE_HOOK_MAPPINGS.md](ENGINE_HOOK_MAPPINGS.md) is the full dictionary across all three
@@ -228,9 +229,10 @@ an obvious one.
    always, on every configuration — the unembed happens in another process. Eager can do it, but only
    if the model was loaded with `requires_grad=True`. Gate on `model.grad_support`, not on backend
    name. See [GRADIENTS.md](GRADIENTS.md).
-5. **vLLM with `num_gpus > 1` serves no `z`, no DFA and no attention recompute.** Heads are sharded
-   across ranks, so rank 0 holds a slice; the engine refuses rather than returning it. Use one GPU, or
-   the eager backend, for per-head work.
+5. **vLLM with `num_gpus > 1` serves the same points as one GPU.** Heads and MLP neurons are
+   sharded across ranks, and the worker gathers `z`, `value`, `mlp_act`, the QK-norm points and the
+   q/k behind `capture_attention` back to full width at collect, so rank 0's payload is the whole
+   tensor. Every `collect_*` is a collective on every rank; do not call one from a single rank.
 6. **`await model.warmup()` before timing anything.** Construction is deliberately cheap and lazy on
    both backends — on vLLM nearly the whole load happens in `warmup()`, so without it your first
    request's latency is the load time.

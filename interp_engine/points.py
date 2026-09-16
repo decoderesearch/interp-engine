@@ -534,7 +534,8 @@ def d_model_wide() -> frozenset[str]:
 
 
 def tp_sharded() -> frozenset[str]:
-    """Points a tensor-parallel rank holds only a slice of, so rank 0's payload is incomplete.
+    """Points a tensor-parallel rank holds only a slice of, so the worker gathers them at collect
+    (:mod:`interp_engine.vllm_capture._tp`) before rank 0's payload is read.
 
     **Not the complement of** :func:`d_model_wide`, which is what a serving pod used to narrow its
     served set by. That proxy holds for the head- and neuron-wide points and fails for the other
