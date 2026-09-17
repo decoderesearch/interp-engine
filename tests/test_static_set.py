@@ -255,6 +255,27 @@ def test_vram_check_will_not_shrink_below_an_engine_boot_floor():
     assert fit(24, min_n=8192) == 8192  # a floor it can meet changes nothing
 
 
+def test_vram_check_raises_a_pin_below_the_engine_boot_floor():
+    """A caller's pin under the floor is raised to it, so the buffers grow past what was asked.
+
+    Qwen3.6-27B pinned at 2048 boots at 8192 with four times the tap memory. The caller is told
+    (``raising max_num_batched_tokens`` in the log); this pins the value that message reports.
+    """
+    fitted = fit_max_num_batched_tokens(
+        n_sites=64,
+        width=5120,
+        max_n=2048,
+        device_memory=80 * 1024**3,
+        gpu_memory_utilization=0.9,
+        weight_bytes=52 * 1024**3,
+        max_model_len=4096,
+        kv_width=kv_cache_width(d_model=5120),
+        n_layers=64,
+        min_n=8192,
+    )
+    assert fitted == 8192
+
+
 def test_vram_check_keeps_a_caller_max_n_below_the_1024_floor():
     """Chunked-prefill tests pass max_num_batched_tokens=32; skipping that candidate used to raise."""
     fitted = fit_max_num_batched_tokens(

@@ -1166,8 +1166,18 @@ class VLLMModel:
             tensor_parallel_size=self.tensor_parallel_size,
             min_n=facts.min_batched_tokens(cfg) or 0,
         )
-        if fitted != max_n:
+        if fitted > max_n:
+            # The multimodal floor outranks the fit and the caller's pin alike, and it moves the
+            # buffers the other way: on Qwen3.6-27B a 2048 pin became 8192 and 5 GiB of taps.
+            logger.warning(
+                "raising max_num_batched_tokens %s -> %s: this multimodal checkpoint will not start "
+                "below it (facts.min_batched_tokens). Static buffers are sized at the raised value.",
+                max_n,
+                fitted,
+            )
+        elif fitted != max_n:
             logger.warning("lowering max_num_batched_tokens %s -> %s so static buffers fit", max_n, fitted)
+        if fitted != max_n:
             self._engine_kwargs["max_num_batched_tokens"] = fitted
 
     def _refuse_static_where_vllm_reads_wrong(self) -> None:
