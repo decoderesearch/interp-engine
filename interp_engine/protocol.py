@@ -47,6 +47,7 @@ import torch
 from interp_engine.address import Address
 from interp_engine.autograd_support import GradSupport
 from interp_engine.residual_basis import ResidualBasis
+from interp_engine.sampling import RecommendedSampling, SamplingSettings
 
 # Re-exported so a protocol-typed caller needs one import. The type itself lives in
 # `interp_engine.address`, which owns the grammar; this module defines a Protocol and should not.
@@ -147,6 +148,34 @@ class InterpModel(Protocol):
         The same shape as :attr:`grad_support` and for the same reason: a capability that must not
         gate loading, must be answerable without a forward, and must produce one error text wherever
         the request came from. See :mod:`interp_engine.residual_basis`.
+        """
+        ...
+
+    # --- sampling -----------------------------------------------------------
+    @property
+    def recommended_sampling(self) -> RecommendedSampling:
+        """What the checkpoint's ``generation_config.json`` states: temperature, top-k, top-p,
+        ``do_sample``. Empty when the checkpoint has none (Qwen3.5) or the file names only token
+        ids (GPT-2). The file is Hugging Face's format, so a presence penalty cannot appear here
+        whatever the model card says.
+        """
+        ...
+
+    def sampling_settings(
+        self,
+        *,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
+    ) -> SamplingSettings:
+        """What a generation called with these arguments runs with, every knob decided.
+
+        The rule is :func:`interp_engine.sampling.resolve_sampling`: a knob passed is used as
+        passed, a knob left ``None`` takes :attr:`recommended_sampling`, and a knob neither states
+        is neutral (temperature 1, no filtering, no penalty). Every generation method below
+        resolves its knobs this way, so a run is reproducible from its arguments plus the
+        checkpoint; a server reports the result beside the completion.
         """
         ...
 
@@ -254,10 +283,17 @@ class InterpModel(Protocol):
         prompt_token_ids: Sequence[int],
         *,
         max_tokens: int = 200,
-        temperature: float = 1.0,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
         seed: int | None = None,
     ) -> str:
-        """Generate and return the completion text (no prompt echo)."""
+        """Generate and return the completion text (no prompt echo).
+
+        Sampling knobs left ``None`` take the checkpoint's recommendation; see
+        :meth:`sampling_settings`.
+        """
         ...
 
     def generate_stream(
@@ -265,7 +301,10 @@ class InterpModel(Protocol):
         prompt_token_ids: Sequence[int],
         *,
         max_tokens: int = 200,
-        temperature: float = 1.0,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
         seed: int | None = None,
     ) -> AsyncIterator[str]:
         """Yield decoded text deltas as they are produced.

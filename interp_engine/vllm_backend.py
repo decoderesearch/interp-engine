@@ -34,6 +34,7 @@ from interp_engine.notebook_stdout import ensure_stdout_descriptor
 from interp_engine.points import d_model_wide, hyper_connection_names, refusal_reasons
 from interp_engine.points import steer_refusal_reason as points_steer_refusal
 from interp_engine.residual_basis import ResidualBasis, vllm_residual_basis
+from interp_engine.sampling import RecommendedSampling, SamplingSettings, read_recommended_sampling, resolve_sampling
 from interp_engine.steer_specs import SteerMethod
 from interp_engine.vllm_capture import (
     _GLOBAL_POINTS,
@@ -1002,6 +1003,7 @@ class VLLMModel:
         # the check for everyone constructing the backend directly.
         require_vllm(f"VLLMModel({hf_model_id!r})")
         self.hf_model_id = hf_model_id
+        self._recommended_sampling: RecommendedSampling | None = None
         self.enable_extraction = enable_extraction
         self.enable_prompt_embeds = enable_prompt_embeds
         self.tensor_parallel_size = int(tensor_parallel_size)
@@ -1662,6 +1664,33 @@ class VLLMModel:
     def to_string(self, tokens):
         return self.tok.to_string(tokens)
 
+    @property
+    def recommended_sampling(self) -> RecommendedSampling:
+        """Read here, not asked of the engine: vLLM folds the file into its own request defaults
+        only for a ``SamplingParams`` it builds itself, and this backend builds its own."""
+        # `getattr`: a test double built without `__init__` has no slot yet.
+        stated = getattr(self, "_recommended_sampling", None)
+        if stated is None:
+            stated = self._recommended_sampling = read_recommended_sampling(self.hf_model_id)
+        return stated
+
+    def sampling_settings(
+        self,
+        *,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
+    ) -> SamplingSettings:
+        """See the protocol."""
+        return resolve_sampling(
+            self.recommended_sampling,
+            temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+            presence_penalty=presence_penalty,
+        )
+
     async def generate(
         self,
         prompts,
@@ -1946,7 +1975,10 @@ class VLLMModel:
         prompt_token_ids: Sequence[int],
         *,
         max_tokens: int = 200,
-        temperature: float = 1.0,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
         seed: int | None = None,
         logprobs: int | None = None,
     ):
@@ -1957,9 +1989,12 @@ class VLLMModel:
         """
         from vllm import SamplingParams  # pyright: ignore[reportMissingImports]
 
+        settings = self.sampling_settings(
+            temperature=temperature, top_k=top_k, top_p=top_p, presence_penalty=presence_penalty
+        )
         out = await self._run_one(
             self._prompt(prompt_token_ids),
-            SamplingParams(max_tokens=max_tokens, temperature=temperature, seed=seed, logprobs=logprobs),
+            SamplingParams(max_tokens=max_tokens, seed=seed, logprobs=logprobs, **settings.vllm_kwargs()),
         )
         return out.outputs[0]
 
@@ -1968,10 +2003,21 @@ class VLLMModel:
         prompt_token_ids: Sequence[int],
         *,
         max_tokens: int = 200,
-        temperature: float = 1.0,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
         seed: int | None = None,
     ) -> str:
-        out = await self.generate_full(prompt_token_ids, max_tokens=max_tokens, temperature=temperature, seed=seed)
+        out = await self.generate_full(
+            prompt_token_ids,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+            presence_penalty=presence_penalty,
+            seed=seed,
+        )
         return out.text
 
     async def generate_from_embeds(
@@ -2019,7 +2065,10 @@ class VLLMModel:
         prompt_token_ids: Sequence[int],
         *,
         max_tokens: int = 200,
-        temperature: float = 1.0,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
         seed: int | None = None,
     ):
         """Yield decoded text deltas as generation proceeds (for SSE endpoints)."""
@@ -2028,7 +2077,10 @@ class VLLMModel:
         from vllm import SamplingParams  # pyright: ignore[reportMissingImports]
 
         await self._ensure_engine()
-        sp = SamplingParams(max_tokens=max_tokens, temperature=temperature, seed=seed)
+        settings = self.sampling_settings(
+            temperature=temperature, top_k=top_k, top_p=top_p, presence_penalty=presence_penalty
+        )
+        sp = SamplingParams(max_tokens=max_tokens, seed=seed, **settings.vllm_kwargs())
         prompt = self._prompt(prompt_token_ids)
         prev = ""
         async for out in self.engine.generate(prompt, sp, f"np-{uuid.uuid4().hex}"):
@@ -2047,9 +2099,10 @@ class VLLMModel:
         prompt_token_ids: Sequence[int],
         *,
         max_tokens: int = 64,
-        temperature: float = 1.0,
+        temperature: float | None = None,
         top_k: int | None = None,
         top_p: float | None = None,
+        presence_penalty: float | None = None,
         stop_at_eos: bool = True,
         n_logprobs: int = 0,
         seed: int | None = None,
@@ -2084,16 +2137,15 @@ class VLLMModel:
                 f"{self.DEFAULT_MAX_LOGPROBS}, or build the engine with a higher max_logprobs via "
                 "extra_vllm_kwargs."
             )
+        settings = self.sampling_settings(
+            temperature=temperature, top_k=top_k, top_p=top_p, presence_penalty=presence_penalty
+        )
         sampling = SamplingParams(
             max_tokens=max_tokens,
-            temperature=temperature,
-            # vLLM spells "no top-k / no top-p filtering" as -1 and 1.0, where the engine's own
-            # `None` means "inherit a default"; the free function's `None` means "do not filter".
-            top_k=-1 if top_k is None else int(top_k),
-            top_p=1.0 if top_p is None else float(top_p),
             ignore_eos=not stop_at_eos,
             logprobs=n_logprobs or None,
             seed=seed,
+            **settings.vllm_kwargs(),
         )
 
         emitted = 0

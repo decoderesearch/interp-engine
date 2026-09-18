@@ -32,6 +32,7 @@ import torch
 
 from interp_engine.address import Address
 from interp_engine.residual_basis import ResidualBasis, vllm_residual_basis
+from interp_engine.sampling import RecommendedSampling
 from interp_engine.vllm_backend import VLLMModel, _assert_points_captured
 from interp_engine.vllm_capture import encode_tensor_payload
 
@@ -136,6 +137,9 @@ def _model(engine: _FakeEngine) -> Any:
     # earlier layer's keys needs that layer recorded too.
     model._attn_dims = {"layer_types": (), "first_kv_shared_layer": None, "head_dim": WIDTH}
     model.tensor_parallel_size = 1
+    # Every generation resolves its sampling knobs against the checkpoint's recommendation; an
+    # empty one keeps these tests about the prompt dict.
+    model._recommended_sampling = RecommendedSampling()
     return model
 
 

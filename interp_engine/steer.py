@@ -26,6 +26,7 @@ from interp_engine.dispatch import CapabilityUnsupported, TokensLike, as_batched
 from interp_engine.hooks import HookManager, flat_per_head
 from interp_engine.model import EagerModel
 from interp_engine.protocol import InterpModel
+from interp_engine.sampling import apply_presence_penalty
 from interp_engine.steer_specs import (
     AddSpec,
     LayerSteeringSpec,
@@ -461,8 +462,15 @@ def _sample_next(
     temperature: float,
     top_k: int | None,
     top_p: float | None,
+    presence_penalty: float = 0.0,
+    generated: Sequence[int] = (),
 ) -> int:
-    """Sample (or argmax) the next token id from ``[vocab]`` logits."""
+    """Sample (or argmax) the next token id from ``[vocab]`` logits.
+
+    The presence penalty comes first, on the raw logits and before the greedy shortcut, as vLLM
+    orders it: a greedy generation is penalized out of a loop too.
+    """
+    logits = apply_presence_penalty(logits, generated, presence_penalty)
     if temperature <= 0:
         return int(logits.argmax().item())
     logits = logits / temperature
@@ -521,9 +529,10 @@ def generate_stream(
     tokens: TokensLike,
     *,
     max_tokens: int = 64,
-    temperature: float = 1.0,
+    temperature: float | None = None,
     top_k: int | None = None,
     top_p: float | None = None,
+    presence_penalty: float | None = None,
     stop_at_eos: bool = True,
     n_logprobs: int = 0,
     seed: int | None = None,
@@ -536,7 +545,8 @@ def generate_stream(
             for step in generate_stream(model, tokens, max_tokens=32, n_logprobs=5):
                 print(step.token_str, step.logprobs)
 
-    Every sampling knob here is honored by both backends. :attr:`GenStep.logits` is the one
+    Every sampling knob here is honored by both backends, and one left ``None`` takes the
+    checkpoint's recommendation (``model.sampling_settings``). :attr:`GenStep.logits` is the one
     field that is not portable -- eager fills it in, vLLM leaves it ``None`` -- so ask for
     ``n_logprobs`` rather than reading ``logits`` in code meant to run on both.
     """
@@ -548,12 +558,16 @@ def generate_stream(
             temperature=temperature,
             top_k=top_k,
             top_p=top_p,
+            presence_penalty=presence_penalty,
             stop_at_eos=stop_at_eos,
             n_logprobs=n_logprobs,
             seed=seed,
         )
         return
 
+    settings = model.sampling_settings(
+        temperature=temperature, top_k=top_k, top_p=top_p, presence_penalty=presence_penalty
+    )
     if seed is not None:
         torch.manual_seed(seed)
 
@@ -569,12 +583,21 @@ def generate_stream(
     # card that generates the same text fine. Differentiating a generation is a real thing to want, but
     # it wants a purpose-built path (a fixed short rollout, or gradient checkpointing), not a flag
     # here. Documented as a hard limit in docs/GRADIENTS.md.
+    generated: list[int] = []
     with torch.no_grad():
         for _ in range(max_tokens):
             out = model.hf_model(cur, past_key_values=past, use_cache=True)
             past = out.past_key_values
             step_logits = out.logits[0, -1, :]
-            next_id = _sample_next(step_logits, temperature=temperature, top_k=top_k, top_p=top_p)
+            next_id = _sample_next(
+                step_logits,
+                temperature=settings.temperature,
+                top_k=settings.top_k,
+                top_p=settings.top_p,
+                presence_penalty=settings.presence_penalty,
+                generated=generated,
+            )
+            generated.append(next_id)
             token_str = model.tokenizer.decode([next_id], clean_up_tokenization_spaces=False)
             yield GenStep(
                 token_id=next_id,
@@ -592,9 +615,10 @@ def _generate_stream_via_protocol(
     tokens: TokensLike,
     *,
     max_tokens: int,
-    temperature: float,
+    temperature: float | None,
     top_k: int | None,
     top_p: float | None,
+    presence_penalty: float | None,
     stop_at_eos: bool,
     n_logprobs: int,
     seed: int | None,
@@ -623,6 +647,7 @@ def _generate_stream_via_protocol(
             temperature=temperature,
             top_k=top_k,
             top_p=top_p,
+            presence_penalty=presence_penalty,
             stop_at_eos=stop_at_eos,
             n_logprobs=n_logprobs,
             seed=seed,

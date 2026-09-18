@@ -204,7 +204,44 @@ async def generate():
 ```
 
 The stream yields decoded text deltas that concatenate to exactly what `generate_text` would have
-returned. For a chat model, build the prompt with the tokenizer's own template rather than by hand.
+returned.
+
+### Sampling knobs
+
+Every generation method takes `temperature`, `top_k`, `top_p` and `presence_penalty`, and decides
+each one the same way on every backend: a knob you pass is used as passed; a knob you leave `None`
+takes the checkpoint's own `generation_config.json`; a knob neither states is neutral (temperature
+1, no filtering, no penalty). This is what `transformers.generate` and `vllm serve` do, so a
+checkpoint samples here the way its authors tuned it to, and `temperature=0.0` is greedy
+everywhere. To turn a recommended filter off, say so in `transformers`' terms: `top_k=0`,
+`top_p=1.0`.
+
+`model.sampling_settings(...)` answers what a call with those arguments runs with, and
+`model.recommended_sampling` is the file as read (`None` where it says nothing; Qwen3.5 ships no
+file at all, so everything is neutral there unless you pass it):
+
+```python
+from interp_engine import load_model
+
+model = load_model("google/gemma-3-270m-it")
+model.recommended_sampling  # temperature 1.0, top_k 64, top_p 0.95
+model.sampling_settings(temperature=0.3)  # SamplingSettings(temperature=0.3, top_k=64, top_p=0.95, presence_penalty=0.0)
+text = await model.generate_text(token_ids, max_tokens=64, temperature=0.3, presence_penalty=1.5)
+```
+
+The presence penalty is the one repetition control: a flat subtraction from the logit of every
+token the generation has produced so far, applied before the temperature and before a greedy
+argmax, as vLLM orders it. It breaks a loop without scaling with the loop's length, which is what a
+frequency penalty does and why that one punishes function words in a long reply. The file cannot
+state a presence penalty (it is not a `transformers` field), so unset means 0; a card that
+recommends one (Qwen3.5: 1.5) is for the caller to read. `transformers`' multiplicative
+`repetition_penalty` is read but never applied.
+
+Code that generates through `transformers.generate` directly gets the same decision with
+`hf_generate_kwargs(model.sampling_settings(...), prompt_len=n)`: every knob stated, the file's
+own `repetition_penalty` off, and the presence penalty as a logits processor.
+
+For a chat model, build the prompt with the tokenizer's own template rather than by hand.
 Both backends carry a `Tokenize` helper on `.tok` for this:
 
 ```python

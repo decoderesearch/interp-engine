@@ -44,6 +44,7 @@ from interp_engine.facts import factored_projection, text_config
 from interp_engine.points import PointSpec, Scope, known_names, point_spec, points_for
 from interp_engine.protocol import Completion
 from interp_engine.residual_basis import ResidualBasis, eager_residual_basis
+from interp_engine.sampling import RecommendedSampling, SamplingSettings, read_recommended_sampling, resolve_sampling
 from interp_engine.tokenize import Tokenize
 
 logger = logging.getLogger(__name__)
@@ -504,6 +505,7 @@ class EagerModel:
         self._requires_grad = requires_grad
         # Lazily computed in `grad_support`, never here: a verdict must not be part of loading.
         self._grad_support: GradSupport | None = None
+        self._recommended_sampling: RecommendedSampling | None = None
         torch_dtype = _normalize_dtype(dtype)
         model_kwargs = dict(model_kwargs or {})
         # Resolved once, and only when something is actually fetched by id: a caller handing over
@@ -622,6 +624,33 @@ class EagerModel:
     @property
     def default_prepend_bos(self) -> bool:
         return self._default_prepend_bos
+
+    @property
+    def recommended_sampling(self) -> RecommendedSampling:
+        """Read when first asked, never at load: a caller handing over its own ``hf_model`` and
+        ``tokenizer`` may use an id that resolves to nothing, and gets an empty answer here."""
+        # `getattr`: a test double built without `__init__` has no slot yet.
+        stated = getattr(self, "_recommended_sampling", None)
+        if stated is None:
+            stated = self._recommended_sampling = read_recommended_sampling(self.hf_model_id)
+        return stated
+
+    def sampling_settings(
+        self,
+        *,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
+    ) -> SamplingSettings:
+        """See the protocol."""
+        return resolve_sampling(
+            self.recommended_sampling,
+            temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+            presence_penalty=presence_penalty,
+        )
 
     # --- classmethod convenience --------------------------------------------
     @classmethod
@@ -1273,7 +1302,15 @@ class EagerModel:
         return capture_attention_eager(self, [int(t) for t in prompt_token_ids], layers)
 
     def _generate_completion(
-        self, prompt_ids: list[int], max_tokens: int, temperature: float, seed: int | None
+        self,
+        prompt_ids: list[int],
+        max_tokens: int,
+        temperature: float | None,
+        seed: int | None,
+        *,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
     ) -> Completion:
         from interp_engine.steer import generate_stream
 
@@ -1283,6 +1320,9 @@ class EagerModel:
                 torch.tensor([prompt_ids], device=self.device),
                 max_tokens=max_tokens,
                 temperature=temperature,
+                top_k=top_k,
+                top_p=top_p,
+                presence_penalty=presence_penalty,
                 seed=seed,
             )
         )
@@ -1296,18 +1336,32 @@ class EagerModel:
         prompt_token_ids: Any,
         *,
         max_tokens: int = 200,
-        temperature: float = 1.0,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
         seed: int | None = None,
     ) -> str:
         """Generate and return the completion text. See the protocol."""
-        return self._generate_completion([int(t) for t in prompt_token_ids], max_tokens, temperature, seed).text
+        return self._generate_completion(
+            [int(t) for t in prompt_token_ids],
+            max_tokens,
+            temperature,
+            seed,
+            top_k=top_k,
+            top_p=top_p,
+            presence_penalty=presence_penalty,
+        ).text
 
     async def generate_stream(
         self,
         prompt_token_ids: Any,
         *,
         max_tokens: int = 200,
-        temperature: float = 1.0,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
         seed: int | None = None,
     ) -> AsyncIterator[str]:
         """Yield decoded text deltas, one per token. See the protocol.
@@ -1323,6 +1377,9 @@ class EagerModel:
             torch.tensor([[int(t) for t in prompt_token_ids]], device=self.device),
             max_tokens=max_tokens,
             temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+            presence_penalty=presence_penalty,
             seed=seed,
         ):
             yield step.token_str
