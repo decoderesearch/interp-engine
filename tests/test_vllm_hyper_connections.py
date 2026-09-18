@@ -1200,7 +1200,7 @@ def test_a_stack_steer_can_be_confined_to_one_stream():
     trunk = _HyperTrunk(n_layers=2)
     site = Address("resid_streams", 0)
     modifier = _make_steer_modifier(
-        {"op": "add", "vector": [1.0] * D_MODEL, "coeff": 1.0, "stream": 2}, torch.device("cpu"), torch.float32
+        {"op": "additive", "vector": [1.0] * D_MODEL, "coeff": 1.0, "stream": 2}, torch.device("cpu"), torch.float32
     )
     demux, handles = _steering_demux(trunk, {site: modifier}, capture={site})
     with torch.no_grad():
@@ -1384,7 +1384,7 @@ def test_a_static_additive_steer_confined_to_one_stream_does_not_take_the_consta
     from interp_engine.vllm_capture.static import _compile_write_req, _Site
 
     site = _Site(Address("resid_streams", 0), delta=torch.zeros(8, HC_MULT, D_MODEL))
-    spec = {"op": "add", "vector": [1.0] * D_MODEL, "coeff": 1.0}
+    spec = {"op": "additive", "vector": [1.0] * D_MODEL, "coeff": 1.0}
     plain = _compile_write_req(spec, site, skip_positions=(), prompt_len=0, steer_generated=True)
     assert plain.vector is not None and plain.modify is None, "no stream is still the constant path"
 
@@ -1402,7 +1402,7 @@ def test_a_global_additive_steer_confined_to_one_stream_leaves_the_static_buffer
 
     site = _Site(Address("resid_streams", 0), delta=torch.zeros(8, HC_MULT, D_MODEL))
     worker = SimpleNamespace(_ie_static=StaticState(writes={"resid_streams.0": site}))
-    spec = {"op": "add", "point": "resid_streams", "layer": 0, "vector": [1.0] * D_MODEL, "coeff": 1.0}
+    spec = {"op": "additive", "point": "resid_streams", "layer": 0, "vector": [1.0] * D_MODEL, "coeff": 1.0}
 
     worker_set_static_delta(worker, [spec])
     assert site.modify is None and site.delta is not None

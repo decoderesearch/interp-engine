@@ -9,8 +9,41 @@ worker-spec dicts consumed by ``vllm_capture.worker_install_steering``.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 
 import torch
+
+
+class SteerMethod(StrEnum):
+    """The steering arithmetics, named once for both backends.
+
+    The eager ``SteerSpec.method``, the worker dict's ``op`` and the static tap's op set all read from
+    here, so a method has one spelling on every path. It used to have two -- ``additive`` on the
+    eager spec and ``add`` on the worker dict -- and nothing but a runtime set-membership check told
+    a caller which one it was speaking to. A ``StrEnum`` so a member compares equal to its own
+    spelling: a spec loaded from JSON with ``"orthogonal"`` in it needs no translation.
+
+    A new method is a new member here, plus a delta in ``steer.py`` and a modifier in
+    ``vllm_capture/steering.py`` -- see ``AGENTS.md``, "Steering arithmetic is one function per
+    method, shared with the worker".
+    """
+
+    ADDITIVE = "additive"
+    ORTHOGONAL = "orthogonal"
+    PROJECTION_CAP = "projection_cap"
+
+
+def steer_method(value: SteerMethod | str) -> SteerMethod:
+    """``value`` as a :class:`SteerMethod`, refusing anything else with the members listed.
+
+    The enum's own ``ValueError`` says only that the value is invalid; a caller who wrote ``"add"``
+    is better served by seeing ``additive`` in the message.
+    """
+    try:
+        return SteerMethod(value)
+    except ValueError:
+        expected = ", ".join(m.value for m in SteerMethod)
+        raise ValueError(f"Unknown steering method {value!r}; expected one of {expected}") from None
 
 
 def _as_list(vector: torch.Tensor | list[float]) -> list[float]:
@@ -102,7 +135,7 @@ def steering_spec_to_worker_specs(spec: SteeringSpec, *, point: str | None = Non
                     {
                         "layer": int(layer),
                         **where,
-                        "op": "add",
+                        "op": SteerMethod.ADDITIVE.value,
                         "vector": _as_list(op.vector),
                         "coeff": float(op.scale),
                     }
@@ -112,7 +145,7 @@ def steering_spec_to_worker_specs(spec: SteeringSpec, *, point: str | None = Non
                     {
                         "layer": int(layer),
                         **where,
-                        "op": "projection_cap",
+                        "op": SteerMethod.PROJECTION_CAP.value,
                         "vector": _as_list(op.vector),
                         "min": op.min,
                         "max": op.max,
@@ -123,7 +156,7 @@ def steering_spec_to_worker_specs(spec: SteeringSpec, *, point: str | None = Non
                     {
                         "layer": int(layer),
                         **where,
-                        "op": "orthogonal",
+                        "op": SteerMethod.ORTHOGONAL.value,
                         "vector": _as_list(op.vector),
                         "coeff": float(op.coeff),
                     }

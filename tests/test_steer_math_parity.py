@@ -14,6 +14,8 @@ which agreed to within fp error and would have kept agreeing through a change to
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 import torch
 
@@ -31,6 +33,8 @@ from interp_engine.steer_specs import (
     OrthogonalDecompSpec,
     ProjectionCapSpec,
     SteeringSpec,
+    SteerMethod,
+    steering_spec_to_worker_specs,
 )
 from interp_engine.vllm_capture.steering import _make_steer_modifier
 
@@ -61,14 +65,14 @@ def test_additive_matches_the_worker() -> None:
     """Both sides return a ``[d_model]`` delta that broadcasts across positions."""
     residual, vector, coeff = _residual(), _vector(), 2.5
     eager = steer_delta(SteerSpec(vector=vector, layer=0, coeff=coeff), residual, vector)
-    worker = _worker_delta({"op": "add", "vector": vector.tolist(), "coeff": coeff}, residual)
+    worker = _worker_delta({"op": "additive", "vector": vector.tolist(), "coeff": coeff}, residual)
     torch.testing.assert_close(eager, worker)
 
 
 @pytest.mark.parametrize("coeff", [0.0, 0.5, 1.0, -1.0, 3.0])
 def test_orthogonal_matches_the_worker(coeff: float) -> None:
     residual, vector = _residual(), _vector()
-    eager = steer_delta(SteerSpec(vector=vector, layer=0, coeff=coeff, method="orthogonal"), residual, vector)
+    eager = steer_delta(SteerSpec(vector=vector, layer=0, coeff=coeff, method=SteerMethod.ORTHOGONAL), residual, vector)
     worker = _worker_delta({"op": "orthogonal", "vector": vector.tolist(), "coeff": coeff}, residual)
     torch.testing.assert_close(eager, worker)
 
@@ -77,7 +81,9 @@ def test_orthogonal_matches_the_worker(coeff: float) -> None:
 def test_projection_cap_matches_the_worker(lo: float | None, hi: float | None) -> None:
     """The method that had no eager implementation at all until this change."""
     residual, vector = _residual(), _vector()
-    eager = steer_delta(SteerSpec(vector=vector, layer=0, method="projection_cap", min=lo, max=hi), residual, vector)
+    eager = steer_delta(
+        SteerSpec(vector=vector, layer=0, method=SteerMethod.PROJECTION_CAP, min=lo, max=hi), residual, vector
+    )
     worker = _worker_delta({"op": "projection_cap", "vector": vector.tolist(), "min": lo, "max": hi}, residual)
     torch.testing.assert_close(eager, worker)
 
@@ -175,7 +181,7 @@ def test_every_backend_agnostic_op_converts_to_an_eager_spec() -> None:
 
     got = steering_spec_to_eager_specs(spec)
 
-    assert [s.method for s in got] == ["additive", "orthogonal", "projection_cap"]
+    assert [s.method for s in got] == [SteerMethod.ADDITIVE, SteerMethod.ORTHOGONAL, SteerMethod.PROJECTION_CAP]
     assert all(s.layer == 3 and s.point == "resid_post" for s in got)
     assert (got[2].min, got[2].max) == (-1.0, 1.0)
 
@@ -267,12 +273,50 @@ def test_a_stream_on_a_point_without_one_is_refused_rather_than_ignored() -> Non
     from interp_engine.vllm_capture.steering import _make_steer_modifier
 
     modify = _make_steer_modifier(
-        {"op": "add", "vector": _vector().tolist(), "coeff": 1.0, "stream": 0}, torch.device("cpu"), torch.float32
+        {"op": "additive", "vector": _vector().tolist(), "coeff": 1.0, "stream": 0}, torch.device("cpu"), torch.float32
     )
     with pytest.raises(ValueError, match="no stream axis"):
         modify(torch.zeros(4, D_MODEL))
 
 
 def test_an_unknown_method_names_the_ones_that_exist() -> None:
-    with pytest.raises(ValueError, match="projection_cap"):
-        steer_delta(SteerSpec(vector=_vector(), layer=0, method="nope"), _residual(), _vector())
+    # Refused at construction, before any forward, and the message lists every member.
+    with pytest.raises(ValueError, match="additive, orthogonal, projection_cap"):
+        SteerSpec(vector=_vector(), layer=0, method=cast(SteerMethod, "nope"))
+
+
+# ── one vocabulary on both sides ────────────────────────────────────────────────────────────
+
+
+def test_a_spec_built_from_a_string_holds_the_enum() -> None:
+    """A spec loaded from JSON says ``"orthogonal"``; it must become the member, not stay a str."""
+    spec = SteerSpec(vector=_vector(), layer=0, method=cast(SteerMethod, "orthogonal"))
+    assert spec.method is SteerMethod.ORTHOGONAL
+
+
+def test_worker_specs_carry_steer_method_values() -> None:
+    """The worker dict's ``op`` is the same spelling as the eager ``method``, member for member."""
+    vector = _vector()
+    spec = SteeringSpec(
+        layers={
+            0: LayerSteeringSpec(
+                operations=[
+                    AddSpec(vector=vector, scale=1.0),
+                    OrthogonalDecompSpec(vector=vector, coeff=0.0),
+                    ProjectionCapSpec(vector=vector, max=1.0),
+                ]
+            )
+        }
+    )
+    ops = [s["op"] for s in steering_spec_to_worker_specs(spec)]
+    methods = [s.method for s in steering_spec_to_eager_specs(spec)]
+    assert ops == ["additive", "orthogonal", "projection_cap"]
+    assert [SteerMethod(op) for op in ops] == methods
+
+
+def test_the_worker_refuses_the_old_spelling() -> None:
+    """``add`` was the worker's own name for ``additive``; it is gone rather than aliased."""
+    with pytest.raises(ValueError, match="additive"):
+        _make_steer_modifier(
+            {"op": "add", "vector": _vector().tolist(), "coeff": 1.0}, torch.device("cpu"), torch.float32
+        )

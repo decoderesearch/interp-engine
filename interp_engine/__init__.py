@@ -120,6 +120,8 @@ from interp_engine.steer_specs import (
     ProjectionCapSpec,
     SteeringOp,
     SteeringSpec,
+    SteerMethod,
+    steer_method,
     steering_spec_to_worker_specs,
 )
 from interp_engine.sync import SyncModel, sync_model
@@ -245,6 +247,7 @@ __all__ = [
     "PositionMask",
     "ProjectionCapSpec",
     "SteerMask",
+    "SteerMethod",
     "SteerSpec",
     "SteeringOp",
     "SteeringSpec",
@@ -252,6 +255,7 @@ __all__ = [
     "resolve_masked_positions",
     "steer",
     "steer_delta",
+    "steer_method",
     "steering_spec_to_eager_specs",
     "steering_spec_to_worker_specs",
     "unit_vector",

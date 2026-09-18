@@ -54,7 +54,9 @@ files and why they are where they are.
 - `steer.py` — steering, and the per-token generation stream. Each method's arithmetic is one
   `steer_delta` branch, which is what the vLLM worker's modifier computes too and what
   `tests/test_steer_math_parity.py` runs against it on CPU; `steer()` is the context both backends
-  take, registering per-request on vLLM rather than installing a global hook.
+  take, registering per-request on vLLM rather than installing a global hook. The methods are named
+  once, in `steer_specs.SteerMethod`: the eager `SteerSpec.method` and the worker dict's `op` both
+  read from it, so a method has one spelling on either backend.
 - `mappers.py` — translation between canonical points and other frameworks' names:
   TransformerLens hook strings and nnsight/nnterp accessors, both directions. See [Porting from
   TransformerLens, nnsight or nnterp](PORTING.md#porting-from-transformerlens-nnsight-or-nnterp).

@@ -25,6 +25,7 @@ from interp_engine.address import Address, format_address, parse_address, to_add
 from interp_engine.facts import is_linear_attention_layer, unclassified_layer_kinds
 from interp_engine.hooks import hidden_arg_index, hidden_from_call
 from interp_engine.points import steer_refusal_reason
+from interp_engine.steer_specs import SteerMethod
 from interp_engine.vllm_capture._demux import _ensure_patched, _get_demux, _resolve_rid
 from interp_engine.vllm_capture._hooks import (
     flat_value,
@@ -675,10 +676,10 @@ def fit_max_num_batched_tokens(
 # --- worker state ------------------------------------------------------------
 
 
-#: Ops static writes can serve. ``add`` uses a static ``add_``; the rest read the live residual.
-_STEER_OPS = frozenset({"add", "orthogonal", "projection_cap"})
+#: Ops static writes can serve. ``additive`` uses a static ``add_``; the rest read the live residual.
+_STEER_OPS = frozenset(m.value for m in SteerMethod)
 _LENS_OPS = frozenset({"steer", "ablate", "swap"})
-_STATIC_WRITE_OPS = _STEER_OPS | _LENS_OPS
+STATIC_WRITE_OPS = _STEER_OPS | _LENS_OPS
 
 
 @dataclass
@@ -1811,7 +1812,7 @@ def worker_set_static_delta(
 ) -> None:
     """Install static writes from worker specs. Zeros every write site first.
 
-    Additive ``op="add"`` without a lens scope fills the static ``delta`` buffer. Orthogonal,
+    ``op="additive"`` without a lens scope fills the static ``delta`` buffer. Orthogonal,
     projection_cap, and lens ops attach a live ``modify`` that reads the residual each
     forward (breakable ``add_eager``). ``lens_scope`` is the jlens prefill/decode skip.
 
@@ -1830,12 +1831,12 @@ def worker_set_static_delta(
     from interp_engine.vllm_capture.steering import _make_steer_modifier
 
     for spec in specs:
-        op = str(spec.get("op", "add"))
-        if op not in _STATIC_WRITE_OPS:
-            raise ValueError(f"static taps cannot serve op={op!r}; supported ops are {sorted(_STATIC_WRITE_OPS)}")
+        op = str(spec.get("op", SteerMethod.ADDITIVE))
+        if op not in STATIC_WRITE_OPS:
+            raise ValueError(f"static taps cannot serve op={op!r}; supported ops are {sorted(STATIC_WRITE_OPS)}")
         site = _write_site(static, Address(str(spec["point"]), int(spec["layer"])))
         assert site.delta is not None
-        if op == "add" and lens_scope is None and spec.get("stream") is None:
+        if op == SteerMethod.ADDITIVE and lens_scope is None and spec.get("stream") is None:
             vec = torch.tensor(spec["vector"], dtype=torch.float32, device=site.delta.device)
             vec = (vec * float(spec["coeff"])).to(dtype=site.delta.dtype)
             site.delta.copy_(vec.reshape(1, -1).expand_as(site.delta))
@@ -1857,14 +1858,14 @@ def _compile_write_req(
     prompt_len: int,
     steer_generated: bool,
 ) -> _WriteReq:
-    op = str(spec.get("op", "add"))
-    if op not in _STATIC_WRITE_OPS:
-        raise ValueError(f"static taps cannot serve op={op!r}; supported ops are {sorted(_STATIC_WRITE_OPS)}")
+    op = str(spec.get("op", SteerMethod.ADDITIVE))
+    if op not in STATIC_WRITE_OPS:
+        raise ValueError(f"static taps cannot serve op={op!r}; supported ops are {sorted(STATIC_WRITE_OPS)}")
     assert site.delta is not None
     device, dtype = site.delta.device, site.delta.dtype
     # A constant `[1, width]` vector broadcasts over a stream axis and so cannot exclude one; see
     # `worker_set_static_delta` for why a `stream` therefore has to go the modifier way.
-    if op == "add" and spec.get("stream") is None:
+    if op == SteerMethod.ADDITIVE and spec.get("stream") is None:
         vec = torch.tensor(spec["vector"], dtype=torch.float32, device=device)
         vec = (vec * float(spec["coeff"])).to(dtype=dtype).reshape(1, -1)
         return _WriteReq(
