@@ -34,6 +34,7 @@ from interp_engine.notebook_stdout import ensure_stdout_descriptor
 from interp_engine.points import d_model_wide, hyper_connection_names, refusal_reasons
 from interp_engine.points import steer_refusal_reason as points_steer_refusal
 from interp_engine.residual_basis import ResidualBasis, vllm_residual_basis
+from interp_engine.steer_specs import SteerMethod
 from interp_engine.vllm_capture import (
     _GLOBAL_POINTS,
     DEFAULT_HS_STORAGE_PATH,
@@ -52,6 +53,7 @@ from interp_engine.vllm_capture.static import (
     DECODE_ONLY_GRAPHS,
     STATIC_ENV,
     STATIC_SKIP_ABSENT_ENV,
+    STATIC_WRITE_OPS,
     apply_breakable_env,
     decode_only_graphs_reason,
     encode_static_env,
@@ -1504,20 +1506,20 @@ class VLLMModel:
     def _require_static_writes(self, specs: Sequence[dict], what: str) -> None:
         """Allow static writes when hooks run, or when every write site is declared.
 
-        Additive ``add_`` and live-read ops (orthogonal, projection_cap, lens steer/ablate/swap)
-        all ride the same static wrap. A site miss is a 400, not a silent no-op.
+        The additive static ``add_`` and live-read ops (orthogonal, projection_cap, lens
+        steer/ablate/swap) all ride the same static wrap. A site miss is a 400, not a silent no-op.
         """
         if self.hooks_available:
             return
         writes = getattr(self, "_static_writes", frozenset())
         if self.graph_replay and writes:
             for spec in specs:
-                op = spec.get("op", "add")
-                if op not in {"add", "orthogonal", "projection_cap", "steer", "ablate", "swap"}:
+                op = spec.get("op", SteerMethod.ADDITIVE)
+                if op not in STATIC_WRITE_OPS:
                     raise RuntimeError(
                         f"{what} op {op!r} is not one a static write tap can apply; "
-                        f"backend='vllm-static' serves add, orthogonal, projection_cap, steer, "
-                        f"ablate and swap. Use backend='vllm' for this one."
+                        f"backend='vllm-static' serves {', '.join(sorted(STATIC_WRITE_OPS))}. "
+                        f"Use backend='vllm' for this one."
                     )
                 site = Address(str(spec.get("point") or "resid_post"), int(spec["layer"]))
                 if not any(alias in writes for alias in resid_stream_aliases(site)):

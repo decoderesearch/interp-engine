@@ -32,6 +32,8 @@ from interp_engine.steer_specs import (
     OrthogonalDecompSpec,
     ProjectionCapSpec,
     SteeringSpec,
+    SteerMethod,
+    steer_method,
 )
 from interp_engine.sync import sync_model
 
@@ -156,10 +158,10 @@ def projection_cap_delta(
     return (capped - projection) * unit
 
 
-#: The steering methods :class:`SteerSpec` accepts, each with the same arithmetic as the
-#: worker-side op of the same name (``vllm_capture/steering.py``). Kept as a tuple so the
-#: refusal for an unknown method can list them.
-STEER_METHODS = ("additive", "orthogonal", "projection_cap")
+#: The steering methods :class:`SteerSpec` accepts, as their spellings. Derived from
+#: :class:`~interp_engine.steer_specs.SteerMethod`, which the worker-side op reads from too, and
+#: kept under this name so callers that listed the methods keep working.
+STEER_METHODS: tuple[str, ...] = tuple(m.value for m in SteerMethod)
 
 
 @dataclass
@@ -169,7 +171,7 @@ class SteerSpec:
     vector: torch.Tensor
     layer: int
     coeff: float = 1.0
-    method: str = "additive"  # one of STEER_METHODS
+    method: SteerMethod = SteerMethod.ADDITIVE
     point: str = "resid_post"
     normalize: bool = False
     stream: int | None = None
@@ -195,6 +197,11 @@ class SteerSpec:
     max: float | None = None
     """Upper bound for ``method="projection_cap"``. See :attr:`min`."""
 
+    def __post_init__(self) -> None:
+        # A spec built from a string -- a config file, a wire payload -- is checked here, at
+        # construction, rather than at the first forward it reaches. An unknown name lists the members.
+        self.method = steer_method(self.method)
+
 
 def _prepared_vector(spec: SteerSpec, ref: torch.Tensor) -> torch.Tensor:
     vec = spec.vector.to(device=ref.device, dtype=ref.dtype)
@@ -214,13 +221,13 @@ def steer_delta(spec: SteerSpec, activations: torch.Tensor, vector: torch.Tensor
     orthogonal case subtly wrong if either half is forgotten. It is also the shape the vLLM
     worker's modifiers already have, so the two backends run the same expressions.
     """
-    if spec.method == "additive":
-        return spec.coeff * vector
-    if spec.method == "orthogonal":
-        return OrthogonalProjector(vector).delta(activations, spec.coeff)
-    if spec.method == "projection_cap":
-        return projection_cap_delta(activations, vector, minimum=spec.min, maximum=spec.max)
-    raise ValueError(f"Unknown steering method {spec.method!r}; expected one of {', '.join(STEER_METHODS)}")
+    match steer_method(spec.method):
+        case SteerMethod.ADDITIVE:
+            return spec.coeff * vector
+        case SteerMethod.ORTHOGONAL:
+            return OrthogonalProjector(vector).delta(activations, spec.coeff)
+        case SteerMethod.PROJECTION_CAP:
+            return projection_cap_delta(activations, vector, minimum=spec.min, maximum=spec.max)
 
 
 @dataclass(frozen=True)
@@ -420,12 +427,16 @@ def steering_spec_to_eager_specs(spec: SteeringSpec, *, point: str | None = None
             if isinstance(op, AddSpec):
                 vector = op.vector if isinstance(op.vector, torch.Tensor) else torch.tensor(op.vector)
                 out.append(
-                    SteerSpec(vector=vector, layer=int(layer), coeff=float(op.scale), method="additive", **where)
+                    SteerSpec(
+                        vector=vector, layer=int(layer), coeff=float(op.scale), method=SteerMethod.ADDITIVE, **where
+                    )
                 )
             elif isinstance(op, OrthogonalDecompSpec):
                 vector = op.vector if isinstance(op.vector, torch.Tensor) else torch.tensor(op.vector)
                 out.append(
-                    SteerSpec(vector=vector, layer=int(layer), coeff=float(op.coeff), method="orthogonal", **where)
+                    SteerSpec(
+                        vector=vector, layer=int(layer), coeff=float(op.coeff), method=SteerMethod.ORTHOGONAL, **where
+                    )
                 )
             elif isinstance(op, ProjectionCapSpec):
                 vector = op.vector if isinstance(op.vector, torch.Tensor) else torch.tensor(op.vector)
@@ -433,7 +444,7 @@ def steering_spec_to_eager_specs(spec: SteeringSpec, *, point: str | None = None
                     SteerSpec(
                         vector=vector,
                         layer=int(layer),
-                        method="projection_cap",
+                        method=SteerMethod.PROJECTION_CAP,
                         min=op.min,
                         max=op.max,
                         **where,

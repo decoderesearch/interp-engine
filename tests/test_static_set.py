@@ -1184,7 +1184,7 @@ def test_write_demux_steers_only_the_named_request_slice():
     worker_register_static_write(
         worker,
         "steer-me",
-        [{"point": "resid_post", "layer": 0, "op": "add", "vector": [1.0, 0.0], "coeff": 1.0}],
+        [{"point": "resid_post", "layer": 0, "op": "additive", "vector": [1.0, 0.0], "coeff": 1.0}],
     )
     demux.current_meta = (["steer-me", "leave-me"], [2, 2])
     _wrap_module(layer, [(site, "write")], worker)
@@ -1211,7 +1211,7 @@ def test_write_demux_skips_masked_prompt_positions():
     worker_register_static_write(
         worker,
         "r",
-        [{"point": "resid_post", "layer": 0, "op": "add", "vector": [1.0, 0.0], "coeff": 1.0}],
+        [{"point": "resid_post", "layer": 0, "op": "additive", "vector": [1.0, 0.0], "coeff": 1.0}],
         skip_positions=[0],
         prompt_len=2,
     )
@@ -1240,12 +1240,12 @@ def test_write_demux_applies_two_vectors_in_one_batch():
     worker_register_static_write(
         worker,
         "a",
-        [{"point": "resid_post", "layer": 0, "op": "add", "vector": [1.0, 0.0], "coeff": 1.0}],
+        [{"point": "resid_post", "layer": 0, "op": "additive", "vector": [1.0, 0.0], "coeff": 1.0}],
     )
     worker_register_static_write(
         worker,
         "b",
-        [{"point": "resid_post", "layer": 0, "op": "add", "vector": [0.0, 1.0], "coeff": 1.0}],
+        [{"point": "resid_post", "layer": 0, "op": "additive", "vector": [0.0, 1.0], "coeff": 1.0}],
     )
     demux.current_meta = (["a", "b"], [1, 1])
     _wrap_module(layer, [(site, "write")], worker)
