@@ -96,6 +96,16 @@ from interp_engine.residual_basis import (
     reduce_streams,
     vllm_residual_basis,
 )
+from interp_engine.sampling import (
+    PresencePenaltyProcessor,
+    RecommendedSampling,
+    SamplingSettings,
+    VLLMSamplingKwargs,
+    apply_presence_penalty,
+    hf_generate_kwargs,
+    read_recommended_sampling,
+    resolve_sampling,
+)
 from interp_engine.select import BackendSelection, select_backend
 from interp_engine.steer import (
     STEER_METHODS,
@@ -185,6 +195,15 @@ __all__ = [
     "HubKernelUnsupported",
     "deepgemm_fallback_kwargs",
     "InterpModel",
+    # Sampling: what the checkpoint recommends, and what a generation runs with.
+    "PresencePenaltyProcessor",
+    "RecommendedSampling",
+    "SamplingSettings",
+    "VLLMSamplingKwargs",
+    "apply_presence_penalty",
+    "hf_generate_kwargs",
+    "read_recommended_sampling",
+    "resolve_sampling",
     "VLLMModel",
     # That same surface without an event loop, for scripts and notebooks. The sync free
     # functions below dispatch through this, so most callers never name it.

@@ -35,6 +35,7 @@ import torch
 from interp_engine._loop import LoopRunner
 from interp_engine.address import Address
 from interp_engine.protocol import InterpModel
+from interp_engine.sampling import RecommendedSampling, SamplingSettings
 
 if TYPE_CHECKING:
     from interp_engine.autograd_support import GradSupport
@@ -133,6 +134,23 @@ class SyncModel:
     def residual_basis(self) -> ResidualBasis:
         return self._model.residual_basis
 
+    # --- sampling -----------------------------------------------------------
+    @property
+    def recommended_sampling(self) -> RecommendedSampling:
+        return self._model.recommended_sampling
+
+    def sampling_settings(
+        self,
+        *,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
+    ) -> SamplingSettings:
+        return self._model.sampling_settings(
+            temperature=temperature, top_k=top_k, top_p=top_p, presence_penalty=presence_penalty
+        )
+
     # --- tokenization (already sync on both backends) -----------------------
     def to_tokens(self, text: str | list[str], **kwargs: Any) -> torch.Tensor:
         return self._model.to_tokens(text, **kwargs)
@@ -209,11 +227,22 @@ class SyncModel:
         prompt_token_ids: Sequence[int],
         *,
         max_tokens: int = 200,
-        temperature: float = 1.0,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
         seed: int | None = None,
     ) -> str:
         return self._runner.run(
-            self._model.generate_text(prompt_token_ids, max_tokens=max_tokens, temperature=temperature, seed=seed),
+            self._model.generate_text(
+                prompt_token_ids,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_k=top_k,
+                top_p=top_p,
+                presence_penalty=presence_penalty,
+                seed=seed,
+            ),
             what="generate_text()",
         )
 
@@ -222,11 +251,22 @@ class SyncModel:
         prompt_token_ids: Sequence[int],
         *,
         max_tokens: int = 200,
-        temperature: float = 1.0,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
         seed: int | None = None,
     ) -> Iterator[str]:
         return self._runner.iterate(
-            self._model.generate_stream(prompt_token_ids, max_tokens=max_tokens, temperature=temperature, seed=seed),
+            self._model.generate_stream(
+                prompt_token_ids,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_k=top_k,
+                top_p=top_p,
+                presence_penalty=presence_penalty,
+                seed=seed,
+            ),
             what="generate_stream()",
         )
 
