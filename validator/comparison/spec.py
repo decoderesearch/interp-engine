@@ -181,9 +181,13 @@ _EAGER = {"eager", "tlens_v2", "tlens_v3", "nnsight"}
 #
 # `attn_in` is the sublayer's *input*, not a pre-attention norm's output — a distinction with the
 # same shape: OLMo-2/3 have no such norm, so `attn_in` there is the unnormalized residual and equals
-# `resid_pre`. nnterp's `attentions_input` is the same accessor; TransformerLens' nearest name
-# (`ln1.hook_normalized`) is a norm output rather than a module input, so TL is deliberately not
-# scored on it — a cell that disagrees for a *definitional* reason teaches nothing.
+# `resid_pre`. nnterp's `attentions_input` is the same accessor. On TransformerLens only the TL3
+# bridge has a module-input name, `attn.hook_in`, and it is scored there; legacy `HookedTransformer`
+# has none -- its `ln1.hook_normalized` is a norm output, pre-gain, and its block-level `hook_attn_in`
+# fires on the residual BEFORE the norm, so a cell on either would disagree for a *definitional*
+# reason and teach nothing. `mlp_in` is the same story one sublayer on, scored against `mlp.hook_in`.
+# Both rows are here because the mapper once translated the block-level names to these points, and
+# no cell measured it: a name that maps has to have a cell that would go red if it mapped wrongly.
 #
 # The QK-norm quartet is `eager` against `vllm` alone: TransformerLens exposes it on the TL3 bridge
 # only and nnterp has no accessor, so those two engines are the whole comparison. It is worth having
@@ -309,7 +313,8 @@ POINTS: dict[str, dict] = {
     "mlp_out_post": {"engines": _EAGER_AND_TL | _VLLM, "kind": "vector"},
     "attn_out": {"engines": _EAGER | _VLLM | {"sglang"}, "kind": "vector", "softmax_attention_only": True},
     "attn_out_post": {"engines": _EAGER_AND_TL | _VLLM, "kind": "vector", "softmax_attention_only": True},
-    "attn_in": {"engines": {"eager", "nnsight"} | _VLLM, "kind": "vector", "softmax_attention_only": True},
+    "attn_in": {"engines": {"eager", "nnsight", "tlens_v3"} | _VLLM, "kind": "vector", "softmax_attention_only": True},
+    "mlp_in": {"engines": {"eager", "tlens_v3"}, "kind": "vector"},
     "mlp_pre": {"engines": _EAGER, "kind": "vector"},
     "mlp_pre_linear": {"engines": _EAGER, "kind": "vector"},
     "mlp_act": {"engines": _EAGER | _VLLM, "kind": "vector"},
@@ -893,7 +898,7 @@ ENGINE_GAPS: tuple[dict, ...] = (
     {
         "engines": ("tlens_v3",),
         "models": ("facebook/opt-*",),
-        "points": ("mlp_act", "mlp_out", "mlp_out_post", "mlp_pre"),
+        "points": ("mlp_act", "mlp_in", "mlp_out", "mlp_out_post", "mlp_pre"),
         "reason": (
             "OPT inlines `fc1`/`fc2` on the decoder layer, so the bridge's `mlp` component wraps nothing "
             "that runs: `blocks.N.hook_mlp_out` is registered and never fires (checked directly on "
@@ -904,9 +909,11 @@ ENGINE_GAPS: tuple[dict, ...] = (
         "engines": ("tlens_v3",),
         "models": ("LiquidAI/LFM2-8B-A1B", "nvidia/NVIDIA-Nemotron-3-Nano-*"),
         "points": (
+            "attn_in",
             "attn_out",
             "attn_out_post",
             "mlp_act",
+            "mlp_in",
             "mlp_out",
             "mlp_out_post",
             "mlp_pre",

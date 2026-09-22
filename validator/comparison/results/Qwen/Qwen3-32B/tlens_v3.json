@@ -1,14 +1,62 @@
 {
-  "captured_at": "2026-09-03",
+  "captured_at": "2026-09-22",
   "device": "cuda",
   "dtype": "bfloat16",
   "engine": "tlens_v3",
   "hf_id": "Qwen/Qwen3-32B",
   "known_bug": null,
   "points": {
-    "attn_out.0": {
-      "cos": 1.0000000000000002,
+    "attn_in.0": {
+      "cos": 1.0,
       "cos_worst_token": 0.9999999999999998,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "attn_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 1
+    },
+    "attn_in.32": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 32,
+      "max_abs_diff": 0.0,
+      "point": "attn_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 3
+    },
+    "attn_in.48": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 48,
+      "max_abs_diff": 0.0,
+      "point": "attn_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 6
+    },
+    "attn_in.63": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 63,
+      "max_abs_diff": 0.0,
+      "point": "attn_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 4
+    },
+    "attn_out.0": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 1.0,
       "layer": 0,
       "max_abs_diff": 0.0,
       "point": "attn_out",
@@ -16,11 +64,11 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 5
+      "worst_token": 0
     },
     "attn_out.32": {
       "cos": 1.0,
-      "cos_worst_token": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 32,
       "max_abs_diff": 0.0,
       "point": "attn_out",
@@ -28,11 +76,11 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 2
+      "worst_token": 9
     },
     "attn_out.48": {
-      "cos": 0.9999999999999999,
-      "cos_worst_token": 0.9999999999999999,
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 48,
       "max_abs_diff": 0.0,
       "point": "attn_out",
@@ -40,11 +88,11 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 1
+      "worst_token": 6
     },
     "attn_out.63": {
-      "cos": 1.0000000000000002,
-      "cos_worst_token": 0.9999999999999998,
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 63,
       "max_abs_diff": 0.0,
       "point": "attn_out",
@@ -52,11 +100,11 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 7
+      "worst_token": 3
     },
     "attn_out_post.0": {
-      "cos": 1.0000000000000002,
-      "cos_worst_token": 0.9999999999999998,
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 1.0,
       "layer": 0,
       "max_abs_diff": 0.0,
       "point": "attn_out_post",
@@ -64,11 +112,11 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 5
+      "worst_token": 0
     },
     "attn_out_post.32": {
       "cos": 1.0,
-      "cos_worst_token": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 32,
       "max_abs_diff": 0.0,
       "point": "attn_out_post",
@@ -76,11 +124,11 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 2
+      "worst_token": 9
     },
     "attn_out_post.48": {
-      "cos": 0.9999999999999999,
-      "cos_worst_token": 0.9999999999999999,
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 48,
       "max_abs_diff": 0.0,
       "point": "attn_out_post",
@@ -88,11 +136,11 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 1
+      "worst_token": 6
     },
     "attn_out_post.63": {
-      "cos": 1.0000000000000002,
-      "cos_worst_token": 0.9999999999999998,
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 63,
       "max_abs_diff": 0.0,
       "point": "attn_out_post",
@@ -100,11 +148,11 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 7
+      "worst_token": 3
     },
     "mlp_act.0": {
       "cos": 1.0,
-      "cos_worst_token": 0.9999999999999988,
+      "cos_worst_token": 0.9999999999999989,
       "layer": 0,
       "max_abs_diff": 0.0,
       "point": "mlp_act",
@@ -112,11 +160,11 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 8
+      "worst_token": 3
     },
     "mlp_act.32": {
-      "cos": 1.0000000000000002,
-      "cos_worst_token": 0.9999999999999996,
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999997,
       "layer": 32,
       "max_abs_diff": 0.0,
       "point": "mlp_act",
@@ -124,10 +172,10 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 1
+      "worst_token": 0
     },
     "mlp_act.48": {
-      "cos": 0.9999999999999999,
+      "cos": 1.0,
       "cos_worst_token": 0.9999999999999997,
       "layer": 48,
       "max_abs_diff": 0.0,
@@ -136,10 +184,10 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 2
+      "worst_token": 1
     },
     "mlp_act.63": {
-      "cos": 0.9999999999999998,
+      "cos": 1.0,
       "cos_worst_token": 0.9999999999999949,
       "layer": 63,
       "max_abs_diff": 0.0,
@@ -148,11 +196,59 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 9
+      "worst_token": 6
+    },
+    "mlp_in.0": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "mlp_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 4
+    },
+    "mlp_in.32": {
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 32,
+      "max_abs_diff": 0.0,
+      "point": "mlp_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 0
+    },
+    "mlp_in.48": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999996,
+      "layer": 48,
+      "max_abs_diff": 0.0,
+      "point": "mlp_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 0
+    },
+    "mlp_in.63": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999999,
+      "layer": 63,
+      "max_abs_diff": 0.0,
+      "point": "mlp_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 6
     },
     "mlp_out.0": {
       "cos": 1.0,
-      "cos_worst_token": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 0,
       "max_abs_diff": 0.0,
       "point": "mlp_out",
@@ -160,11 +256,11 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 4
+      "worst_token": 8
     },
     "mlp_out.32": {
-      "cos": 1.0,
-      "cos_worst_token": 0.9999999999999998,
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 32,
       "max_abs_diff": 0.0,
       "point": "mlp_out",
@@ -172,10 +268,10 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 2
+      "worst_token": 5
     },
     "mlp_out.48": {
-      "cos": 0.9999999999999999,
+      "cos": 1.0000000000000002,
       "cos_worst_token": 0.9999999999999998,
       "layer": 48,
       "max_abs_diff": 0.0,
@@ -184,7 +280,7 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 1
+      "worst_token": 6
     },
     "mlp_out.63": {
       "cos": 1.0,
@@ -196,11 +292,11 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 10
+      "worst_token": 9
     },
     "mlp_out_post.0": {
       "cos": 1.0,
-      "cos_worst_token": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 0,
       "max_abs_diff": 0.0,
       "point": "mlp_out_post",
@@ -208,11 +304,11 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 4
+      "worst_token": 8
     },
     "mlp_out_post.32": {
-      "cos": 1.0,
-      "cos_worst_token": 0.9999999999999998,
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 32,
       "max_abs_diff": 0.0,
       "point": "mlp_out_post",
@@ -220,10 +316,10 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 2
+      "worst_token": 5
     },
     "mlp_out_post.48": {
-      "cos": 0.9999999999999999,
+      "cos": 1.0000000000000002,
       "cos_worst_token": 0.9999999999999998,
       "layer": 48,
       "max_abs_diff": 0.0,
@@ -232,7 +328,7 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 1
+      "worst_token": 6
     },
     "mlp_out_post.63": {
       "cos": 1.0,
@@ -244,11 +340,11 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 10
+      "worst_token": 9
     },
     "mlp_pre.0": {
       "cos": 0.9999999999999999,
-      "cos_worst_token": 0.9999999999999997,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 0,
       "max_abs_diff": 0.0,
       "point": "mlp_pre",
@@ -259,8 +355,8 @@
       "worst_token": 3
     },
     "mlp_pre.32": {
-      "cos": 0.9999999999999999,
-      "cos_worst_token": 0.9999999999999998,
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 32,
       "max_abs_diff": 0.0,
       "point": "mlp_pre",
@@ -268,11 +364,11 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 9
+      "worst_token": 0
     },
     "mlp_pre.48": {
-      "cos": 1.0,
-      "cos_worst_token": 0.9999999999999998,
+      "cos": 0.9999999999999998,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 48,
       "max_abs_diff": 0.0,
       "point": "mlp_pre",
@@ -280,10 +376,10 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 9
+      "worst_token": 3
     },
     "mlp_pre.63": {
-      "cos": 1.0000000000000002,
+      "cos": 1.0,
       "cos_worst_token": 0.9999999999999999,
       "layer": 63,
       "max_abs_diff": 0.0,
@@ -295,8 +391,8 @@
       "worst_token": 1
     },
     "mlp_pre_linear.0": {
-      "cos": 1.0000000000000002,
-      "cos_worst_token": 0.9999999999999998,
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 0,
       "max_abs_diff": 0.0,
       "point": "mlp_pre_linear",
@@ -304,7 +400,7 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 1
+      "worst_token": 0
     },
     "mlp_pre_linear.32": {
       "cos": 1.0,
@@ -316,11 +412,11 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 1
+      "worst_token": 2
     },
     "mlp_pre_linear.48": {
-      "cos": 0.9999999999999999,
-      "cos_worst_token": 0.9999999999999996,
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 48,
       "max_abs_diff": 0.0,
       "point": "mlp_pre_linear",
@@ -328,11 +424,11 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 12
+      "worst_token": 0
     },
     "mlp_pre_linear.63": {
       "cos": 0.9999999999999999,
-      "cos_worst_token": 0.9999999999999996,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 63,
       "max_abs_diff": 0.0,
       "point": "mlp_pre_linear",
@@ -340,10 +436,10 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 9
+      "worst_token": 0
     },
     "resid_mid.0": {
-      "cos": 0.9999999999999999,
+      "cos": 1.0,
       "cos_worst_token": 0.9999999999999998,
       "layer": 0,
       "max_abs_diff": 0.0,
@@ -352,7 +448,7 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 4
+      "worst_token": 3
     },
     "resid_mid.32": {
       "cos": 1.0000000000000002,
@@ -364,7 +460,7 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 0
+      "worst_token": 1
     },
     "resid_mid.48": {
       "cos": 1.0,
@@ -376,11 +472,11 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 4
+      "worst_token": 7
     },
     "resid_mid.63": {
       "cos": 1.0,
-      "cos_worst_token": 0.9999999999999998,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 63,
       "max_abs_diff": 0.0,
       "point": "resid_mid",
@@ -388,7 +484,7 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 1
+      "worst_token": 11
     },
     "resid_post.0": {
       "cos": 0.9999999999999998,
@@ -400,10 +496,10 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 10
+      "worst_token": 12
     },
     "resid_post.32": {
-      "cos": 0.9999999999999998,
+      "cos": 1.0,
       "cos_worst_token": 0.9999999999999998,
       "layer": 32,
       "max_abs_diff": 0.0,
@@ -412,10 +508,10 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 1
+      "worst_token": 12
     },
     "resid_post.48": {
-      "cos": 1.0,
+      "cos": 0.9999999999999999,
       "cos_worst_token": 0.9999999999999998,
       "layer": 48,
       "max_abs_diff": 0.0,
@@ -424,7 +520,7 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 1
+      "worst_token": 4
     },
     "resid_post.63": {
       "cos": 0.9999999999999999,
@@ -436,18 +532,20 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 7
+      "worst_token": 1
     }
   },
   "reason": "",
   "reference": "eager",
   "run": {
-    "date_utc": "2026-09-03T22:47:15+00:00",
+    "date_utc": "2026-09-22T22:26:29+00:00",
     "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
     "eager_only": false,
     "gpu": {
-      "memory_total": "183359 MiB",
-      "name": "NVIDIA B200"
+      "capability": "9.0",
+      "count": 2,
+      "memory_total": "143771 MiB",
+      "name": "2x NVIDIA H200"
     },
     "native_dtype": "bfloat16",
     "reference_status": {
@@ -475,7 +573,7 @@
       "version": "3.8.1"
     },
     "transformers": {
-      "version": "5.16.1"
+      "version": "5.17.0"
     }
   }
 }

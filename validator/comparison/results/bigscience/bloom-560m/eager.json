@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-09-03",
+  "captured_at": "2026-09-22",
   "device": "cuda",
   "dtype": "float32",
   "engine": "eager",
@@ -8,29 +8,16 @@
   "points": {},
   "reason": "",
   "reference": "eager",
-  "reference_gaps": [
-    {
-      "engines": [
-        "vllm",
-        "vllm-static"
-      ],
-      "expected": "BLOOM computes attention with its own fused `baddbmm` path rather than delegating to `eager_attention_forward`, so the recompute interp-engine reaches the scores through has nothing to intercept on this family",
-      "layers": [
-        0,
-        12,
-        18,
-        23
-      ],
-      "point": "attn_scores"
-    }
-  ],
+  "reference_gaps": [],
   "run": {
-    "date_utc": "2026-09-03T22:47:15+00:00",
+    "date_utc": "2026-09-22T22:26:29+00:00",
     "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
     "eager_only": false,
     "gpu": {
-      "memory_total": "183359 MiB",
-      "name": "NVIDIA B200"
+      "capability": "9.0",
+      "count": 2,
+      "memory_total": "143771 MiB",
+      "name": "2x NVIDIA H200"
     },
     "native_dtype": "float32",
     "reference_status": {
@@ -51,14 +38,13 @@
   "verdict": "ref",
   "versions": {
     "interp_engine": {
-      "commit": "b74a69844215aa342cdaa8b3cfd07a63313ade4c",
-      "version": "1.6.0"
+      "version": "1.11.1"
     },
     "torch": {
       "version": "2.14.0"
     },
     "transformers": {
-      "version": "5.16.1"
+      "version": "5.17.0"
     }
   }
 }

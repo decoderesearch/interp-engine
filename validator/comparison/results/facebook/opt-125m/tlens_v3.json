@@ -1,11 +1,47 @@
 {
-  "captured_at": "2026-09-03",
+  "captured_at": "2026-09-22",
   "device": "cuda",
   "dtype": "float16",
   "engine": "tlens_v3",
   "hf_id": "facebook/opt-125m",
   "known_bug": null,
   "points": {
+    "attn_in.0": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "attn_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 0
+    },
+    "attn_in.11": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999997,
+      "layer": 11,
+      "max_abs_diff": 0.0,
+      "point": "attn_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 0
+    },
+    "attn_in.6": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 6,
+      "max_abs_diff": 0.0,
+      "point": "attn_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 0
+    },
     "attn_out.0": {
       "cos": 1.0,
       "cos_worst_token": 0.9999999999999998,
@@ -19,7 +55,7 @@
       "worst_token": 10
     },
     "attn_out.11": {
-      "cos": 0.9999999999999999,
+      "cos": 1.0000000000000002,
       "cos_worst_token": 0.9999999999999998,
       "layer": 11,
       "max_abs_diff": 0.0,
@@ -28,7 +64,7 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 11
+      "worst_token": 1
     },
     "attn_out.6": {
       "cos": 1.0,
@@ -55,7 +91,7 @@
       "worst_token": 10
     },
     "attn_out_post.11": {
-      "cos": 0.9999999999999999,
+      "cos": 1.0000000000000002,
       "cos_worst_token": 0.9999999999999998,
       "layer": 11,
       "max_abs_diff": 0.0,
@@ -64,7 +100,7 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 11
+      "worst_token": 1
     },
     "attn_out_post.6": {
       "cos": 1.0,
@@ -91,7 +127,7 @@
       "worst_token": 10
     },
     "mlp_act.11": {
-      "cos": 0.9999999999999998,
+      "cos": 1.0,
       "cos_worst_token": 0.9999999999999998,
       "layer": 11,
       "max_abs_diff": 0.0,
@@ -103,7 +139,7 @@
       "worst_token": 3
     },
     "mlp_act.6": {
-      "cos": 1.0000000000000002,
+      "cos": 1.0,
       "cos_worst_token": 0.9999999999999998,
       "layer": 6,
       "max_abs_diff": 0.0,
@@ -113,6 +149,27 @@
       "status": "PASS",
       "tier": "tlens",
       "worst_token": 4
+    },
+    "mlp_in.0": {
+      "expected": "OPT inlines `fc1`/`fc2` on the decoder layer, so the bridge's `mlp` component wraps nothing that runs: `blocks.N.hook_mlp_out` is registered and never fires (checked directly on opt-125m). Its attention hooks do fire, which is why the rest of the cell scores",
+      "layer": 0,
+      "missing": "engine",
+      "point": "mlp_in",
+      "status": "N/A"
+    },
+    "mlp_in.11": {
+      "expected": "OPT inlines `fc1`/`fc2` on the decoder layer, so the bridge's `mlp` component wraps nothing that runs: `blocks.N.hook_mlp_out` is registered and never fires (checked directly on opt-125m). Its attention hooks do fire, which is why the rest of the cell scores",
+      "layer": 11,
+      "missing": "engine",
+      "point": "mlp_in",
+      "status": "N/A"
+    },
+    "mlp_in.6": {
+      "expected": "OPT inlines `fc1`/`fc2` on the decoder layer, so the bridge's `mlp` component wraps nothing that runs: `blocks.N.hook_mlp_out` is registered and never fires (checked directly on opt-125m). Its attention hooks do fire, which is why the rest of the cell scores",
+      "layer": 6,
+      "missing": "engine",
+      "point": "mlp_in",
+      "status": "N/A"
     },
     "mlp_out.0": {
       "expected": "OPT inlines `fc1`/`fc2` on the decoder layer, so the bridge's `mlp` component wraps nothing that runs: `blocks.N.hook_mlp_out` is registered and never fires (checked directly on opt-125m). Its attention hooks do fire, which is why the rest of the cell scores",
@@ -136,7 +193,7 @@
       "status": "N/A"
     },
     "mlp_out_post.0": {
-      "cos": 1.0000000000000002,
+      "cos": 1.0,
       "cos_worst_token": 0.9999999999999998,
       "layer": 0,
       "max_abs_diff": 0.0,
@@ -145,11 +202,11 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 0
+      "worst_token": 1
     },
     "mlp_out_post.11": {
       "cos": 1.0,
-      "cos_worst_token": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 11,
       "max_abs_diff": 0.0,
       "point": "mlp_out_post",
@@ -157,7 +214,7 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 10
+      "worst_token": 3
     },
     "mlp_out_post.6": {
       "cos": 1.0,
@@ -169,7 +226,7 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 3
+      "worst_token": 0
     },
     "mlp_pre.0": {
       "cos": 1.0000000000000002,
@@ -184,8 +241,8 @@
       "worst_token": 8
     },
     "mlp_pre.11": {
-      "cos": 1.0,
-      "cos_worst_token": 0.9999999999999999,
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 11,
       "max_abs_diff": 0.0,
       "point": "mlp_pre",
@@ -193,10 +250,10 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 4
+      "worst_token": 0
     },
     "mlp_pre.6": {
-      "cos": 1.0,
+      "cos": 1.0000000000000002,
       "cos_worst_token": 0.9999999999999998,
       "layer": 6,
       "max_abs_diff": 0.0,
@@ -205,7 +262,7 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 9
+      "worst_token": 6
     },
     "resid_mid.0": {
       "expected": "OPT inlines fc1/fc2 on the decoder layer, so no module's *input* is the residual between the sublayers, and the norm that would carry it cannot be identified by name: OPT calls it `final_layer_norm`, which is also what the trunk calls the model's final norm, and `config.do_layer_norm_before` decides whether it runs before the MLP (opt-125m) or after it (opt-350m). interp-engine refuses rather than binding the wrong module on one of the two shapes; TransformerLens knows which from its own conversion",
@@ -229,7 +286,7 @@
       "status": "N/A"
     },
     "resid_post.0": {
-      "cos": 0.9999999999999999,
+      "cos": 1.0,
       "cos_worst_token": 0.9999999999999998,
       "layer": 0,
       "max_abs_diff": 0.0,
@@ -241,8 +298,8 @@
       "worst_token": 4
     },
     "resid_post.11": {
-      "cos": 1.0,
-      "cos_worst_token": 0.9999999999999998,
+      "cos": 0.9999999999999998,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 11,
       "max_abs_diff": 0.0,
       "point": "resid_post",
@@ -250,11 +307,11 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 0
+      "worst_token": 1
     },
     "resid_post.6": {
-      "cos": 1.0,
-      "cos_worst_token": 0.9999999999999999,
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 1.0,
       "layer": 6,
       "max_abs_diff": 0.0,
       "point": "resid_post",
@@ -268,12 +325,14 @@
   "reason": "",
   "reference": "eager",
   "run": {
-    "date_utc": "2026-09-03T22:47:15+00:00",
+    "date_utc": "2026-09-22T22:26:29+00:00",
     "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
     "eager_only": false,
     "gpu": {
-      "memory_total": "183359 MiB",
-      "name": "NVIDIA B200"
+      "capability": "9.0",
+      "count": 2,
+      "memory_total": "143771 MiB",
+      "name": "2x NVIDIA H200"
     },
     "native_dtype": "float16",
     "reference_status": {
@@ -301,7 +360,7 @@
       "version": "3.8.1"
     },
     "transformers": {
-      "version": "5.16.1"
+      "version": "5.17.0"
     }
   }
 }

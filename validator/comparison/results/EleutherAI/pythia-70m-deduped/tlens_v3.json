@@ -1,11 +1,29 @@
 {
-  "captured_at": "2026-09-03",
+  "captured_at": "2026-09-22",
   "device": "cuda",
   "dtype": "float32",
   "engine": "tlens_v3",
   "hf_id": "EleutherAI/pythia-70m-deduped",
   "known_bug": null,
   "points": {
+    "attn_in.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "attn_in",
+      "status": "N/A"
+    },
+    "attn_in.3": {
+      "layer": 3,
+      "missing": "engine",
+      "point": "attn_in",
+      "status": "N/A"
+    },
+    "attn_in.5": {
+      "layer": 5,
+      "missing": "engine",
+      "point": "attn_in",
+      "status": "N/A"
+    },
     "attn_out.0": {
       "layer": 0,
       "missing": "engine",
@@ -58,6 +76,24 @@
       "layer": 5,
       "missing": "engine",
       "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_in.0": {
+      "layer": 0,
+      "missing": "engine",
+      "point": "mlp_in",
+      "status": "N/A"
+    },
+    "mlp_in.3": {
+      "layer": 3,
+      "missing": "engine",
+      "point": "mlp_in",
+      "status": "N/A"
+    },
+    "mlp_in.5": {
+      "layer": 5,
+      "missing": "engine",
+      "point": "mlp_in",
       "status": "N/A"
     },
     "mlp_out.0": {
@@ -114,24 +150,6 @@
       "point": "mlp_pre",
       "status": "N/A"
     },
-    "resid_mid.0": {
-      "layer": 0,
-      "missing": "both",
-      "point": "resid_mid",
-      "status": "N/A"
-    },
-    "resid_mid.3": {
-      "layer": 3,
-      "missing": "both",
-      "point": "resid_mid",
-      "status": "N/A"
-    },
-    "resid_mid.5": {
-      "layer": 5,
-      "missing": "both",
-      "point": "resid_mid",
-      "status": "N/A"
-    },
     "resid_post.0": {
       "layer": 0,
       "missing": "engine",
@@ -154,12 +172,14 @@
   "reason": "AttributeError: 'GPTNeoXForCausalLM' object has no attribute 'embed_out'",
   "reference": "eager",
   "run": {
-    "date_utc": "2026-09-03T22:47:15+00:00",
+    "date_utc": "2026-09-22T22:26:29+00:00",
     "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
     "eager_only": false,
     "gpu": {
-      "memory_total": "183359 MiB",
-      "name": "NVIDIA B200"
+      "capability": "9.0",
+      "count": 2,
+      "memory_total": "143771 MiB",
+      "name": "2x NVIDIA H200"
     },
     "native_dtype": "float32",
     "reference_status": {
@@ -187,7 +207,7 @@
       "version": "3.8.1"
     },
     "transformers": {
-      "version": "5.16.1"
+      "version": "5.17.0"
     }
   }
 }

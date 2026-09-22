@@ -1,11 +1,60 @@
 {
-  "captured_at": "2026-09-04",
+  "captured_at": "2026-09-22",
   "device": "cuda",
   "dtype": "bfloat16",
   "engine": "tlens_v3",
   "hf_id": "deepseek-ai/DeepSeek-V4-Flash-0731",
   "known_bug": null,
+  "num_gpus": 2,
   "points": {
+    "attn_in.0": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999999,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "attn_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 4
+    },
+    "attn_in.21": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 21,
+      "max_abs_diff": 0.0,
+      "point": "attn_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 3
+    },
+    "attn_in.32": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 32,
+      "max_abs_diff": 0.0,
+      "point": "attn_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 8
+    },
+    "attn_in.42": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 42,
+      "max_abs_diff": 0.0,
+      "point": "attn_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 4
+    },
     "attn_out.0": {
       "cos": 1.0000000000000002,
       "cos_worst_token": 0.9999999999999999,
@@ -28,11 +77,11 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 0
+      "worst_token": 3
     },
     "attn_out.32": {
       "cos": 1.0,
-      "cos_worst_token": 0.9999999999999998,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 32,
       "max_abs_diff": 0.0,
       "point": "attn_out",
@@ -40,7 +89,7 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 9
+      "worst_token": 1
     },
     "attn_out.42": {
       "cos": 1.0,
@@ -52,7 +101,7 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 5
+      "worst_token": 10
     },
     "attn_out_post.0": {
       "layer": 0,
@@ -79,7 +128,7 @@
       "status": "N/A"
     },
     "attn_stream_collapse.0": {
-      "cos": 0.9999999999999999,
+      "cos": 1.0000000000000002,
       "cos_worst_token": 0.9999999999999998,
       "layer": 0,
       "max_abs_diff": 0.0,
@@ -91,8 +140,8 @@
       "worst_token": 0
     },
     "attn_stream_collapse.21": {
-      "cos": 1.0,
-      "cos_worst_token": 0.9999999999999999,
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 21,
       "max_abs_diff": 0.0,
       "point": "attn_stream_collapse",
@@ -100,11 +149,11 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 1
+      "worst_token": 6
     },
     "attn_stream_collapse.32": {
       "cos": 1.0000000000000002,
-      "cos_worst_token": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 32,
       "max_abs_diff": 0.0,
       "point": "attn_stream_collapse",
@@ -112,7 +161,7 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 0
+      "worst_token": 6
     },
     "attn_stream_collapse.42": {
       "cos": 1.0,
@@ -124,11 +173,11 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 5
+      "worst_token": 1
     },
     "attn_stream_mix.0": {
-      "cos": 1.0000000000000002,
-      "cos_worst_token": 0.9999999999999999,
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999997,
       "layer": 0,
       "max_abs_diff": 0.0,
       "point": "attn_stream_mix",
@@ -138,7 +187,7 @@
       "stochastic_eng": "columns",
       "stochastic_ref": "columns",
       "tier": "tlens",
-      "worst_token": 1
+      "worst_token": 8
     },
     "attn_stream_mix.21": {
       "cos": 1.0,
@@ -152,11 +201,11 @@
       "stochastic_eng": "columns",
       "stochastic_ref": "columns",
       "tier": "tlens",
-      "worst_token": 0
+      "worst_token": 5
     },
     "attn_stream_mix.32": {
-      "cos": 0.9999999999999999,
-      "cos_worst_token": 0.9999999999999998,
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 32,
       "max_abs_diff": 0.0,
       "point": "attn_stream_mix",
@@ -166,11 +215,11 @@
       "stochastic_eng": "both",
       "stochastic_ref": "both",
       "tier": "tlens",
-      "worst_token": 6
+      "worst_token": 1
     },
     "attn_stream_mix.42": {
-      "cos": 0.9999999999999999,
-      "cos_worst_token": 0.9999999999999999,
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 42,
       "max_abs_diff": 0.0,
       "point": "attn_stream_mix",
@@ -180,11 +229,11 @@
       "stochastic_eng": "columns",
       "stochastic_ref": "columns",
       "tier": "tlens",
-      "worst_token": 2
+      "worst_token": 9
     },
     "attn_stream_write.0": {
-      "cos": 1.0000000000000002,
-      "cos_worst_token": 0.9999999999999999,
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 0,
       "max_abs_diff": 0.0,
       "point": "attn_stream_write",
@@ -192,10 +241,10 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 4
+      "worst_token": 6
     },
     "attn_stream_write.21": {
-      "cos": 1.0,
+      "cos": 0.9999999999999998,
       "cos_worst_token": 0.9999999999999998,
       "layer": 21,
       "max_abs_diff": 0.0,
@@ -204,10 +253,10 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 1
+      "worst_token": 0
     },
     "attn_stream_write.32": {
-      "cos": 0.9999999999999998,
+      "cos": 1.0,
       "cos_worst_token": 0.9999999999999998,
       "layer": 32,
       "max_abs_diff": 0.0,
@@ -228,7 +277,7 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 1
+      "worst_token": 0
     },
     "mlp_act.0": {
       "expected": "sparse block: a routed MLP has no single pre-activation or gate: each expert has its own, and the families that fuse their expert banks have no module boundary at either. eager refuses the point rather than returning one expert's tensor under a whole-layer name; TransformerLens 3's bridge returns the fused bank's, which is a different quantity",
@@ -258,6 +307,54 @@
       "point": "mlp_act",
       "status": "N/A"
     },
+    "mlp_in.0": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999999,
+      "layer": 0,
+      "max_abs_diff": 0.0,
+      "point": "mlp_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 2
+    },
+    "mlp_in.21": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999999,
+      "layer": 21,
+      "max_abs_diff": 0.0,
+      "point": "mlp_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 0
+    },
+    "mlp_in.32": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 32,
+      "max_abs_diff": 0.0,
+      "point": "mlp_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 1
+    },
+    "mlp_in.42": {
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
+      "layer": 42,
+      "max_abs_diff": 0.0,
+      "point": "mlp_in",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 7
+    },
     "mlp_out.0": {
       "cos": 1.0000000000000002,
       "cos_worst_token": 0.9999999999999998,
@@ -272,7 +369,7 @@
     },
     "mlp_out.21": {
       "cos": 1.0,
-      "cos_worst_token": 0.9999999999999998,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 21,
       "max_abs_diff": 0.0,
       "point": "mlp_out",
@@ -280,7 +377,7 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 4
+      "worst_token": 0
     },
     "mlp_out.32": {
       "cos": 1.0,
@@ -292,10 +389,10 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 0
+      "worst_token": 1
     },
     "mlp_out.42": {
-      "cos": 1.0000000000000002,
+      "cos": 0.9999999999999999,
       "cos_worst_token": 0.9999999999999998,
       "layer": 42,
       "max_abs_diff": 0.0,
@@ -304,7 +401,7 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 9
+      "worst_token": 6
     },
     "mlp_out_post.0": {
       "layer": 0,
@@ -371,8 +468,8 @@
       "worst_token": 3
     },
     "mlp_stream_collapse.21": {
-      "cos": 1.0,
-      "cos_worst_token": 0.9999999999999998,
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 1.0,
       "layer": 21,
       "max_abs_diff": 0.0,
       "point": "mlp_stream_collapse",
@@ -380,7 +477,7 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 9
+      "worst_token": 2
     },
     "mlp_stream_collapse.32": {
       "cos": 1.0,
@@ -404,7 +501,7 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 12
+      "worst_token": 2
     },
     "mlp_stream_mix.0": {
       "cos": 1.0,
@@ -418,11 +515,11 @@
       "stochastic_eng": "columns",
       "stochastic_ref": "columns",
       "tier": "tlens",
-      "worst_token": 0
+      "worst_token": 4
     },
     "mlp_stream_mix.21": {
-      "cos": 1.0000000000000002,
-      "cos_worst_token": 0.9999999999999998,
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 21,
       "max_abs_diff": 0.0,
       "point": "mlp_stream_mix",
@@ -432,11 +529,11 @@
       "stochastic_eng": "columns",
       "stochastic_ref": "columns",
       "tier": "tlens",
-      "worst_token": 8
+      "worst_token": 0
     },
     "mlp_stream_mix.32": {
       "cos": 1.0,
-      "cos_worst_token": 0.9999999999999998,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 32,
       "max_abs_diff": 0.0,
       "point": "mlp_stream_mix",
@@ -446,11 +543,11 @@
       "stochastic_eng": "columns",
       "stochastic_ref": "columns",
       "tier": "tlens",
-      "worst_token": 8
+      "worst_token": 2
     },
     "mlp_stream_mix.42": {
-      "cos": 1.0,
-      "cos_worst_token": 0.9999999999999997,
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 42,
       "max_abs_diff": 0.0,
       "point": "mlp_stream_mix",
@@ -460,11 +557,11 @@
       "stochastic_eng": "columns",
       "stochastic_ref": "columns",
       "tier": "tlens",
-      "worst_token": 0
+      "worst_token": 3
     },
     "mlp_stream_write.0": {
       "cos": 1.0,
-      "cos_worst_token": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 0,
       "max_abs_diff": 0.0,
       "point": "mlp_stream_write",
@@ -475,7 +572,7 @@
       "worst_token": 0
     },
     "mlp_stream_write.21": {
-      "cos": 1.0,
+      "cos": 0.9999999999999998,
       "cos_worst_token": 0.9999999999999999,
       "layer": 21,
       "max_abs_diff": 0.0,
@@ -487,7 +584,7 @@
       "worst_token": 0
     },
     "mlp_stream_write.32": {
-      "cos": 0.9999999999999999,
+      "cos": 1.0,
       "cos_worst_token": 0.9999999999999998,
       "layer": 32,
       "max_abs_diff": 0.0,
@@ -496,11 +593,11 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 2
+      "worst_token": 3
     },
     "mlp_stream_write.42": {
-      "cos": 0.9999999999999998,
-      "cos_worst_token": 0.9999999999999999,
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 42,
       "max_abs_diff": 0.0,
       "point": "mlp_stream_write",
@@ -508,10 +605,10 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 1
+      "worst_token": 6
     },
     "resid_streams.0": {
-      "cos": 1.0,
+      "cos": 1.0000000000000002,
       "cos_worst_token": 1.0,
       "layer": 0,
       "max_abs_diff": 0.0,
@@ -523,7 +620,7 @@
       "worst_token": 2
     },
     "resid_streams.21": {
-      "cos": 1.0,
+      "cos": 0.9999999999999999,
       "cos_worst_token": 0.9999999999999998,
       "layer": 21,
       "max_abs_diff": 0.0,
@@ -535,7 +632,7 @@
       "worst_token": 2
     },
     "resid_streams.32": {
-      "cos": 1.0000000000000002,
+      "cos": 1.0,
       "cos_worst_token": 0.9999999999999998,
       "layer": 32,
       "max_abs_diff": 0.0,
@@ -544,10 +641,10 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 9
+      "worst_token": 6
     },
     "resid_streams.42": {
-      "cos": 1.0,
+      "cos": 1.0000000000000002,
       "cos_worst_token": 0.9999999999999998,
       "layer": 42,
       "max_abs_diff": 0.0,
@@ -556,18 +653,20 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 10
+      "worst_token": 11
     }
   },
   "reason": "",
   "reference": "eager",
   "run": {
-    "date_utc": "2026-09-04T03:53:33+00:00",
+    "date_utc": "2026-09-22T22:26:29+00:00",
     "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
     "eager_only": false,
     "gpu": {
-      "memory_total": "32607 MiB",
-      "name": "NVIDIA GeForce RTX 5090"
+      "capability": "9.0",
+      "count": 2,
+      "memory_total": "143771 MiB",
+      "name": "2x NVIDIA H200"
     },
     "native_dtype": "bfloat16",
     "reference_status": {
@@ -579,8 +678,8 @@
     "replicate": [
       "export HF_TOKEN=$(grep -m1 '^HF_TOKEN=' .env | cut -d= -f2- | tr -d '\"')",
       "PYTHONPATH=. .venv-cmp/bin/python -m comparison.tokenize_inputs --dumps dumps --models deepseek-ai/DeepSeek-V4-Flash-0731",
-      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine eager --dumps dumps --model deepseek-ai/DeepSeek-V4-Flash-0731 --device cuda",
-      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine tlens_v3 --dumps dumps --model deepseek-ai/DeepSeek-V4-Flash-0731 --device cuda",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine eager --dumps dumps --model deepseek-ai/DeepSeek-V4-Flash-0731 --device cuda --num-gpus 2",
+      "PYTHONPATH=. .venv-cmp/bin/python -m comparison.run_engine --engine tlens_v3 --dumps dumps --model deepseek-ai/DeepSeek-V4-Flash-0731 --device cuda --num-gpus 2",
       "PYTHONPATH=. .venv-cmp/bin/python -m comparison.aggregate --dumps dumps"
     ]
   },
@@ -595,7 +694,7 @@
       "version": "3.8.1"
     },
     "transformers": {
-      "version": "5.16.1"
+      "version": "5.17.0"
     }
   }
 }

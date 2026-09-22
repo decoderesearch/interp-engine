@@ -26,11 +26,19 @@ from comparison.engines.tlens_engine import (
 )
 from comparison.spec import SaeSpec
 
+# The sublayer inputs, which only the bridge names as module inputs: `attn.hook_in`/`mlp.hook_in` are
+# forward pre-hooks on the HF attention and MLP modules, so they are the norm's OUTPUT -- the tensor
+# the sublayer receives -- on every architecture, including OLMo-2/3 where there is no norm and the
+# input is the residual. Legacy `HookedTransformer` has no such name: its block-level
+# `hook_attn_in`/`hook_mlp_in` fire on the residual BEFORE the norm, and `interp_engine.mappers`
+# refuses them for that reason, so `tlens_v2` claims neither point.
+_V3_SUBLAYER_INPUT = {"attn_in": "attn.hook_in", "mlp_in": "mlp.hook_in"}
+
 # What this adapter can look a point up under: the names both TransformerLens implementations share,
-# plus the mHC hooks the v3 bridge alone registers. The bridge is the reason the wider table lives
-# here rather than in the shared module -- a `blocks.N.attn_hc.hook_post` asked of legacy
-# `HookedTransformer` is a name it has never heard of on an architecture it cannot convert.
-_V3_POINT = {**_CACHE_POINT, **_V4_STREAM_POINT}
+# plus the sublayer inputs and the mHC hooks the v3 bridge alone registers. The bridge is the reason
+# the wider table lives here rather than in the shared module -- a `blocks.N.attn_hc.hook_post` asked
+# of legacy `HookedTransformer` is a name it has never heard of on an architecture it cannot convert.
+_V3_POINT = {**_CACHE_POINT, **_V3_SUBLAYER_INPUT, **_V4_STREAM_POINT}
 
 
 def _quantized(hf_id: str) -> bool:

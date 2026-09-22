@@ -119,6 +119,126 @@ def test_neuron_basis_parity(gpt2: EagerModel, tlens_gpt2, prompt: str):
         )
 
 
+def _legacy_cache_with_block_inputs(tlens_gpt2, ids: torch.Tensor):
+    """A `HookedTransformer` cache with the block-level `hook_attn_in`/`hook_mlp_in` turned on.
+
+    Both are off by default and the fixture is session-scoped, so the flags are put back after.
+    """
+    tlens_gpt2.set_use_attn_in(True)
+    tlens_gpt2.set_use_hook_mlp_in(True)
+    try:
+        _, cache = tlens_gpt2.run_with_cache(ids)
+    finally:
+        tlens_gpt2.set_use_attn_in(False)
+        tlens_gpt2.set_use_hook_mlp_in(False)
+    return cache
+
+
+def _assert_same_tensor(name: str, eng: torch.Tensor, tl: torch.Tensor) -> None:
+    """`allclose` over the entries both frameworks define, with the two shape conventions folded.
+
+    TL keeps heads as an axis where the engine flattens them (`z`, `value`), and its scores hold
+    `-inf` at masked positions where HF holds the dtype's minimum -- so `attn_scores` is compared on
+    the causal band only, where both are finite and both are the same number.
+    """
+    if tl.shape != eng.shape and tl.ndim == eng.ndim + 1:
+        tl = tl.reshape(*tl.shape[:-2], -1)
+    assert tl.shape == eng.shape, f"{name}: TL {tuple(tl.shape)} vs engine {tuple(eng.shape)}"
+    if not torch.isfinite(tl).all():
+        band = torch.isfinite(tl) & (eng > torch.finfo(eng.dtype).min / 2)
+        eng, tl = eng[band], tl[band]
+    assert torch.allclose(eng, tl, atol=ATOL, rtol=RTOL), f"{name}: max abs diff {(eng - tl).abs().max().item()}"
+
+
+# What gpt2 lacks, so the engine refuses these points there: QK norms, a router, a gated MLP.
+_NOT_ON_GPT2 = {"q_norm_in", "q_norm_out", "k_norm_in", "k_norm_out", "expert_indices", "mlp_pre_linear"}
+
+
+def test_transformerlens_and_eager_agree_on_every_mapped_hook(gpt2: EagerModel, tlens_gpt2, tlens_bridge_gpt2, prompt):
+    """Every TransformerLens name the mapper resolves names the tensor the engine returns.
+
+    This walks the mapper's tables rather than a hand-picked list, because the hand-picked tests
+    are how `hook_mlp_in -> mlp_in` survived: each pinned a name that was right and none walked the
+    table to find the one that was not. A name is checked against `HookedTransformer` where it
+    registers it and against the TL3 bridge otherwise (`attn.hook_in`, `mlp.hook_in`, `hook_in`,
+    `hook_out`); the two agree with each other on every name both register.
+
+    Every row has to land somewhere: compared, refused by the engine because gpt2 lacks the
+    component, or an unqualified shorthand (`hook_z` for `attn.hook_z`) whose qualified twin was
+    compared. A row that lands nowhere is a mapping nothing has ever measured, and fails.
+    """
+    from interp_engine import mappers
+    from interp_engine.mappers import tlens_hook_to_point
+    from interp_engine.points import hyper_connection_names
+
+    ids = gpt2.to_tokens(prompt)
+    legacy = _legacy_cache_with_block_inputs(tlens_gpt2, ids)
+    _, bridge = tlens_bridge_gpt2.run_with_cache(ids)
+
+    suffixes = {
+        *mappers._TLENS_STABLE,
+        *mappers._TLENS_CONTRIBUTION,
+        *mappers._TLENS_STREAM_DEPENDENT,
+        mappers._TLENS_BLOCK_INPUT,
+    }
+    names = [f"blocks.{layer}.{suffix}" for layer in (0, 6, 11) for suffix in sorted(suffixes)]
+    names += sorted(mappers._TLENS_GLOBAL)
+
+    compared: set[str] = set()
+    refused: dict[str, str] = {}
+    unregistered: set[str] = set()
+    for name in names:
+        address = tlens_hook_to_point(name, gpt2)
+        if address.name in hyper_connection_names():
+            continue  # a row for another trunk; gpt2 has one stream
+        try:
+            eng = run_with_cache(gpt2, ids, [address])[address]
+        except ValueError:
+            refused[name] = address.name
+            continue
+        source = legacy if name in legacy else bridge if name in bridge else None
+        if source is None:
+            unregistered.add(name)
+            continue
+        _assert_same_tensor(name, eng, source[name])
+        compared.add(name)
+
+    assert set(refused.values()) <= _NOT_ON_GPT2, f"refused on gpt2 for no known reason: {refused}"
+    for name in unregistered:
+        block, suffix = name.rsplit(".", 1)
+        twins = {f"{block}.attn.{suffix}", f"{block}.mlp.{suffix}"}
+        assert suffix.startswith("hook_") and twins & compared, f"{name}: no TL hook and no compared twin"
+    assert "unembed.hook_in" in compared
+    assert "blocks.6.hook_in" in compared and "blocks.6.attn.hook_in" in compared and "blocks.6.mlp.hook_in" in compared
+
+
+def test_the_block_level_input_hooks_are_the_norms_input_not_the_sublayers(gpt2: EagerModel, tlens_gpt2, prompt):
+    """`hook_mlp_in`/`hook_attn_in` carry `resid_mid`/`resid_pre`; the points they used to map to differ.
+
+    Measured rather than argued from `TransformerBlock.forward`: TL's tensor is the engine's residual
+    to fp32 round-off, and against `mlp_in`/`attn_in` the cosine is 0.31/0.12 at layer 6 -- a whole
+    normalization away. The mapper refuses the names (`test_mappers.py`); this is why.
+    """
+    from interp_engine.mappers import UnmappedHook, tlens_hook_to_point
+
+    ids = gpt2.to_tokens(prompt)
+    legacy = _legacy_cache_with_block_inputs(tlens_gpt2, ids)
+    points = [(point, 6) for point in ("resid_mid", "resid_pre", "mlp_in", "attn_in")]
+    eng = run_with_cache(gpt2, ids, points)
+    for hook, carries, used_to_map_to in (
+        ("hook_mlp_in", "resid_mid", "mlp_in"),
+        ("hook_attn_in", "resid_pre", "attn_in"),
+    ):
+        tl = legacy[f"blocks.6.{hook}"]
+        if tl.ndim == 4:
+            tl = tl[:, :, 0]  # `use_attn_in` broadcasts the residual per head; every head is the same
+        assert torch.allclose(tl, eng.get(carries, 6), atol=ATOL, rtol=RTOL), hook
+        cosine = torch.nn.functional.cosine_similarity(tl.flatten(), eng.get(used_to_map_to, 6).flatten(), dim=0)
+        assert cosine < 0.5, f"{hook} vs {used_to_map_to}: cosine {cosine.item():.3f}"
+        with pytest.raises(UnmappedHook):
+            tlens_hook_to_point(f"blocks.6.{hook}", gpt2)
+
+
 def test_logit_lens_parity(gpt2: EagerModel, tlens_gpt2, prompt: str):
     ids = gpt2.to_tokens(prompt)
     _, tl_cache = tlens_gpt2.run_with_cache(ids)

@@ -1,6 +1,6 @@
 # `EleutherAI/pythia-70m-deduped` — cross-engine results
 
-Every engine's capture of `EleutherAI/pythia-70m-deduped`, point by point, against the `eager` reference on NVIDIA B200. Layers requested: 0, 3, 5.
+Every engine's capture of `EleutherAI/pythia-70m-deduped`, point by point, against the `eager` reference on 2x NVIDIA H200. Layers requested: 0, 3, 5.
 
 Generated from the `<engine>.json` files beside this one, which hold the same numbers with nothing rolled up; the summary table is in [the README](../../../../README.md).
 
@@ -8,18 +8,18 @@ Generated from the `<engine>.json` files beside this one, which hold the same nu
 
 | engine | verdict | capture | dtype | version | agreed | differs | failed | not compared |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| [interp-engine eager](eager.json) *(reference)* | ref | ok | float32 | v1.6.0 | — | — | — | — |
+| [interp-engine eager](eager.json) *(reference)* | ref | ok | float32 | v1.11.1 | — | — | — | — |
 | [interp-engine vllm](vllm.json) | ✅ | ok | float32 | v0.28.0 | 32 | 0 | 0 | 3 |
 | [interp-engine vllm-static](vllm-static.json) | ✅ | ok | float32 | v0.28.0 | 30 | 0 | 0 | 3 |
 | [tlens_v2](tlens_v2.json) | unsupported | skip: AttributeError: 'GPTNeoXForCausalLM' object has no attribute 'embed_out' | float32 | v3.8.1 | 0 | 0 | 0 | 24 |
-| [tlens_v3](tlens_v3.json) | unsupported | skip: AttributeError: 'GPTNeoXForCausalLM' object has no attribute 'embed_out' | float32 | v3.8.1 | 0 | 0 | 0 | 24 |
+| [tlens_v3](tlens_v3.json) | unsupported | skip: AttributeError: 'GPTNeoXForCausalLM' object has no attribute 'embed_out' | float32 | v3.8.1 | 0 | 0 | 0 | 27 |
 | [nnsight](nnsight.json) | ✅ | ok | float32 | v0.7.0 | 18 | 0 | 0 | 3 |
 
 ### Point by point
 
 ✅ agrees · ⚠️ differs in value · ❌ structurally wrong, or the engine did not deliver it · 🐞 differs because the reference is wrong here, with an issue filed against it (`ref🐞` marks the reference's own column) · `ref` the reference produced this point (nothing scores it — it *is* the baseline) · `n/a` this engine declines the point · `no ref` the reference declined it · `—` no comparison here — the point is not asked of this engine, or it is listed under *Not compared* · † a waiver carried the pass (listed below)
 
-| point<br>layer | interp-engine eager<br>[v1.6.0](eager.json) | interp-engine vllm<br>[v0.28.0](vllm.json) | interp-engine vllm-static<br>[v0.28.0](vllm-static.json) | nnsight<br>[v0.7.0](nnsight.json) |
+| point<br>layer | interp-engine eager<br>[v1.11.1](eager.json) | interp-engine vllm<br>[v0.28.0](vllm.json) | interp-engine vllm-static<br>[v0.28.0](vllm-static.json) | nnsight<br>[v0.7.0](nnsight.json) |
 | --- | --- | --- | --- | --- |
 | `resid_post`<br>layer 0 | ref | ✅ | ✅ | ✅ |
 | `resid_post`<br>layer 3 | ref | ✅ | ✅ | ✅ |

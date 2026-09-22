@@ -1,11 +1,18 @@
 {
-  "captured_at": "2026-09-03",
+  "captured_at": "2026-09-22",
   "device": "cuda",
   "dtype": "bfloat16",
   "engine": "tlens_v3",
   "hf_id": "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16",
   "known_bug": null,
   "points": {
+    "attn_in.12": {
+      "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
+      "layer": 12,
+      "missing": "engine",
+      "point": "attn_in",
+      "status": "N/A"
+    },
     "attn_out.12": {
       "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
       "layer": 12,
@@ -25,6 +32,13 @@
       "layer": 41,
       "missing": "engine",
       "point": "mlp_act",
+      "status": "N/A"
+    },
+    "mlp_in.41": {
+      "expected": "the bridge has no component map for these architectures, so a block bridges to `hook_in`/`hook_out` and nothing else -- checked on the model: `blocks.2` of the LFM2 MoE has no `attn`, `mlp` or `ln` child, and Nemotron-H's has only `norm`/`mixer`. `resid_post` is the one point a block-level hook can serve, and it is the one that scores. Architecture-shaped rather than checkpoint-shaped: `LFM2.5-230M`, the dense model of the same family, is mapped and delivers every point",
+      "layer": 41,
+      "missing": "engine",
+      "point": "mlp_in",
       "status": "N/A"
     },
     "mlp_out.41": {
@@ -49,7 +63,7 @@
       "status": "N/A"
     },
     "resid_post.0": {
-      "cos": 1.0,
+      "cos": 1.0000000000000002,
       "cos_worst_token": 0.9999999999999998,
       "layer": 0,
       "max_abs_diff": 0.0,
@@ -58,11 +72,11 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 5
+      "worst_token": 0
     },
     "resid_post.12": {
-      "cos": 1.0000000000000002,
-      "cos_worst_token": 0.9999999999999999,
+      "cos": 1.0,
+      "cos_worst_token": 0.9999999999999998,
       "layer": 12,
       "max_abs_diff": 0.0,
       "point": "resid_post",
@@ -70,12 +84,24 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 5
+      "worst_token": 2
     },
     "resid_post.21": {
-      "cos": 1.0,
-      "cos_worst_token": 0.9999999999999998,
+      "cos": 0.9999999999999999,
+      "cos_worst_token": 0.9999999999999999,
       "layer": 21,
+      "max_abs_diff": 0.0,
+      "point": "resid_post",
+      "rel_diff": 0.0,
+      "rel_worst_token": 0.0,
+      "status": "PASS",
+      "tier": "tlens",
+      "worst_token": 8
+    },
+    "resid_post.31": {
+      "cos": 1.0000000000000002,
+      "cos_worst_token": 1.0,
+      "layer": 31,
       "max_abs_diff": 0.0,
       "point": "resid_post",
       "rel_diff": 0.0,
@@ -84,20 +110,8 @@
       "tier": "tlens",
       "worst_token": 1
     },
-    "resid_post.31": {
-      "cos": 0.9999999999999999,
-      "cos_worst_token": 0.9999999999999998,
-      "layer": 31,
-      "max_abs_diff": 0.0,
-      "point": "resid_post",
-      "rel_diff": 0.0,
-      "rel_worst_token": 0.0,
-      "status": "PASS",
-      "tier": "tlens",
-      "worst_token": 10
-    },
     "resid_post.41": {
-      "cos": 1.0,
+      "cos": 1.0000000000000002,
       "cos_worst_token": 0.9999999999999998,
       "layer": 41,
       "max_abs_diff": 0.0,
@@ -106,18 +120,20 @@
       "rel_worst_token": 0.0,
       "status": "PASS",
       "tier": "tlens",
-      "worst_token": 6
+      "worst_token": 4
     }
   },
   "reason": "",
   "reference": "eager",
   "run": {
-    "date_utc": "2026-09-03T22:47:15+00:00",
+    "date_utc": "2026-09-22T22:26:29+00:00",
     "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
     "eager_only": false,
     "gpu": {
-      "memory_total": "183359 MiB",
-      "name": "NVIDIA B200"
+      "capability": "9.0",
+      "count": 2,
+      "memory_total": "143771 MiB",
+      "name": "2x NVIDIA H200"
     },
     "native_dtype": "bfloat16",
     "reference_status": {
@@ -145,7 +161,7 @@
       "version": "3.8.1"
     },
     "transformers": {
-      "version": "5.16.1"
+      "version": "5.17.0"
     }
   }
 }
