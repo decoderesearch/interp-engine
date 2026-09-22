@@ -27,7 +27,8 @@ dependencies = [
     # here because a path source supplies the version and a pin would only be a second thing to move.
     "interp-engine[quant]",
     "numpy>=1.24",
-    "transformer-lens>=3.0",
+    # Below 4: the tlens_v2 column is `HookedTransformer`, which TransformerLens 4.0 removed.
+    "transformer-lens>=3.0,<4",
     "nnsight>=0.7",
     "nnterp>=1.3",
     "sae-lens>=6",
