@@ -93,6 +93,11 @@ export function parseAddress(address: string): Address | null {
 
 // --- TransformerLens -------------------------------------------------------
 
+/** `_POINT_TO_TLENS_GLOBAL`: the one name outside `blocks.{layer}.`, emitted as is. */
+const POINT_TO_TLENS_GLOBAL: Record<string, string> = {
+  final_norm: "unembed.hook_in",
+};
+
 /** `_POINT_TO_TLENS`, emitted as `blocks.{layer}.{suffix}`. */
 const POINT_TO_TLENS: Record<string, string> = {
   resid_pre: "hook_resid_pre",
@@ -100,7 +105,7 @@ const POINT_TO_TLENS: Record<string, string> = {
   resid_mid: "hook_resid_mid",
   mlp_in: "mlp.hook_in",
   mlp_out: "mlp.hook_out",
-  attn_in: "hook_attn_in",
+  attn_in: "attn.hook_in",
   attn_out: "attn.hook_out",
   mlp_out_post: "hook_mlp_out",
   attn_out_post: "hook_attn_out",
@@ -123,7 +128,6 @@ const UNMAPPED_TLENS: Record<string, string> = {
   attn_gate: "TransformerLens models no family with a gated attention output.",
   embeddings:
     "TL's hook_embed fires pre-positional and pre-scaling, so it is a different tensor.",
-  final_norm: "ln_final.hook_normalized is outside the blocks.{i}. namespace.",
   lm_head: "TL returns logits rather than hooking the unembed.",
   router_logits: "TL hooks the softmax over all experts, not the logits.",
   expert_weights:
@@ -138,6 +142,12 @@ const TLENS_CAVEATS: Record<string, string> = {
     "The name collides with mlp_out_post but the tensor does not: this is d_mlp wide, not d_model.",
   mlp_pre:
     "Do not translate by weight name — TL's W_in is HF's up_proj, the other branch.",
+  attn_in:
+    "Not the block-level hook_attn_in, which fires on resid_pre BEFORE the norm and is refused.",
+  mlp_in:
+    "Not the block-level hook_mlp_in, which fires on resid_mid BEFORE the norm and is refused.",
+  final_norm:
+    "TransformerLens 3. ln_final.hook_normalized is pre-gain, and fold_ln moves the gain into W_U.",
 };
 
 function tlensName(ctx: FormatContext): EngineName {
@@ -145,6 +155,9 @@ function tlensName(ctx: FormatContext): EngineName {
 
   const unmapped = UNMAPPED_TLENS[point];
   if (unmapped) return { text: null, reason: unmapped };
+
+  const global = POINT_TO_TLENS_GLOBAL[point];
+  if (global) return { text: global, caveat: TLENS_CAVEATS[point] };
 
   const suffix = POINT_TO_TLENS[point];
   if (!suffix)

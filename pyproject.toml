@@ -126,9 +126,10 @@ awq = [
 # The single reference backend the pytest suite needs: TransformerLens, for the gpt2 golden parity
 # gate (tests/test_parity_gpt2.py). It is deliberately the ONLY third-party engine any test loads --
 # a broader set of reference backends pulls ~50 packages that nothing here imports, so CI installs
-# `.[dev,parity]` and a PR pays for one extra wheel.
+# `.[dev,parity]` and a PR pays for one extra wheel. Below 4: TransformerLens 4.0 removed
+# `HookedTransformer`, which the gate compares against; TL 4 is a port, not a pin change.
 parity = [
-    "transformer-lens>=3.0",
+    "transformer-lens>=3.0,<4",
 ]
 
 # The only links on the PyPI page: the README's own doc links are repo-relative and PyPI does not

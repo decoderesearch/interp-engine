@@ -119,7 +119,7 @@ def test_the_tlens_mapper_covers_every_point_or_declares_it_unmapped():
     engine's table carries no foreign names (AGENTS.md).
     """
     every_point = points.known_names() | points.hyper_connection_names()
-    mapped = set(mappers._POINT_TO_TLENS)
+    mapped = set(mappers._POINT_TO_TLENS) | set(mappers._POINT_TO_TLENS_GLOBAL)
     declared = mapped | set(mappers.UNMAPPED_TLENS)
     assert every_point == declared, (
         f"undecided: {sorted(every_point - declared)}; stale: {sorted(declared - every_point)}"

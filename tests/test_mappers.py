@@ -108,6 +108,110 @@ def test_a_norms_normalized_hook_is_not_the_next_sublayers_input(sandwich):
         tlens_hook_to_point("blocks.4.ln2.hook_normalized", sandwich)
 
 
+# --- the sublayer INPUT names, the counterpart of the mlp_out pair above ------
+
+
+def test_the_two_transformerlens_mlp_input_names_are_not_the_same_point(plain):
+    """The input-side counterpart of `test_the_two_transformerlens_mlp_names_are_not_the_same_point`.
+
+    `mlp.hook_in` is the sublayer's argument, the norm's OUTPUT. `hook_mlp_in` is the block-level
+    hook, which TransformerLens fires on `resid_mid` *before* `ln2` runs (`TransformerBlock.forward`
+    passes the hooked value INTO `self.ln2`). The two are a whole normalization apart, as
+    `mlp.hook_out` and `hook_mlp_out` are on the output side: on google/gemma-3-1b-it the norm's
+    input and output share cosine 0.175 at layer 5 and differ in norm by 231x, past 3000x deeper in
+    the stack; on gpt2 the cosine is 0.75 and the norms differ by 27-86x. Either received for the
+    other is a plausible tensor of the right shape. `test_transformerlens_and_eager_agree_on_every_
+    mapped_hook` in `test_parity_gpt2.py` checks the measurement.
+    """
+    assert tlens_hook_to_point("blocks.7.mlp.hook_in", plain) == Address("mlp_in", 7)
+    with pytest.raises(UnmappedHook):
+        tlens_hook_to_point("blocks.7.hook_mlp_in", plain)
+
+
+def test_the_attention_input_side_is_distinguished_too(plain):
+    """`hook_attn_in` fires on `resid_pre`, before `ln1`; `attn.hook_in` is the norm's output."""
+    assert tlens_hook_to_point("blocks.3.attn.hook_in", plain) == Address("attn_in", 3)
+    with pytest.raises(UnmappedHook):
+        tlens_hook_to_point("blocks.3.hook_attn_in", plain)
+
+
+@pytest.mark.parametrize(
+    ("hook", "sublayer", "residual"),
+    [
+        ("hook_mlp_in", "mlp.hook_in", "hook_resid_mid"),
+        ("hook_attn_in", "attn.hook_in", "hook_resid_pre"),
+    ],
+)
+def test_the_block_level_input_refusal_names_both_readings(plain, hook, sublayer, residual):
+    """Refused rather than remapped, and the message says what to ask for instead.
+
+    Remapping to `resid_mid`/`resid_pre` would be defensible and is still the wrong thing to do
+    silently: a caller porting TransformerLens code may mean either side of the norm, and only they
+    can say which. Naming both readings is what turns a refusal into an answer.
+    """
+    with pytest.raises(UnmappedHook) as excinfo:
+        tlens_hook_to_point(f"blocks.5.{hook}", plain)
+    message = str(excinfo.value)
+    assert sublayer in message
+    assert residual in message
+
+
+def test_the_sublayer_points_emit_the_sublayer_hook_when_translated_back():
+    """`_POINT_TO_TLENS` is where the input-side asymmetry was visible without any measurement.
+
+    `mlp_in` emitted `mlp.hook_in` while `attn_in` emitted the block-level `hook_attn_in`. A round
+    trip could not catch it: while the forward table mapped both spellings onto one point,
+    `attn_in -> hook_attn_in -> attn_in` returned what it started with, closing over a name that
+    denotes the wrong tensor. So this asserts the emitted NAME rather than the round trip.
+    """
+    for point, expected in (("mlp_in", "mlp.hook_in"), ("attn_in", "attn.hook_in")):
+        assert point_to_tlens_hook(Address(point, 5)) == f"blocks.5.{expected}"
+
+
+# --- the block's own input, and the one name outside `blocks.{i}.` -------------
+
+
+def test_the_block_input_hook_is_resid_pre_on_a_single_stream_trunk(plain):
+    """`blocks.N.hook_in` is the mirror of `hook_out`: the block's forward pre-hook, on the residual.
+
+    With no model it reads the same way, as `hook_out` reads as `resid_post` without one.
+    """
+    assert tlens_hook_to_point("blocks.7.hook_in", plain) == Address("resid_pre", 7)
+    assert tlens_hook_to_point("blocks.7.hook_in") == Address("resid_pre", 7)
+
+
+def test_the_block_input_hook_is_refused_on_a_hyper_connection_trunk(hyper):
+    """The stack entering block N is block N-1's `resid_streams`; under index N it is off by one.
+
+    Same reason and same message as `attn_hc.hook_in`, which is the same tensor one module further
+    in. `hook_out` resolves to this block's stack on the same trunk, so the two are not symmetric,
+    and that asymmetry is the point: the output belongs to this layer and the input does not.
+    """
+    with pytest.raises(UnmappedHook, match="PREVIOUS block"):
+        tlens_hook_to_point("blocks.7.hook_in", hyper)
+    assert tlens_hook_to_point("blocks.7.hook_out", hyper) == Address("resid_streams", 7)
+
+
+def test_the_unembeddings_input_is_the_final_norm(plain):
+    """`unembed.hook_in` is the only global name that maps; it carries no layer in either direction."""
+    assert tlens_hook_to_point("unembed.hook_in", plain) == Address("final_norm")
+    assert tlens_hook_to_point("unembed.hook_in") == Address("final_norm")
+    assert point_to_tlens_hook(Address("final_norm")) == "unembed.hook_in"
+    assert point_to_tlens_hook("final_norm") == "unembed.hook_in"
+    with pytest.raises(UnmappedHook, match="takes no layer"):
+        point_to_tlens_hook("final_norm", 11)
+
+
+def test_the_final_norms_normalized_hook_is_refused_with_the_fold_ln_reason():
+    """Pre-gain, and on a `fold_ln` HookedTransformer the gain has moved into `W_U`.
+
+    It parses as no block, so without this row the message would say only that no layer was found.
+    """
+    with pytest.raises(UnmappedHook, match="fold_ln") as excinfo:
+        tlens_hook_to_point("ln_final.hook_normalized")
+    assert "unembed.hook_in" in str(excinfo.value)
+
+
 # --- the second model-aware case: hyper-connections --------------------------
 
 

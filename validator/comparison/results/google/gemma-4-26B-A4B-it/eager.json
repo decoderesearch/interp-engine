@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-09-03",
+  "captured_at": "2026-09-22",
   "device": "cuda",
   "dtype": "bfloat16",
   "engine": "eager",
@@ -11,7 +11,6 @@
   "reference_gaps": [
     {
       "engines": [
-        "nnsight",
         "tlens_v3"
       ],
       "expected": "experts beside the dense MLP: every layer here keeps `layer.mlp` and hangs the router and experts on the *block*, then sums the two branches in its own forward -- so the module this point taps is the dense half of a two-branch feed-forward. The unusual thing about this gap is that it is not a disagreement: both engines built the same tree and returned the same half, and the cell was green at cos 0.9999 for four layers before anyone read what the tensor was. So it is refused on both (`EagerModel._require_whole_feed_forward` and `vllm_capture._tree._split_feed_forward_reason`) rather than compared. `mlp_out_post` is the post-feedforward norm's output, downstream of the sum, and is scored on both engines -- it is also the row that keeps the residual decomposition checkable here, since resid_post == resid_mid + mlp_out_post holds for it and not for the raw point",
@@ -25,12 +24,14 @@
     }
   ],
   "run": {
-    "date_utc": "2026-09-03T22:47:15+00:00",
+    "date_utc": "2026-09-22T22:26:29+00:00",
     "dtype_note": "engines load the checkpoint's native dtype (dtype='auto'); SGLang serves bf16 only (float32 unsupported), so a float32-native model's SGLang cell is a cross-dtype fused case.",
     "eager_only": false,
     "gpu": {
-      "memory_total": "183359 MiB",
-      "name": "NVIDIA B200"
+      "capability": "9.0",
+      "count": 2,
+      "memory_total": "143771 MiB",
+      "name": "2x NVIDIA H200"
     },
     "native_dtype": "bfloat16",
     "reference_status": {
@@ -51,14 +52,13 @@
   "verdict": "ref",
   "versions": {
     "interp_engine": {
-      "commit": "b74a69844215aa342cdaa8b3cfd07a63313ade4c",
-      "version": "1.6.0"
+      "version": "1.11.1"
     },
     "torch": {
       "version": "2.14.0"
     },
     "transformers": {
-      "version": "5.16.1"
+      "version": "5.17.0"
     }
   }
 }

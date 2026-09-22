@@ -72,5 +72,20 @@ def tlens_gpt2():
 
 
 @pytest.fixture(scope="session")
+def tlens_bridge_gpt2():
+    """TransformerLens 3's `TransformerBridge` over the same HF gpt2, no processing.
+
+    The bridge is where the sublayer-scoped names (`attn.hook_in`, `mlp.hook_in`, `hook_in`) live;
+    `HookedTransformer` never registers them, so a parity test over the mapper's whole table needs
+    both models.
+    """
+    if parity_required():
+        from transformer_lens.model_bridge import TransformerBridge
+    else:
+        TransformerBridge = pytest.importorskip("transformer_lens.model_bridge").TransformerBridge
+    return TransformerBridge.boot_transformers("gpt2", device="cpu")
+
+
+@pytest.fixture(scope="session")
 def prompt():
     return "The quick brown fox jumps over the lazy dog"

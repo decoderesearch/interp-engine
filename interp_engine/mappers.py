@@ -56,9 +56,10 @@ _TLENS_STABLE: dict[str, str] = {
     # and that multiply -- a third tensor, wrong by an elementwise factor (cosine 0.89 on gemma-2
     # layer 19) and one that real Gemma Scope transcoders are trained on, so substituting these
     # would read a shipping artifact off the wrong activations. See :func:`tlens_hook_to_point`.
-    "hook_mlp_in": "mlp_in",
+    #
+    # Nor the block-level `hook_mlp_in` / `hook_attn_in`, which fire BEFORE the norm runs -- the
+    # norm's input, a whole normalization away from these. Refused in `_TLENS_PRENORM_BLOCK_INPUTS`.
     "mlp.hook_in": "mlp_in",
-    "hook_attn_in": "attn_in",
     "attn.hook_in": "attn_in",
     # The RAW module output, as distinct from the block-level hook below.
     "mlp.hook_out": "mlp_out",
@@ -146,6 +147,56 @@ _TLENS_STREAM_DEPENDENT: dict[str, tuple[str, str]] = {
     "hook_out": ("resid_post", "resid_streams"),
 }
 
+# The block's own input, `hook_in`, is `resid_pre` on a single-stream trunk -- the mirror of
+# `hook_out` above, and a forward pre-hook on the block is where a bridge puts it. On a
+# hyper-connection trunk it is the stack ENTERING the block, which is the previous block's
+# `resid_streams` and at layer 0 the embedding stack, so it is refused there with the same reason
+# as `attn_hc.hook_in` rather than resolved to this layer's stack under a wrong index.
+_TLENS_BLOCK_INPUT = "hook_in"
+
+# The block-level sublayer inputs. TransformerLens fires `hook_mlp_in` on `resid_mid` and
+# `hook_attn_in` on `resid_pre` (per head, `[batch, pos, n_heads, d_model]`), BEFORE the block norm
+# runs. They look like `mlp_in`/`attn_in` and are not: those are the norm's OUTPUT, gain included,
+# per the criterion in `_TLENS_STABLE`. The two differ by a whole normalization -- cosine 0.175 and
+# a norm ratio of 231x at gemma-3-1b-it layer 5, past 3000x deeper in the stack; 27-86x on gpt2.
+#
+# Refused rather than resolved, for the reason `ln1/ln2.hook_normalized` are: substituting one for
+# the other reads a shipping artifact off the wrong activations, silently, because the result is a
+# plausible tensor of the right shape. Not remapped to the residual either -- a caller porting
+# TransformerLens code may mean either side of the norm, and only they can say which.
+_TLENS_PRENORM_BLOCK_INPUTS: dict[str, str] = {
+    "hook_mlp_in": (
+        "TransformerLens' block-level MLP input, fired on `resid_mid` BEFORE the block norm runs, so "
+        "it is the norm's input. The engine's `mlp_in` is the norm's output -- the tensor the MLP "
+        "receives. Ask for `mlp.hook_in` for the sublayer's argument, or `hook_resid_mid` for the "
+        "pre-norm residual this hook carries"
+    ),
+    "hook_attn_in": (
+        "TransformerLens' block-level attention input, fired on `resid_pre` BEFORE the block norm "
+        "runs (and broadcast per head), so it is the norm's input. The engine's `attn_in` is the "
+        "norm's output. Ask for `attn.hook_in` for the sublayer's argument, or `hook_resid_pre` for "
+        "the pre-norm residual this hook carries"
+    ),
+}
+
+# Hooks outside the `blocks.{i}.` namespace. `unembed.hook_in` is the unembedding's input, which is
+# the final norm's output, gain included -- a forward pre-hook on `lm_head` reads the same tensor.
+# TransformerLens 3 registers it on the bridge and on `HookedTransformer` alike.
+_TLENS_GLOBAL: dict[str, str] = {"unembed.hook_in": "final_norm"}
+_POINT_TO_TLENS_GLOBAL: dict[str, str] = {point: hook for hook, point in _TLENS_GLOBAL.items()}
+
+# `ln_final.hook_normalized` is the nearest legacy name for the same tensor and is not it, twice
+# over: the hook fires on `x / scale` before the gain, and `HookedTransformer` folds that gain into
+# `W_U` by default (`fold_ln`), so on a folded model the hook IS the unembedding's input while the
+# gain has moved into the weights. Neither reading is `final_norm`.
+_TLENS_GLOBAL_REFUSED: dict[str, str] = {
+    "ln_final.hook_normalized": (
+        "a tensor inside the final norm -- `x / scale`, before the gain (which a `fold_ln` "
+        "HookedTransformer has folded into `W_U`). It is neither the norm's input nor `final_norm`, "
+        "the norm's output; `unembed.hook_in` is the output's name on TransformerLens 3's bridge"
+    ),
+}
+
 # The two mHC hooks that are real tensors with no canonical point, refused by name so the reason
 # arrives instead of a list of near misses. Both are stream stacks, which is exactly why they are
 # dangerous: `resid_streams` has their shape, so a caller mapping by eye would take either.
@@ -176,7 +227,6 @@ UNMAPPED_TLENS: frozenset[str] = frozenset(
     {
         "attn_gate",  # gated attention output; TL models no family that has one
         "embeddings",  # TL's `hook_embed` is pre-positional/pre-scaling, a different tensor
-        "final_norm",  # `ln_final.hook_normalized` is outside the `blocks.{i}.` namespace
         "lm_head",  # TL returns logits rather than hooking the unembed
         "router_logits",  # TL hooks the softmax over all experts, not the logits
         "expert_weights",  # TL's `hook_expert_weights` is pre-top-k, so it is a different tensor
@@ -185,14 +235,14 @@ UNMAPPED_TLENS: frozenset[str] = frozenset(
 
 # Canonical point -> the TransformerLens name to emit, for the rest. `mlp_out_post`/`attn_out_post`
 # are ours alone as *names*, but TL reaches those tensors through its aliased block-level hook, which
-# is what this emits.
+# is what this emits. Per-layer points only; the global ones are in `_POINT_TO_TLENS_GLOBAL`.
 _POINT_TO_TLENS: dict[str, str] = {
     "resid_pre": "hook_resid_pre",
     "resid_post": "hook_resid_post",
     "resid_mid": "hook_resid_mid",
     "mlp_in": "mlp.hook_in",
     "mlp_out": "mlp.hook_out",
-    "attn_in": "hook_attn_in",
+    "attn_in": "attn.hook_in",
     "attn_out": "attn.hook_out",
     "mlp_out_post": "hook_mlp_out",
     "attn_out_post": "hook_attn_out",
@@ -330,13 +380,22 @@ def tlens_hook_to_point(hook_name: str, model: object | None = None) -> Address:
     conventional trunk and ``resid_streams`` on a hyper-connection one, because TransformerLens 3's
     DeepSeek-V4 bridge drops the ``hook_resid_post`` alias and returns the stream stack from that
     hook instead. Without ``model`` it resolves to ``resid_post``, the reading that is right almost
-    everywhere -- and wrong by a rank on DeepSeek-V4 and Motif 3.
+    everywhere -- and wrong by a rank on DeepSeek-V4 and Motif 3. Its mirror ``hook_in`` is
+    ``resid_pre`` on a conventional trunk and is *refused* on a hyper-connection one: the stack
+    entering block ``i`` is block ``i-1``'s ``resid_streams``, and resolving it under index ``i``
+    would name a real tensor one layer off.
 
     The two mHC hooks that carry a stream stack *in* are refused rather than mapped, with the reason:
     ``attn_hc.hook_in`` is the previous block's ``resid_streams`` and ``mlp_hc.hook_in`` is the
     mid-block stack, which is ``resid_mid`` in stream form and not ``resid_streams`` despite sharing
     its shape. The mHC hooks that come *out* -- ``hook_post``, ``hook_comb``, ``hook_out`` at both
     the ``attn_hc`` and ``mlp_hc`` sites -- all map, and need no ``model``.
+
+    The block-level ``hook_mlp_in``/``hook_attn_in`` are refused, because they are not the sublayer
+    inputs their names suggest: TransformerLens fires them on ``resid_mid``/``resid_pre`` *before*
+    the block norm, so they are the norm's input where ``mlp_in``/``attn_in`` are its output. The
+    sublayer-scoped ``mlp.hook_in``/``attn.hook_in`` are the output and map. The refusal names both,
+    since a caller may mean either side of the norm.
 
     ``ln1.hook_normalized``/``ln2.hook_normalized`` are unmapped for a reason worth stating, because
     they look like the sublayer inputs: TransformerLens fires them on ``x / scale``, before the norm's
@@ -346,6 +405,10 @@ def tlens_hook_to_point(hook_name: str, model: object | None = None) -> Address:
     and agrees with its hook to 2e-3 relative on gemma-2 (the residue is the converted weights'
     own drift, not the formula). Gemma Scope's transcoders are trained there, so this is a live
     distinction, not a pedantic one.
+
+    One name outside the ``blocks.{i}.`` namespace maps: ``unembed.hook_in`` is ``final_norm``,
+    the unembedding's input. ``ln_final.hook_normalized`` is refused for the ``hook_normalized``
+    reason above, plus one more -- a ``fold_ln`` HookedTransformer has moved the gain into ``W_U``.
 
     Two QK-norm hooks are intentionally unmapped rather than approximated. ``q_norm.hook_scale`` is
     the norm's own denominator, an intermediate of its arithmetic that no hook on the module can
@@ -361,10 +424,16 @@ def tlens_hook_to_point(hook_name: str, model: object | None = None) -> Address:
     ``softmax(cache["router_logits", layer])``, which is exact for the softmax-routed families and
     is *not* what gpt-oss or DeepSeek-V3 compute.
     """
+    if hook_name in _TLENS_GLOBAL:
+        return Address(_TLENS_GLOBAL[hook_name])
+    if hook_name in _TLENS_GLOBAL_REFUSED:
+        raise UnmappedHook(f"TransformerLens hook {hook_name!r} is {_TLENS_GLOBAL_REFUSED[hook_name]}.")
+
     match = _BLOCK_RE.match(hook_name)
     if not match:
         raise UnmappedHook(
-            f"Cannot parse a layer out of TransformerLens hook name {hook_name!r} (expected 'blocks.<layer>.<hook>')"
+            f"Cannot parse a layer out of TransformerLens hook name {hook_name!r} (expected "
+            f"'blocks.<layer>.<hook>', or one of {', '.join(sorted(_TLENS_GLOBAL))})"
         )
     layer, suffix = int(match.group(1)), match.group(2)
 
@@ -376,6 +445,15 @@ def tlens_hook_to_point(hook_name: str, model: object | None = None) -> Address:
     if suffix in _TLENS_STREAM_DEPENDENT:
         single, stacked = _TLENS_STREAM_DEPENDENT[suffix]
         return Address(stacked if model is not None and has_hyper_connections(model) else single, layer)
+    if suffix == _TLENS_BLOCK_INPUT:
+        if model is not None and has_hyper_connections(model):
+            raise UnmappedHook(
+                f"TransformerLens hook {hook_name!r} is {_TLENS_STREAM_STACK_INPUTS['attn_hc.hook_in']}."
+            )
+        return Address("resid_pre", layer)
+
+    if suffix in _TLENS_PRENORM_BLOCK_INPUTS:
+        raise UnmappedHook(f"TransformerLens hook {hook_name!r} is {_TLENS_PRENORM_BLOCK_INPUTS[suffix]}.")
 
     if suffix in _TLENS_STREAM_STACK_INPUTS:
         raise UnmappedHook(f"TransformerLens hook {hook_name!r} is {_TLENS_STREAM_STACK_INPUTS[suffix]}.")
@@ -388,7 +466,7 @@ def tlens_hook_to_point(hook_name: str, model: object | None = None) -> Address:
             f"and `capture.pre_gain_normalized` for the arithmetic."
         )
 
-    known = sorted({*_TLENS_STABLE, *_TLENS_CONTRIBUTION, *_TLENS_STREAM_DEPENDENT})
+    known = sorted({*_TLENS_STABLE, *_TLENS_CONTRIBUTION, *_TLENS_STREAM_DEPENDENT, _TLENS_BLOCK_INPUT})
     raise UnmappedHook(f"TransformerLens hook {hook_name!r} has no canonical point (known: {', '.join(known)})")
 
 
@@ -455,8 +533,14 @@ def point_to_tlens_hook(point: str | Address, layer: int | None = None) -> str:
 
     Takes an :class:`~interp_engine.address.Address` or the ``(point, layer)`` pair. An address
     carrying a coordinate TransformerLens cannot express raises rather than losing it -- see
-    :func:`_refuse_unmappable_coordinates`.
+    :func:`_refuse_unmappable_coordinates`. The one global point with a name, ``final_norm``, takes
+    no layer and emits ``unembed.hook_in``.
     """
+    name = point.name if isinstance(point, Address) else point
+    if name in _POINT_TO_TLENS_GLOBAL:
+        if (point.layer if isinstance(point, Address) else layer) is not None:
+            raise UnmappedHook(f"{name!r} is a global point and takes no layer")
+        return _POINT_TO_TLENS_GLOBAL[name]
     point, layer, address = _split(point, layer)
     _refuse_unmappable_coordinates(address, "TransformerLens", "blocks.{i}.{hook}")
     if point not in _POINT_TO_TLENS:
@@ -467,7 +551,7 @@ def point_to_tlens_hook(point: str | Address, layer: int | None = None) -> str:
             "is a canonical point that TransformerLens has no equivalent for" if known else "is not a canonical point"
         )
         raise UnmappedHook(
-            f"{point!r} {reason} (mappable: {', '.join(sorted(_POINT_TO_TLENS))})"
+            f"{point!r} {reason} (mappable: {', '.join(sorted({*_POINT_TO_TLENS, *_POINT_TO_TLENS_GLOBAL}))})"
             + (f"; ours alone: {', '.join(sorted(UNMAPPED_TLENS))}" if known else "")
         )
     return f"blocks.{layer}.{_POINT_TO_TLENS[point]}"

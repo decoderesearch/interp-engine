@@ -1471,6 +1471,32 @@ def test_the_mhc_hook_names_the_v3_adapter_asks_for_are_the_ones_the_engine_maps
         assert point_to_tlens_hook(point, 7) == f"blocks.7.{suffix}"
 
 
+def test_the_sublayer_input_names_the_v3_adapter_asks_for_are_the_ones_the_engine_maps_them_to():
+    """`attn.hook_in`/`mlp.hook_in`, the module inputs, against `interp_engine.mappers`.
+
+    The mapper once resolved TransformerLens' block-level `hook_attn_in`/`hook_mlp_in` to these
+    points, and they fire on the residual BEFORE the norm -- a whole normalization away. Nothing in
+    the sweep measured it, because the TL columns did not score either point. Now they do, and the
+    name asked for is the one the mapper emits, so the two cannot drift apart a second time; the
+    block-level names are refused by the mapper and are not what this adapter asks for.
+    """
+    from interp_engine.mappers import UnmappedHook, point_to_tlens_hook, tlens_hook_to_point
+
+    from comparison.engines.tlens_engine import _CACHE_POINT
+    from comparison.engines.tlens_v3_engine import _V3_SUBLAYER_INPUT
+    from comparison.spec import POINTS
+
+    assert set(_V3_SUBLAYER_INPUT) == {"attn_in", "mlp_in"}
+    for point, suffix in _V3_SUBLAYER_INPUT.items():
+        assert point_to_tlens_hook(point, 7) == f"blocks.7.{suffix}"
+        assert "tlens_v3" in POINTS[point]["engines"]
+        # The legacy column has no module-input name, so it must not claim the point.
+        assert point not in _CACHE_POINT and "tlens_v2" not in POINTS[point]["engines"]
+    for refused in ("blocks.7.hook_attn_in", "blocks.7.hook_mlp_in"):
+        with pytest.raises(UnmappedHook):
+            tlens_hook_to_point(refused)
+
+
 def test_the_stream_rows_are_asked_for_only_where_the_trunk_carries_streams():
     """`streams_only` has to be applied *before* the capture, because TransformerLens does not refuse
     these names: `blocks.N.hook_out` is registered on every bridge and aliased to the plain residual
