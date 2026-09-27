@@ -130,13 +130,13 @@ def test_layer_logits_refuses_an_explicit_transform_on_a_non_eager_model() -> No
         layer_logits(NotEager(), [1, 2, 3], {"logit_lens": [0]}, softcap=30.0)  # pyright: ignore[reportArgumentType]
 
 
-def test_run_with_cache_refuses_an_attention_mask_on_a_non_eager_model() -> None:
-    with pytest.raises(CapabilityUnsupported, match="mask"):
+def test_run_with_cache_refuses_position_ids_its_mask_does_not_give_on_a_non_eager_model() -> None:
+    with pytest.raises(CapabilityUnsupported, match="position ids"):
         run_with_cache(
             NotEager(),  # pyright: ignore[reportArgumentType]
             torch.tensor([[1, 2, 3]]),
             ["resid_post.0"],
-            attention_mask=torch.ones(1, 3),
+            position_ids=torch.tensor([[5, 6, 7]]),
         )
 
 
