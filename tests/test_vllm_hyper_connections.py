@@ -1385,10 +1385,10 @@ def test_a_static_additive_steer_confined_to_one_stream_does_not_take_the_consta
 
     site = _Site(Address("resid_streams", 0), delta=torch.zeros(8, HC_MULT, D_MODEL))
     spec = {"op": "additive", "vector": [1.0] * D_MODEL, "coeff": 1.0}
-    plain = _compile_write_req(spec, site, skip_positions=(), prompt_len=0, steer_generated=True)
+    plain = _compile_write_req([spec], site, skip_positions=(), prompt_len=0, steer_generated=True)
     assert plain.vector is not None and plain.modify is None, "no stream is still the constant path"
 
-    scoped = _compile_write_req({**spec, "stream": 2}, site, skip_positions=(), prompt_len=0, steer_generated=True)
+    scoped = _compile_write_req([{**spec, "stream": 2}], site, skip_positions=(), prompt_len=0, steer_generated=True)
     assert scoped.vector is None and scoped.modify is not None
     delta = scoped.modify(torch.zeros(TOKENS, HC_MULT, D_MODEL))
     torch.testing.assert_close(delta[:, 2, :], torch.ones(TOKENS, D_MODEL))

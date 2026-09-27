@@ -65,7 +65,7 @@ from interp_engine.vllm_capture.capture import worker_addresses
 from interp_engine.vllm_capture.graphs import graph_debug, refuse_writes_reason
 from interp_engine.vllm_capture.lens import _make_lens_modifier
 from interp_engine.vllm_capture.mhc import mhc_taps, require_available, require_steerable
-from interp_engine.vllm_capture.steering import _make_steer_modifier
+from interp_engine.vllm_capture.steering import _compose_modifiers, _make_steer_modifiers
 
 # --- the per-request combined hook body ---------------------------------------
 
@@ -679,9 +679,11 @@ def worker_register_steering(
     demux.registered.add(req_id)
     mods = demux.steer_mods.setdefault(req_id, {})
     skip_set = {int(i) for i in (skip_positions or [])}
+    by_site: dict[Address, list[dict]] = {}
     for s in specs:
-        site = _write_site(worker, s)
-        mods[site] = (_make_steer_modifier(s, demux.dev, demux.dt), skip_set, int(prompt_len))
+        by_site.setdefault(_write_site(worker, s), []).append(s)
+    for site, group in by_site.items():
+        mods[site] = (_make_steer_modifiers(group, demux.dev, demux.dt), skip_set, int(prompt_len))
         _ensure_hook(worker, demux, site)
 
 
@@ -708,10 +710,12 @@ def worker_register_lens(
     demux.registered.add(req_id)
     lm = demux.lens_mods.setdefault(req_id, {})
     skip_set = {int(i) for i in (skip_positions or [])}
+    by_site: dict[Address, list[dict]] = {}
     for s in specs:
-        site = _write_site(worker, s)
+        by_site.setdefault(_write_site(worker, s), []).append(s)
+    for site, group in by_site.items():
         lm[site] = (
-            _make_lens_modifier(s, demux.dev, demux.dt),
+            _compose_modifiers([_make_lens_modifier(s, demux.dev, demux.dt) for s in group]),
             bool(steer_generated),
             skip_set,
             int(prompt_len),

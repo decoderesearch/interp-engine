@@ -320,3 +320,111 @@ def test_the_worker_refuses_the_old_spelling() -> None:
         _make_steer_modifier(
             {"op": "add", "vector": _vector().tolist(), "coeff": 1.0}, torch.device("cpu"), torch.float32
         )
+
+
+# --- several ops at one site --------------------------------------------------------------------
+#
+# Eager applies a layer's ops in order, each reading the residual the one before it wrote. The
+# worker holds one write per site, so it has to fold the ops into that one write. It used to keep
+# only the last, so two features on one layer steered with the second alone.
+
+
+def _other_vector(seed: int) -> torch.Tensor:
+    return torch.randn(D_MODEL, generator=torch.Generator().manual_seed(seed))
+
+
+def _three_ops_at_one_layer() -> SteeringSpec:
+    return SteeringSpec(
+        layers={
+            0: LayerSteeringSpec(
+                operations=[
+                    AddSpec(vector=_other_vector(1), scale=2.0),
+                    OrthogonalDecompSpec(vector=_other_vector(2), coeff=0.5),
+                    ProjectionCapSpec(vector=_other_vector(3), min=None, max=0.1),
+                ]
+            )
+        }
+    )
+
+
+def _eager_in_order(spec: SteeringSpec, residual: torch.Tensor) -> torch.Tensor:
+    out = residual
+    for one in steering_spec_to_eager_specs(spec):
+        out = out + steer_delta(one, out, one.vector)
+    return out
+
+
+def test_ops_at_one_site_compose_on_the_worker_as_eager_applies_them() -> None:
+    from interp_engine.vllm_capture.steering import _make_steer_modifiers
+
+    spec, residual = _three_ops_at_one_layer(), _residual()
+    modify = _make_steer_modifiers(steering_spec_to_worker_specs(spec), residual.device, residual.dtype)
+    torch.testing.assert_close(residual + modify(residual), _eager_in_order(spec, residual))
+
+
+def test_one_op_at_a_site_is_its_own_modifier() -> None:
+    from interp_engine.vllm_capture.steering import _make_steer_modifiers
+
+    spec = {"op": "orthogonal", "vector": _vector().tolist(), "coeff": 0.5}
+    residual = _residual()
+    torch.testing.assert_close(
+        _make_steer_modifiers([spec], residual.device, residual.dtype)(residual), _worker_delta(spec, residual)
+    )
+
+
+def test_plain_adds_at_a_static_site_are_summed_into_one_constant() -> None:
+    from interp_engine.vllm_capture.static import _constant_delta
+
+    a, b = _other_vector(1), _other_vector(2)
+    group = [
+        {"op": "additive", "vector": a.tolist(), "coeff": 2.0},
+        {"op": "additive", "vector": b.tolist(), "coeff": -1.0},
+    ]
+    got = _constant_delta(group, torch.device("cpu"), torch.float32)
+    assert got is not None
+    torch.testing.assert_close(got[0], a * 2.0 - b)
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"op": "orthogonal", "vector": [1.0] * D_MODEL, "coeff": 0.5},
+        {"op": "additive", "vector": [1.0] * D_MODEL, "coeff": 1.0, "stream": 0},
+    ],
+)
+def test_a_static_site_with_any_other_op_or_a_stream_needs_the_modifier(extra: dict) -> None:
+    from interp_engine.vllm_capture.static import _constant_delta
+
+    plain = {"op": "additive", "vector": [1.0] * D_MODEL, "coeff": 1.0}
+    assert _constant_delta([plain, extra], torch.device("cpu"), torch.float32) is None
+
+
+def _static_worker(rows: int):
+    """A worker with one static write site at ``resid_post.0``, and nothing else."""
+    from types import SimpleNamespace
+
+    from interp_engine.address import Address
+    from interp_engine.vllm_capture.static import StaticState, _Site
+
+    site = _Site(Address("resid_post", 0), delta=torch.zeros(rows, D_MODEL))
+    return SimpleNamespace(_ie_static=StaticState(writes={"resid_post.0": site}), model_runner=None), site
+
+
+@pytest.mark.parametrize("static_path", ["per_request", "global"])
+def test_ops_at_one_static_site_compose_as_eager_applies_them(static_path: str) -> None:
+    from interp_engine.vllm_capture.static import (
+        _apply_write,
+        worker_register_static_write,
+        worker_set_static_delta,
+    )
+
+    spec, residual = _three_ops_at_one_layer(), _residual()
+    specs = [{**s, "point": "resid_post"} for s in steering_spec_to_worker_specs(spec)]
+    worker, site = _static_worker(residual.shape[0])
+    if static_path == "per_request":
+        worker_register_static_write(worker, "r", specs)
+    else:
+        worker_set_static_delta(worker, specs)
+    hidden = residual.clone()
+    _apply_write(hidden, None, site, residual.shape[0], fused=False, worker=worker)
+    torch.testing.assert_close(hidden, _eager_in_order(spec, residual))

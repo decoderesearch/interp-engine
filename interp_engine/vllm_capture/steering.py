@@ -51,6 +51,32 @@ def _one_stream(modify, stream: int):
     return _modify
 
 
+def _compose_modifiers(mods: list):
+    """One ``modify`` for every op at one site, applied in order as eager applies a layer's ops.
+
+    Each op reads the residual the ops before it wrote, and the delta returned is their sum, so a
+    site that holds one write slot still carries all of them.
+    """
+    if len(mods) == 1:
+        return mods[0]
+
+    def _modify_all(full: torch.Tensor) -> torch.Tensor:
+        total = mods[0](full)
+        out = full + total
+        for modify in mods[1:]:
+            delta = modify(out)
+            out = out + delta
+            total = total + delta
+        return total
+
+    return _modify_all
+
+
+def _make_steer_modifiers(specs: list[dict], dev, dt):
+    """:func:`_compose_modifiers` over ``specs``, which all write one site."""
+    return _compose_modifiers([_make_steer_modifier(s, dev, dt) for s in specs])
+
+
 def _make_steer_modifier(spec: dict, dev, dt):
     """Return ``modify(full_resid) -> delta`` (the tensor to ADD to the residual).
 
