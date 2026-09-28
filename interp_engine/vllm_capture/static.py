@@ -1812,9 +1812,9 @@ def worker_set_static_delta(
 ) -> None:
     """Install static writes from worker specs. Zeros every write site first.
 
-    ``op="additive"`` without a lens scope fills the static ``delta`` buffer. Orthogonal,
-    projection_cap, and lens ops attach a live ``modify`` that reads the residual each
-    forward (breakable ``add_eager``). ``lens_scope`` is the jlens prefill/decode skip.
+    A site of only plain adds, with no lens scope, fills the static ``delta`` buffer with their
+    sum. Any other op attaches one live ``modify`` for the site's ops, in order, that reads the
+    residual each forward (breakable ``add_eager``). ``lens_scope`` is the jlens skip.
 
     A ``stream`` disqualifies the static buffer too. The buffer is added whole to a ``[tokens,
     streams, width]`` activation, so it has no way to say "this stream and not the others"; taking
@@ -1827,59 +1827,78 @@ def worker_set_static_delta(
     if static is None:
         raise RuntimeError("set_static_delta: this worker has no static wraps")
     worker_clear_static_delta(worker)
-    from interp_engine.vllm_capture.lens.intervene import _make_lens_modifier
-    from interp_engine.vllm_capture.steering import _make_steer_modifier
+    for site, group in _group_by_site(static, specs).items():
+        assert site.delta is not None
+        constant = _constant_delta(group, site.delta.device, site.delta.dtype) if lens_scope is None else None
+        if constant is not None:
+            site.delta.copy_(constant.expand_as(site.delta))
+            site.delta_set = True
+            continue
+        site.modify = _group_modifier(group, site.delta.device, site.delta.dtype)
+        site.lens_scope = dict(lens_scope) if lens_scope else None
 
+
+def _group_by_site(static: StaticState, specs: list[dict]) -> dict[_Site, list[dict]]:
+    """``specs`` per write site, in order, each op checked against what a static tap can serve."""
+    out: dict[_Site, list[dict]] = {}
     for spec in specs:
         op = str(spec.get("op", SteerMethod.ADDITIVE))
         if op not in STATIC_WRITE_OPS:
             raise ValueError(f"static taps cannot serve op={op!r}; supported ops are {sorted(STATIC_WRITE_OPS)}")
-        site = _write_site(static, Address(str(spec["point"]), int(spec["layer"])))
-        assert site.delta is not None
-        if op == SteerMethod.ADDITIVE and lens_scope is None and spec.get("stream") is None:
-            vec = torch.tensor(spec["vector"], dtype=torch.float32, device=site.delta.device)
-            vec = (vec * float(spec["coeff"])).to(dtype=site.delta.dtype)
-            site.delta.copy_(vec.reshape(1, -1).expand_as(site.delta))
-            site.delta_set = True
-            continue
-        device, dtype = site.delta.device, site.delta.dtype
-        if op in _LENS_OPS:
-            site.modify = _make_lens_modifier(spec, device, dtype)
-        else:
-            site.modify = _make_steer_modifier(spec, device, dtype)
-        site.lens_scope = dict(lens_scope) if lens_scope else None
+        site = _write_site(static, Address(str(spec.get("point") or "resid_post"), int(spec["layer"])))
+        out.setdefault(site, []).append(spec)
+    return out
+
+
+def _constant_delta(group: list[dict], device: torch.device, dtype: torch.dtype) -> torch.Tensor | None:
+    """The ``[1, width]`` sum of ``group``'s deltas when every op is a plain add; else ``None``.
+
+    A constant vector broadcasts over a stream axis and so cannot exclude one: a ``stream`` has to
+    go the modifier way.
+    """
+    if any(
+        str(s.get("op", SteerMethod.ADDITIVE)) != SteerMethod.ADDITIVE or s.get("stream") is not None for s in group
+    ):
+        return None
+    total = sum(torch.tensor(s["vector"], dtype=torch.float32, device=device) * float(s["coeff"]) for s in group)
+    return torch.as_tensor(total).to(dtype=dtype).reshape(1, -1)
+
+
+def _group_modifier(group: list[dict], device: torch.device, dtype: torch.dtype):
+    """One ``modify`` for every op in ``group``, steer and lens ops alike, applied in order."""
+    from interp_engine.vllm_capture.lens.intervene import _make_lens_modifier
+    from interp_engine.vllm_capture.steering import _compose_modifiers, _make_steer_modifier
+
+    return _compose_modifiers(
+        [
+            _make_lens_modifier(s, device, dtype)
+            if str(s.get("op", SteerMethod.ADDITIVE)) in _LENS_OPS
+            else _make_steer_modifier(s, device, dtype)
+            for s in group
+        ]
+    )
 
 
 def _compile_write_req(
-    spec: dict,
+    group: list[dict],
     site: _Site,
     *,
     skip_positions: tuple[int, ...],
     prompt_len: int,
     steer_generated: bool,
 ) -> _WriteReq:
-    op = str(spec.get("op", SteerMethod.ADDITIVE))
-    if op not in STATIC_WRITE_OPS:
-        raise ValueError(f"static taps cannot serve op={op!r}; supported ops are {sorted(STATIC_WRITE_OPS)}")
     assert site.delta is not None
     device, dtype = site.delta.device, site.delta.dtype
-    # A constant `[1, width]` vector broadcasts over a stream axis and so cannot exclude one; see
-    # `worker_set_static_delta` for why a `stream` therefore has to go the modifier way.
-    if op == SteerMethod.ADDITIVE and spec.get("stream") is None:
-        vec = torch.tensor(spec["vector"], dtype=torch.float32, device=device)
-        vec = (vec * float(spec["coeff"])).to(dtype=dtype).reshape(1, -1)
+    constant = _constant_delta(group, device, dtype)
+    if constant is not None:
         return _WriteReq(
-            vector=vec,
+            vector=constant,
             skip_positions=skip_positions,
             prompt_len=prompt_len,
             steer_generated=steer_generated,
         )
-    from interp_engine.vllm_capture.lens.intervene import _make_lens_modifier
-    from interp_engine.vllm_capture.steering import _make_steer_modifier
-
-    modify = _make_lens_modifier(spec, device, dtype) if op in _LENS_OPS else _make_steer_modifier(spec, device, dtype)
     return _WriteReq(
-        modify=modify,
+        modify=_group_modifier(group, device, dtype),
         skip_positions=skip_positions,
         prompt_len=prompt_len,
         steer_generated=steer_generated,
@@ -1906,10 +1925,9 @@ def worker_register_static_write(
         length = int(lens_scope.get("prompt_len") or length)
         generated = bool(lens_scope.get("steer_generated", False))
     by_site: dict[str, _WriteReq] = {}
-    for spec in specs:
-        site = _write_site(static, Address(str(spec.get("point") or "resid_post"), int(spec["layer"])))
+    for site, group in _group_by_site(static, specs).items():
         by_site[format_address(site.address)] = _compile_write_req(
-            spec, site, skip_positions=skip, prompt_len=length, steer_generated=generated
+            group, site, skip_positions=skip, prompt_len=length, steer_generated=generated
         )
     static.write_reqs[req_id] = by_site
     static.registered.add(req_id)
