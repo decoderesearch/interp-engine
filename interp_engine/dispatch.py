@@ -137,10 +137,10 @@ CAPABILITIES: dict[str, Capability] = {
         why="vLLM owns its weights in a worker subprocess and does not expose them to this process",
         instead="running this on an eager model, which holds the live module tree",
     ),
-    "attention_mask": Capability(
-        what="a padding mask",
-        why="this arm forwards one unpadded sequence, so there is nothing for a mask to cover",
-        instead="omitting it, and issuing one call per prompt",
+    "position_ids": Capability(
+        what="position ids other than the ones its attention mask gives",
+        why="each row runs as its own request, and the backend counts that request's positions from 0",
+        instead="omitting position_ids, which counts each row from its first unmasked token on both backends",
     ),
     "masked_steer_positions": Capability(
         what="steering that skips some prompt positions",

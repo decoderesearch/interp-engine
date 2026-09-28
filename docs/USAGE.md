@@ -446,6 +446,13 @@ for step in generate_stream(model, tokens, max_tokens=8, n_logprobs=5):
 accepts either an `Address` or its string form on lookup. `generate_stream` yields a `GenStep` per
 token, which is richer than the text deltas the protocol's streaming method gives you.
 
+`run_with_cache` also takes a padded batch with its `attention_mask`, on both backends. Each row
+counts its positions from 0 at its first real token, as HF `generate` does, so a left-padded row
+gives the same values as the prompt alone. `position_ids_from_mask(mask)` returns those positions.
+Do not read values at masked positions: eager computes them from pad tokens, and vLLM fills them
+with zeros. On vLLM each row is a separate request, and `position_ids` is refused unless it equals
+those positions.
+
 `load_model` on eager still returns a model whose *methods* are async, and calling one from sync code
 is the thing these functions save you from. When you want a method rather than a free function, wrap
 the model once:

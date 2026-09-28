@@ -15,6 +15,8 @@ Design invariants (protect future probing/monitoring apps):
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -161,6 +163,7 @@ def run_with_cache(
     *,
     detach: bool = True,
     attention_mask: torch.Tensor | None = None,
+    position_ids: torch.Tensor | None = None,
 ) -> Cache:
     """Run a single forward pass, capturing the requested points into a :class:`Cache`.
 
@@ -171,13 +174,85 @@ def run_with_cache(
     ``tokens`` may be the ``[batch, seq]`` tensor ``model.to_tokens`` returns, a bare ``[seq]``
     tensor, or a list of ids.
 
+    ``attention_mask`` marks a padded batch's real tokens with 1. With a mask and no
+    ``position_ids``, each row counts its positions from 0 at its first real token, as HF
+    ``generate`` does (see :func:`position_ids_from_mask`). So a left-padded row gives the values
+    it gives unpadded, on both backends. Values at masked positions have no meaning; do not read them.
+
     ``detach=True`` (the default, for activation endpoints) stores detached clones. Pass
     ``detach=False`` to keep the autograd graph (the lens does this on residuals); it raises
     on vLLM, and on eager unless the model was built with ``requires_grad=True``.
     """
     if not isinstance(model, EagerModel):
-        return _run_with_cache_via_protocol(model, tokens, points, detach=detach, attention_mask=attention_mask)
-    return _run_with_cache_eager(model, tokens, points, detach=detach, attention_mask=attention_mask)
+        return _run_with_cache_via_protocol(
+            model, tokens, points, detach=detach, attention_mask=attention_mask, position_ids=position_ids
+        )
+    return _run_with_cache_eager(
+        model, tokens, points, detach=detach, attention_mask=attention_mask, position_ids=position_ids
+    )
+
+
+def position_ids_from_mask(attention_mask: torch.Tensor) -> torch.Tensor:
+    """The position ids HF ``generate`` builds from a ``[batch, seq]`` attention mask.
+
+    Each row counts from 0 at its first unmasked token, so a left-padded row gets the positions it
+    has unpadded. Masked positions get 0. :func:`run_with_cache` uses this when given a mask alone.
+    """
+    mask = attention_mask.long()
+    return (mask.cumsum(-1) - 1).masked_fill(mask == 0, 0)
+
+
+def _as_mask(attention_mask: torch.Tensor, input_ids: torch.Tensor) -> torch.Tensor:
+    """``attention_mask`` on the ids' device, with the ids' ``[batch, seq]`` shape when it is 1-D or 2-D.
+
+    A mask of more dimensions is the caller's own attention pattern and goes to the model unchanged.
+    """
+    mask = attention_mask.to(input_ids.device)
+    if mask.ndim == 1:
+        mask = mask.unsqueeze(0)
+    if mask.ndim == 2 and mask.shape != input_ids.shape:
+        raise ValueError(
+            f"attention_mask has shape {tuple(mask.shape)} and the tokens have shape "
+            f"{tuple(input_ids.shape)}; a padding mask has one entry per token."
+        )
+    return mask
+
+
+def _as_positions(position_ids: torch.Tensor, input_ids: torch.Tensor) -> torch.Tensor:
+    """``position_ids`` on the ids' device, with a batch axis when it is 1-D."""
+    given = position_ids.to(input_ids.device)
+    if given.ndim == 1:
+        given = given.unsqueeze(0)
+    if given.shape[-1] != input_ids.shape[-1]:
+        raise ValueError(
+            f"position_ids has shape {tuple(given.shape)} and the tokens have shape "
+            f"{tuple(input_ids.shape)}; it needs one position per token."
+        )
+    return given
+
+
+def _forward_position_ids(
+    hf_model: Any, input_ids: torch.Tensor, mask: torch.Tensor | None, position_ids: torch.Tensor | None
+) -> torch.Tensor | None:
+    """The ``position_ids`` for ``hf_model``, or ``None`` to let the model count from 0.
+
+    The same rule as HF ``generate``: a 2-D mask with no explicit ids gives
+    :func:`position_ids_from_mask`, if the model is decoder-only and its forward takes them.
+    """
+    takes = "position_ids" in inspect.signature(hf_model.forward).parameters
+    if position_ids is not None:
+        if not takes:
+            raise ValueError(
+                f"{type(hf_model).__name__}.forward takes no position_ids, so they cannot be honored. "
+                "Its positions come from the attention mask (ALiBi) or are not an input at all: "
+                "pass attention_mask and omit position_ids."
+            )
+        return _as_positions(position_ids, input_ids)
+    if mask is None or mask.ndim != 2 or not takes:
+        return None
+    if getattr(hf_model.config, "is_encoder_decoder", False):
+        return None
+    return position_ids_from_mask(mask)
 
 
 def _run_with_cache_via_protocol(
@@ -187,32 +262,76 @@ def _run_with_cache_via_protocol(
     *,
     detach: bool,
     attention_mask: torch.Tensor | None,
+    position_ids: torch.Tensor | None,
 ) -> Cache:
-    """The non-eager arm: one prompt through :meth:`InterpModel.capture`, shaped like a Cache.
+    """The non-eager arm: each row through :meth:`InterpModel.capture`, shaped like a Cache.
 
-    ``attention_mask`` is refused rather than ignored -- a single unpadded sequence needs none,
-    and a mask that was going to be dropped is worse than one that raises. The batch refusal
-    lives in :func:`~interp_engine.dispatch.as_token_ids`, for the same reason.
+    The backend takes one unpadded prompt per request and counts its positions from 0. So each
+    row runs as its unmasked tokens alone, which gives the positions :func:`position_ids_from_mask`
+    gives the eager arm. The rows go as concurrent requests, which the backend's scheduler batches.
+    Masked positions hold zeros.
+
+    ``position_ids`` is accepted only where it is those positions, as nothing else can reach
+    the backend.
 
     :attr:`Cache.output` stays ``None``: the forward happened in a worker subprocess and there
     is no HF output object to hand back. Everything reading ``cache.tensors`` is unaffected,
     which is nearly every caller.
     """
-    if attention_mask is not None:
-        raise refuse(model, "run_with_cache", capability="attention_mask")
     steering = active_steering(model)
     if steering is not None and steering.position_mask is not None:
         raise refuse(model, "steer(..., position_mask=...) around a capture", capability="masked_steer_positions")
-    ids = as_token_ids(tokens, model=model, what="run_with_cache")
-    captured = sync_model(model).capture(
-        ids,
-        _normalize_points(points),
-        steering_spec=None if steering is None else steering.spec,
-        detach=detach,
-    )
-    # Restore the batch axis the eager path keeps, so `cache[point][0]` means the same thing on
-    # both backends. A view, so this costs nothing.
-    return Cache(tensors={address: t.unsqueeze(0) for address, t in captured.items()}, output=None)
+    input_ids = as_batched_tokens(tokens).cpu()
+    keep = torch.ones_like(input_ids, dtype=torch.bool)
+    if attention_mask is not None:
+        mask = _as_mask(attention_mask, input_ids)
+        if mask.ndim != 2:
+            raise ValueError(
+                f"attention_mask has shape {tuple(mask.shape)}; this backend takes a [batch, seq] "
+                "padding mask, not an attention pattern."
+            )
+        keep = mask != 0
+    if position_ids is not None:
+        given = _as_positions(position_ids, input_ids)
+        want = position_ids_from_mask(keep)
+        if (
+            given.ndim != 2
+            or given.shape[0] not in (1, want.shape[0])
+            or not torch.equal(given.expand_as(want)[keep], want[keep])
+        ):
+            raise refuse(model, "run_with_cache(position_ids=...)", capability="position_ids")
+    rows = [input_ids[b][keep[b]].tolist() for b in range(input_ids.shape[0])]
+    for b, row in enumerate(rows):
+        if not row:
+            raise ValueError(f"run_with_cache: row {b} has no unmasked token, so it has nothing to run.")
+    addresses = _normalize_points(points)
+    spec = None if steering is None else steering.spec
+
+    async def _every_row() -> list[dict[Address, torch.Tensor]]:
+        return await asyncio.gather(*(model.capture(row, addresses, steering_spec=spec, detach=detach) for row in rows))
+
+    captured = sync_model(model).runner.run(_every_row(), what="run_with_cache()")
+    if len(rows) == 1 and bool(keep.all()):
+        # Restore the batch axis the eager path keeps, so `cache[point][0]` means the same thing on
+        # both backends. A view, so this costs nothing.
+        return Cache(tensors={address: t.unsqueeze(0) for address, t in captured[0].items()}, output=None)
+    return Cache(tensors={a: _pad_rows(a, [c[a] for c in captured], keep) for a in captured[0]}, output=None)
+
+
+def _pad_rows(address: Address, rows: list[torch.Tensor], keep: torch.Tensor) -> torch.Tensor:
+    """One ``[batch, seq, ...]`` tensor from each row's ``[kept, ...]`` capture, zeros where ``keep`` is False."""
+    first = rows[0]
+    out = first.new_zeros((keep.shape[0], keep.shape[1], *first.shape[1:]))
+    for b, row in enumerate(rows):
+        kept = int(keep[b].sum())
+        if row.shape[0] != kept or row.shape[1:] != first.shape[1:]:
+            raise ValueError(
+                f"{address} came back with shape {tuple(row.shape)} for a {kept}-token row, which is "
+                "not one entry per token, so it cannot go back into a padded batch. Capture it one "
+                "prompt at a time."
+            )
+        out[b, keep[b].to(out.device)] = row
+    return out
 
 
 def _run_with_cache_eager(
@@ -222,12 +341,15 @@ def _run_with_cache_eager(
     *,
     detach: bool = True,
     attention_mask: torch.Tensor | None = None,
+    position_ids: torch.Tensor | None = None,
 ) -> Cache:
     """Capture in-process off the live module tree. See :func:`run_with_cache`."""
     # Placed here rather than by each caller: these ids go straight into `hf_model`, so a list or a
     # host tensor -- both documented inputs -- fails on every accelerator otherwise, through either
     # entry point that shares this body. A tensor already on the device is unmoved.
     input_ids = as_batched_tokens(tokens, device=model.device)
+    mask = None if attention_mask is None else _as_mask(attention_mask, input_ids)
+    positions = _forward_position_ids(model.hf_model, input_ids, mask, position_ids)
     addresses = _normalize_points(points)
     cache = Cache()
 
@@ -324,12 +446,15 @@ def _run_with_cache_eager(
             hm.read(module, make_reader(keys), point=point)  # pyright: ignore[reportArgumentType]
 
         forward_ctx = torch.no_grad() if detach else torch.enable_grad()
+        # Left out rather than passed as `None`, so a forward with no such argument never sees it.
+        extra = {} if positions is None else {"position_ids": positions}
         with forward_ctx:
             output = model.hf_model(
                 input_ids,
-                attention_mask=attention_mask,
+                attention_mask=mask,
                 output_attentions=wants_attn,
                 use_cache=False,
+                **extra,
             )
         cache.output = output
         for layer, tensor in scores.items():
