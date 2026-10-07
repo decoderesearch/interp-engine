@@ -1004,6 +1004,102 @@ def test_harvest_does_not_clone_sites_nobody_asked_for():
     assert torch.equal(static.harvest["req-1"]["resid_post.0"][0], torch.ones(4, 2))
 
 
+class _BatchDemux:
+    """A demux mid-step: two requests share the batch, ``a`` rows 0-2 and ``b`` rows 3-6."""
+
+    def __init__(self) -> None:
+        self.current_meta = (["a", "b"], [3, 4])
+        self.registered = {"a", "b"}
+
+
+def test_harvest_copies_only_the_capturing_requests_rows():
+    """``a``'s rows must not keep ``b``'s alive: one copy per request, of its own span."""
+    from types import SimpleNamespace
+
+    static = StaticState()
+    buf = torch.arange(14, dtype=torch.float32).reshape(7, 2)
+    static.reads = {"resid_post.0": _Site(address=Address("resid_post", 0), buf=buf)}
+    static.cap_points = {"a": {"resid_post.0"}}
+    _harvest(SimpleNamespace(_np_demux=_BatchDemux()), static, 7)
+
+    (rows,) = static.harvest["a"]["resid_post.0"]
+    assert torch.equal(rows, buf[:3])
+    assert rows.untyped_storage().nbytes() == rows.numel() * rows.element_size()
+    assert "b" not in static.harvest
+
+
+class _OutOfMemoryRows:
+    """A read buffer whose copy fails the way the allocator does on a full card."""
+
+    shape = (7, 2)
+
+    def __getitem__(self, _index: object) -> _OutOfMemoryRows:
+        return self
+
+    def detach(self) -> _OutOfMemoryRows:
+        return self
+
+    def clone(self) -> torch.Tensor:
+        raise torch.cuda.OutOfMemoryError("CUDA out of memory. Tried to allocate 32.00 MiB.")
+
+
+def test_harvest_out_of_memory_fails_the_request_not_the_step():
+    """Inside execute_model an exception kills the engine; a failed copy must fail one request."""
+    from types import SimpleNamespace
+
+    static = StaticState()
+    static.reads = {
+        "resid_post.0": _Site(address=Address("resid_post", 0), buf=_OutOfMemoryRows()),  # type: ignore[arg-type]
+        "resid_post.1": _Site(address=Address("resid_post", 1), buf=torch.ones(7, 2)),
+    }
+    static.cap_points = {"a": {"resid_post.0", "resid_post.1"}, "b": {"resid_post.1"}}
+    static.harvest["a"] = {"resid_post.1": [torch.zeros(1, 2)]}
+    _harvest(SimpleNamespace(_np_demux=_BatchDemux()), static, 7)
+
+    assert "out of memory" in static.failed["a"]
+    assert "a" not in static.harvest
+    assert static.cap_points["a"] == set()
+    assert torch.equal(static.harvest["b"]["resid_post.1"][0], torch.ones(4, 2))
+
+    _harvest(SimpleNamespace(_np_demux=_BatchDemux()), static, 7)
+    assert "a" not in static.harvest
+
+
+def test_collect_of_a_failed_capture_raises_and_deregisters():
+    from types import SimpleNamespace
+
+    from interp_engine.vllm_capture.static import worker_collect_static, worker_drain_static
+
+    static = StaticState()
+    static.cap_points["a"] = set()
+    static.failed["a"] = "out of memory copying 3 rows of resid_post.0"
+    static.registered.add("a")
+    worker = SimpleNamespace(_ie_static=static)
+
+    with pytest.raises(RuntimeError, match="out of memory copying 3 rows"):
+        worker_drain_static(worker, "a")
+    assert "a" in static.failed
+
+    with pytest.raises(RuntimeError, match="out of memory copying 3 rows"):
+        worker_collect_static(worker, "a")
+    assert "a" not in static.cap_points
+    assert "a" not in static.failed
+    assert "a" not in static.registered
+
+
+def test_register_clears_an_earlier_failure():
+    from types import SimpleNamespace
+
+    from interp_engine.vllm_capture.static import worker_register_static_capture
+
+    static = StaticState()
+    static.reads = {"resid_post.0": _Site(address=Address("resid_post", 0), buf=torch.ones(4, 2))}
+    static.failed["a"] = "out of memory"
+    worker = SimpleNamespace(_ie_static=static, _np_demux=_BatchDemux())
+    worker_register_static_capture(worker, "a", ["resid_post.0"])
+    assert "a" not in static.failed
+
+
 def test_resid_stream_aliases_match_steer_remap():
     assert resid_stream_aliases(Address("resid_pre", 7)) == (
         Address("resid_pre", 7),
@@ -1027,7 +1123,7 @@ def test_encode_harvest_applies_capture_scale():
     from types import SimpleNamespace
 
     from interp_engine.vllm_capture._payload import decode_tensor_payload
-    from interp_engine.vllm_capture.static import StaticState, _encode_harvest
+    from interp_engine.vllm_capture.static import _encode_harvest
 
     class Trunk(torch.nn.Module):
         def __init__(self) -> None:
@@ -1043,10 +1139,8 @@ def test_encode_harvest_applies_capture_scale():
             self.model = Trunk()
 
     worker = SimpleNamespace(model_runner=SimpleNamespace(model=Root()))
-    static = StaticState()
     raw = torch.ones(2, 8)
-    static.harvest["r"] = {"embeddings": [raw.clone()]}
-    payload = _encode_harvest(static, "r", worker)
+    payload = _encode_harvest({"embeddings": [raw.clone()]}, worker)
     out = decode_tensor_payload(payload["embeddings"])
     torch.testing.assert_close(out, raw * 4.0)
 

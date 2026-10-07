@@ -26,12 +26,14 @@ from interp_engine.vllm_capture._payload import (
     encode_tensor_payload,
     hook_site,
 )
+from interp_engine.vllm_capture._tp import raise_if_any_rank_failed
 from interp_engine.vllm_capture._tree import _worker_model, scale_capture
 from interp_engine.vllm_capture.lens.unembed import (
     _assert_applied_logit_scale_agrees,
     _worker_applied_softcap,
     _worker_final_norm,
 )
+from interp_engine.vllm_capture.static import _fail_capture, take_static_rows
 from interp_engine.vllm_capture.static import _state as _static_state
 
 
@@ -190,18 +192,21 @@ def worker_set_lens_jacobians(worker: object, payloads: dict[str, tuple] | None)
     return {"layers": len(jacobians), "bytes": total}
 
 
-def _static_harvest_rows(worker: object, static: Any, req_id: str) -> dict[str, torch.Tensor]:
-    """Concatenated static harvest for ``req_id``, scaled like :func:`worker_collect_static`."""
-    harvest = static.harvest.get(req_id) or {}
-    if not harvest:
-        return {}
-    model = _worker_model(worker)
+def _concat_rows(
+    model: torch.nn.Module, taken: dict[str, list[torch.Tensor]], *, scale: bool
+) -> dict[str, torch.Tensor]:
+    """One tensor per key from rows the caller has taken out of the capture store.
+
+    ``scale`` corrects a static harvest like :func:`worker_collect_static` does. Each key's pieces
+    are freed once joined, so the peak is the rows plus one key's copy rather than twice the rows.
+    """
     rows: dict[str, torch.Tensor] = {}
-    for key, chunks in harvest.items():
+    for key, chunks in taken.items():
         if not chunks:
             continue
         tensor = chunks[0] if len(chunks) == 1 else torch.cat(chunks, dim=0)
-        rows[key] = scale_capture(model, key, tensor)
+        chunks.clear()
+        rows[key] = scale_capture(model, key, tensor) if scale else tensor
     return rows
 
 
@@ -274,50 +279,30 @@ def worker_lens_capture_readout(
     demux = _get_demux(worker)
     static = _static_state(worker)
     static_active = static is not None and req_id in static.cap_points
-    caps: dict = {}
+    # The rows leave the capture store before anything is allocated from them, and a final call
+    # deregisters first. Joining them can run out of memory; when it does, the request fails and
+    # its rows are freed, rather than staying on the worker for every later step to step around.
+    failure: str | None = None
     if static_active:
         assert static is not None
-        rows_by_key = _static_harvest_rows(worker, static, req_id)
         cursor = static.lens_cursor.get(req_id, 0)
-    else:
-        caps = demux.captures.get(req_id) or {}
-        rows_by_key = {key: torch.cat(tensors, dim=0) for key, tensors in caps.items() if tensors}
-        cursor = demux.lens_cursor.get(req_id, 0)
-    if final:
-        if static_active:
-            assert static is not None
-            static.harvest.pop(req_id, None)
-            static.cap_points.pop(req_id, None)
-            static.lens_cursor.pop(req_id, None)
+        taken, failure = take_static_rows(static, req_id, final=final)
+        if final:
             static.registered.discard(req_id)
             demux.registered.discard(req_id)
-        else:
+    else:
+        caps = demux.captures.get(req_id) or {}
+        cursor = demux.lens_cursor.get(req_id, 0)
+        taken = {key: list(tensors) for key, tensors in caps.items() if tensors}
+        for tensors in caps.values():
+            tensors.clear()
+        if final:
             demux.captures.pop(req_id, None)
             demux.lens_cursor.pop(req_id, None)
             points = demux.cap_points.pop(req_id, set())
             for site in {hook_site(a) for a in points}:
                 _release_hook(demux, site)
             _maybe_unregister(demux, req_id)
-    elif static_active:
-        assert static is not None
-        static.harvest.pop(req_id, None)
-    else:
-        for tensors in caps.values():
-            tensors.clear()
-
-    empty: dict[str, Any] = {
-        "first_position": cursor,
-        "n_positions": 0,
-        # Rows taken, which `n_positions` does not report once `skip_before` drops some. The
-        # caller distinguishes "captured nothing" (hooks never fired) from "read out nothing".
-        "n_rows": 0,
-        "results": [{"top_idx": None, "top_probs": None} for _ in specs],
-    }
-    # Nothing captured since the last call is ordinary mid-stream: the engine may not have
-    # run a forward for this request yet. A point missing while others are present is not,
-    # and `rows_for` raises for that below.
-    if not rows_by_key:
-        return empty
 
     model = _worker_model(worker)
     param = next(model.parameters())
@@ -346,7 +331,40 @@ def worker_lens_capture_readout(
         return rows
 
     wanted = sorted({int(layer) for spec in specs for layer in spec["layers"]})
-    n_rows = min((rows_for(layer).shape[0] for layer in wanted), default=0)
+    rows_by_key: dict[str, torch.Tensor] = {}
+    n_rows = 0
+    if failure is None:
+        try:
+            rows_by_key = _concat_rows(model, taken, scale=static_active)
+            if rows_by_key:
+                n_rows = min((rows_for(layer).shape[0] for layer in wanted), default=0)
+        except torch.cuda.OutOfMemoryError as exc:
+            failure = f"out of memory joining the captured rows: {exc}"
+            rows_by_key.clear()
+            reduced.clear()
+            if static_active and not final:
+                assert static is not None
+                _fail_capture(static, req_id, failure)
+    taken.clear()
+    # Every wanted layer is memoized now. On a stacked trunk the full-width rows are n_streams
+    # times the reduced ones, and nothing reads them again.
+    rows_by_key.clear()
+    # Every rank reaches this on every call, before the unembed's gather and before any return.
+    raise_if_any_rank_failed(failure, f"lens read-out for {req_id}")
+
+    empty: dict[str, Any] = {
+        "first_position": cursor,
+        "n_positions": 0,
+        # Rows taken, which `n_positions` does not report once `skip_before` drops some. The
+        # caller distinguishes "captured nothing" (hooks never fired) from "read out nothing".
+        "n_rows": 0,
+        "results": [{"top_idx": None, "top_probs": None} for _ in specs],
+    }
+    # Nothing captured since the last call is ordinary mid-stream: the engine may not have
+    # run a forward for this request yet. A point missing while others are present is not,
+    # and `rows_for` raises for that above.
+    if not reduced:
+        return empty
     if not final:
         if static_active:
             assert static is not None

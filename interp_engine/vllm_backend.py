@@ -21,8 +21,8 @@ import asyncio
 import importlib.util
 import logging
 import os
-from collections.abc import Iterable, Sequence
-from typing import Any
+from collections.abc import Awaitable, Callable, Iterable, Sequence
+from typing import Any, TypeVar
 
 import torch
 
@@ -71,6 +71,8 @@ from interp_engine.vllm_capture.static import (
 from interp_engine.vllm_plugin import WORKER_EXTENSION_CLS
 
 logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
 
 
 def _device_capability() -> tuple[int, int] | None:
@@ -707,6 +709,24 @@ def _assert_points_captured(captured: Iterable[Address], requested: Sequence[str
 def _decode_rank0(payloads: object) -> dict[Address, torch.Tensor]:
     """Decode the rank-0 capture payload from a ``collective_rpc`` result."""
     return decode_capture_payload(payloads[0] if isinstance(payloads, list | tuple) else payloads)  # type: ignore[index]
+
+
+async def _settle(collect: Callable[[], Awaitable[_T]], release: Callable[[], Awaitable[None]]) -> _T:
+    """A request's last worker calls: ``collect`` its rows, then ``release`` its registration.
+
+    ``release`` runs even when ``collect`` raises, which a capture the worker dropped for lack of
+    memory does on purpose. Both are shielded: a server cancels a request's task when its client
+    goes, and under anyio every await in a cancelled scope is cancelled too, so an unshielded
+    cleanup never reaches the worker and the request's rows stay there for the process lifetime.
+    """
+
+    async def run() -> _T:
+        try:
+            return await collect()
+        finally:
+            await release()
+
+    return await asyncio.shield(run())
 
 
 def _step_logprobs(per_position: object, index: int, n_logprobs: int) -> list[dict[str, float | int]] | None:
@@ -1629,6 +1649,13 @@ class VLLMModel:
     async def _unregister_static_write(self, rid: str) -> None:
         await self.engine.collective_rpc("unregister_static_write", args=(rid,))
 
+    async def _release_writes(self, rid: str, *, static_write: bool, steered: bool) -> None:
+        """Drop ``rid``'s steering or lens writes from the worker, whichever it registered."""
+        if static_write:
+            await self._unregister_static_write(rid)
+        elif steered:
+            await self.engine.collective_rpc("unregister_steering", args=(rid,))
+
     def _lens_scope(self, lens_intervention: dict) -> dict:
         return {
             "steer_generated": bool(lens_intervention.get("steer_generated", False)),
@@ -1810,18 +1837,19 @@ class VLLMModel:
             )
 
         async def _finish() -> None:
+            async def collect() -> object:
+                if not (capturing and capture_out is not None):
+                    return None
+                method = "collect_static" if static_cap else "collect_request"
+                return await self.engine.collective_rpc(method, args=(rid,))
+
+            payloads = await _settle(
+                collect, lambda: self._release_writes(rid, static_write=static_write, steered=steered)
+            )
             if capturing and capture_out is not None:
-                if static_cap:
-                    payloads = await self.engine.collective_rpc("collect_static", args=(rid,))
-                else:
-                    payloads = await self.engine.collective_rpc("collect_request", args=(rid,))
                 _merge_captures(capture_out, _decode_rank0(payloads))
                 _assert_points_captured(capture_out, pts)
                 _assert_full_width_captured(capture_out, self._hidden_size)
-            if static_write:
-                await self._unregister_static_write(rid)
-            elif steered:
-                await self.engine.collective_rpc("unregister_steering", args=(rid,))
 
         if stream:
 
@@ -1901,10 +1929,7 @@ class VLLMModel:
             async for out in self.engine.generate(prompt, sampling_params, rid):
                 yield out
         finally:
-            if static_write:
-                await self._unregister_static_write(rid)
-            elif steered:
-                await self.engine.collective_rpc("unregister_steering", args=(rid,))
+            await asyncio.shield(self._release_writes(rid, static_write=static_write, steered=steered))
 
     async def _drain_into(self, rid: str, capture_out: dict[Address, torch.Tensor], *, static: bool = False) -> None:
         """Move ``rid``'s captured rows so far to the host, leaving the hooks / static taps installed."""
@@ -2238,14 +2263,10 @@ class VLLMModel:
                 request_id=rid,
             )
         finally:
-            if static_cap:
-                payloads = await self.engine.collective_rpc("collect_static", args=(rid,))
-            else:
-                payloads = await self.engine.collective_rpc("collect_request", args=(rid,))
-            if static_write:
-                await self._unregister_static_write(rid)
-            elif steered:
-                await self.engine.collective_rpc("unregister_steering", args=(rid,))
+            payloads = await _settle(
+                lambda: self.engine.collective_rpc("collect_static" if static_cap else "collect_request", args=(rid,)),
+                lambda: self._release_writes(rid, static_write=static_write, steered=steered),
+            )
         out = decode_capture_payload(payloads[0] if isinstance(payloads, list | tuple) else payloads)
         _assert_points_captured(out, pts)
         _assert_full_prompt_captured(out, len(prompt_token_ids))
@@ -2329,14 +2350,10 @@ class VLLMModel:
                 request_id=rid,
             )
         finally:
-            if static_cap:
-                payloads = await self.engine.collective_rpc("collect_static", args=(rid,))
-            else:
-                payloads = await self.engine.collective_rpc("collect_request", args=(rid,))
-            if static_write:
-                await self._unregister_static_write(rid)
-            elif steered or lens:
-                await self.engine.collective_rpc("unregister_steering", args=(rid,))
+            payloads = await _settle(
+                lambda: self.engine.collective_rpc("collect_static" if static_cap else "collect_request", args=(rid,)),
+                lambda: self._release_writes(rid, static_write=static_write, steered=bool(steered or lens)),
+            )
         caps = decode_capture_payload(payloads[0] if isinstance(payloads, list | tuple) else payloads)
         _assert_points_captured(caps, pts)
         _assert_full_width_captured(caps, self._hidden_size)
@@ -2428,15 +2445,11 @@ class VLLMModel:
         finally:
             # Deregister on every exit path (including client disconnect), and keep whatever
             # the last forward appended after the final drain so no position is dropped.
-            if static_cap:
-                payloads = await self.engine.collective_rpc("collect_static", args=(rid,))
-            else:
-                payloads = await self.engine.collective_rpc("collect_request", args=(rid,))
+            payloads = await _settle(
+                lambda: self.engine.collective_rpc("collect_static" if static_cap else "collect_request", args=(rid,)),
+                lambda: self._release_writes(rid, static_write=static_write, steered=bool(lens)),
+            )
             tail = decode_capture_payload(payloads[0] if isinstance(payloads, list | tuple) else payloads)
-            if static_write:
-                await self._unregister_static_write(rid)
-            elif lens:
-                await self.engine.collective_rpc("unregister_steering", args=(rid,))
         if completed and (tail or len(token_ids) > reported):
             seen.update(tail)
             yield tail, token_ids
@@ -2596,11 +2609,10 @@ class VLLMModel:
         finally:
             # Deregister on every exit path (including client disconnect), and read out whatever
             # the last forward appended after the final drain so no position is dropped.
-            tail = await readout(final=True)
-            if static_write:
-                await self._unregister_static_write(rid)
-            elif lens:
-                await self.engine.collective_rpc("unregister_steering", args=(rid,))
+            tail = await _settle(
+                lambda: readout(final=True),
+                lambda: self._release_writes(rid, static_write=static_write, steered=bool(lens)),
+            )
         if completed and (tail[1] or len(token_ids) > reported):
             yield tail[0], tail[2], tail[3], token_ids
         if completed and captured_rows == 0:
@@ -2800,10 +2812,9 @@ class VLLMModel:
                 request_id=rid,
             )
         finally:
-            if static_attn:
-                payloads = await self.engine.collective_rpc("collect_static", args=(rid,))
-            else:
-                payloads = await self.engine.collective_rpc("collect_attn_request", args=(rid,))
+            payloads = await asyncio.shield(
+                self.engine.collective_rpc("collect_static" if static_attn else "collect_attn_request", args=(rid,))
+            )
         return recompute_attn_from_payloads(payloads, layers, self._attn_dims, self.tensor_parallel_size)
 
     async def set_steering(self, specs: list[dict]) -> None:

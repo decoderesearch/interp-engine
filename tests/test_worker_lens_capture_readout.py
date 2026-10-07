@@ -390,3 +390,71 @@ def test_static_harvest_is_read_the_same_as_demux_captures(worker):
     assert "r" not in static.cap_points
     assert "r" not in static.harvest
     assert "r" not in static.lens_cursor
+
+
+def _static_request(worker: object, n_chunks: int = 2):
+    from interp_engine.vllm_capture.static import StaticState
+
+    static = StaticState()
+    static.cap_points["r"] = {f"resid_post.{layer}" for layer in LAYERS}
+    static.harvest["r"] = {
+        f"resid_post.{layer}": [torch.randn(1, D_MODEL) for _ in range(n_chunks)] for layer in LAYERS
+    }
+    static.registered.add("r")
+    worker._ie_static = static  # type: ignore[attr-defined]
+    return static
+
+
+def _out_of_memory(*_args: object, **_kwargs: object) -> dict:
+    raise torch.cuda.OutOfMemoryError("CUDA out of memory. Tried to allocate 128.00 MiB.")
+
+
+def test_out_of_memory_on_the_final_read_out_still_deregisters(worker, monkeypatch):
+    """The rows left the store before they were joined, so a failed join cannot strand them."""
+    from interp_engine.vllm_capture.lens import readout
+
+    static = _static_request(worker)
+    monkeypatch.setattr(readout, "_concat_rows", _out_of_memory)
+    with pytest.raises(RuntimeError, match="out of memory joining"):
+        read_out(worker, "r", spec(top_n=VOCAB), final=True)
+    assert "r" not in static.cap_points
+    assert "r" not in static.harvest
+    assert "r" not in static.registered
+    assert "r" not in static.failed
+
+
+def test_out_of_memory_mid_stream_fails_the_request_until_its_final_call(worker, monkeypatch):
+    """Its rows are gone, so a later read-out must not return a sequence with a hole in it."""
+    from interp_engine.vllm_capture.lens import readout
+
+    static = _static_request(worker)
+    with monkeypatch.context() as patch:
+        patch.setattr(readout, "_concat_rows", _out_of_memory)
+        with pytest.raises(RuntimeError, match="out of memory joining"):
+            read_out(worker, "r", spec(top_n=VOCAB))
+    assert "r" not in static.harvest
+    assert static.cap_points["r"] == set()
+
+    static.harvest["r"] = {f"resid_post.{layer}": [torch.randn(1, D_MODEL)] for layer in LAYERS}
+    with pytest.raises(RuntimeError, match="out of memory joining"):
+        read_out(worker, "r", spec(top_n=VOCAB))
+    with pytest.raises(RuntimeError, match="out of memory joining"):
+        read_out(worker, "r", spec(top_n=VOCAB), final=True)
+    assert "r" not in static.cap_points
+    assert "r" not in static.failed
+    assert "r" not in static.registered
+
+
+def test_joined_rows_match_reading_the_chunks_one_at_a_time(worker):
+    """Freeing each key's pieces as it is joined must not change what is read out."""
+    torch.manual_seed(3)
+    static = _static_request(worker, n_chunks=3)
+    whole = {key: torch.cat(chunks, dim=0) for key, chunks in static.harvest["r"].items()}
+    _, top_idx, top_probs = read_out(worker, "r", spec(top_n=VOCAB))
+
+    other = make_worker()
+    other._np_lens_jacobians = worker._np_lens_jacobians
+    stage_rows(other, "r", {layer: whole[f"resid_post.{layer}"] for layer in LAYERS})
+    _, want_idx, want_probs = read_out(other, "r", spec(top_n=VOCAB))
+    assert torch.equal(top_idx, want_idx)
+    assert torch.allclose(top_probs, want_probs)

@@ -35,7 +35,7 @@ from interp_engine.vllm_capture._hooks import (
     value_columns,
 )
 from interp_engine.vllm_capture._payload import attn_payload_key, decode_capture_payload, encode_tensor_payload
-from interp_engine.vllm_capture._tp import gather_attn_role, gather_capture
+from interp_engine.vllm_capture._tp import gather_attn_role, gather_capture, raise_if_any_rank_failed
 from interp_engine.vllm_capture._tree import (
     _INPUT_POINTS,
     _KWARG_INPUT_POINTS,
@@ -743,6 +743,9 @@ class StaticState:
     lens_cursor: dict[str, int] = field(default_factory=dict)
     registered: set[str] = field(default_factory=set)
     write_reqs: dict[str, dict[str, _WriteReq]] = field(default_factory=dict)
+    #: Why a request's capture was dropped mid-flight, by request id. Its rows are gone, so a
+    #: read-out or collect raises this rather than return a sequence with a hole in it.
+    failed: dict[str, str] = field(default_factory=dict)
     patched_execute: bool = False
 
 
@@ -1768,6 +1771,12 @@ def _patch_execute_model(worker: object) -> None:
 
 
 def _harvest(worker: object, static: StaticState, n: int) -> None:
+    """Copy this step's rows out of the read buffers, for each request capturing them.
+
+    Runs inside ``execute_model``, where an exception kills the engine for every request. So an
+    out-of-memory copy fails only the request it was for (:func:`_fail_capture`), and the step
+    goes on.
+    """
     if n <= 0 or not static.reads or not static.cap_points:
         return
     wanted_keys = {key for wanted in static.cap_points.values() for key in wanted}
@@ -1775,23 +1784,67 @@ def _harvest(worker: object, static: StaticState, n: int) -> None:
         return
     demux = _get_demux(worker)
     meta = demux.current_meta
-    for key, site in static.reads.items():
-        if key not in wanted_keys or site.buf is None:
-            continue
-        chunk = site.buf[:n].detach().clone()
-        if meta is None:
-            for rid, wanted in static.cap_points.items():
-                if key in wanted:
-                    static.harvest.setdefault(rid, {}).setdefault(key, []).append(chunk)
-            continue
+    # One copy per request, of its own rows. A slice of one batch-wide copy would keep the whole
+    # batch alive -- co-batched requests that capture nothing included -- until every request
+    # holding a slice had drained.
+    spans: list[tuple[list[str], int, int]] = []
+    if meta is None:
+        spans.append((list(static.cap_points), 0, n))
+    else:
         req_ids, seq_lens = meta
         start = 0
         for full_id, length in zip(req_ids, seq_lens, strict=False):
             end = start + int(length)
             rid = _resolve_rid(demux, str(full_id))
-            if rid in static.cap_points and key in static.cap_points[rid]:
-                static.harvest.setdefault(rid, {}).setdefault(key, []).append(chunk[start:end].contiguous())
+            if rid in static.cap_points:
+                spans.append(([rid], start, end))
             start = end
+    for key, site in static.reads.items():
+        if key not in wanted_keys or site.buf is None:
+            continue
+        for rids, start, end in spans:
+            takers = [rid for rid in rids if key in static.cap_points.get(rid, ())]
+            if not takers or end <= start:
+                continue
+            try:
+                rows = site.buf[start:end].detach().clone()
+            except torch.cuda.OutOfMemoryError as exc:
+                for rid in takers:
+                    _fail_capture(static, rid, f"out of memory copying {end - start} rows of {key}: {exc}")
+                continue
+            for rid in takers:
+                static.harvest.setdefault(rid, {}).setdefault(key, []).append(rows)
+
+
+def _fail_capture(static: StaticState, req_id: str, reason: str) -> None:
+    """Drop ``req_id``'s capture and record why. The rows already taken go with it.
+
+    ``cap_points`` stays registered but empty, so the harvest stops copying for it while a
+    read-out still sees a static request, and raises ``reason`` to its caller.
+    """
+    if req_id not in static.failed:
+        logger.warning("static capture for %s dropped: %s", req_id, reason)
+    static.failed[req_id] = reason
+    static.harvest.pop(req_id, None)
+    static.cap_points[req_id] = set()
+
+
+def take_static_rows(
+    static: StaticState, req_id: str, *, final: bool
+) -> tuple[dict[str, list[torch.Tensor]], str | None]:
+    """Take ``req_id``'s harvested rows out of ``static``, before anything is allocated from them.
+
+    The caller owns what comes back, so an allocation that fails while it is concatenated or
+    encoded cannot strand the rows on the worker. ``final`` also deregisters the capture. Returns
+    the rows and the reason the capture failed, or None.
+    """
+    rows = static.harvest.pop(req_id, None) or {}
+    if not final:
+        return rows, static.failed.get(req_id)
+    failure = static.failed.pop(req_id, None)
+    static.cap_points.pop(req_id, None)
+    static.lens_cursor.pop(req_id, None)
+    return rows, failure
 
 
 def _write_site(static: StaticState, address: Address) -> _Site:
@@ -1979,6 +2032,7 @@ def worker_register_static_capture(worker: object, req_id: str, points: list[str
         raise ValueError(f"static capture asked for {missing}, not in static reads {sorted(static.reads)}")
     static.cap_points[req_id] = wanted
     static.harvest.pop(req_id, None)
+    static.failed.pop(req_id, None)
     static.registered.add(req_id)
     demux = _get_demux(worker)
     demux.registered.add(req_id)
@@ -1988,26 +2042,24 @@ def worker_collect_static(worker: object, req_id: str) -> dict[str, tuple]:
     static = _state(worker)
     if static is None:
         return {}
-    payload = _encode_harvest(static, req_id, worker)
-    static.cap_points.pop(req_id, None)
-    static.harvest.pop(req_id, None)
-    static.lens_cursor.pop(req_id, None)
+    rows, failure = take_static_rows(static, req_id, final=True)
     if req_id not in static.write_reqs:
         static.registered.discard(req_id)
-    return payload
+    raise_if_any_rank_failed(failure, f"static capture for {req_id}")
+    return _encode_harvest(rows, worker)
 
 
 def worker_drain_static(worker: object, req_id: str) -> dict[str, tuple]:
     static = _state(worker)
     if static is None:
         return {}
-    payload = _encode_harvest(static, req_id, worker)
-    static.harvest.pop(req_id, None)
-    return payload
+    rows, failure = take_static_rows(static, req_id, final=False)
+    raise_if_any_rank_failed(failure, f"static capture for {req_id}")
+    return _encode_harvest(rows, worker)
 
 
-def _encode_harvest(static: StaticState, req_id: str, worker: object) -> dict[str, tuple]:
-    rows = static.harvest.get(req_id) or {}
+def _encode_harvest(rows: dict[str, list[torch.Tensor]], worker: object) -> dict[str, tuple]:
+    """Encode harvested rows, which the caller has already taken out of the worker state."""
     model = _worker_model(worker)
     out: dict[str, tuple] = {}
     attn_layers: set[int] = set()
@@ -2018,6 +2070,8 @@ def _encode_harvest(static: StaticState, req_id: str, worker: object) -> dict[st
         if not chunks:
             continue
         tensor = chunks[0] if len(chunks) == 1 else torch.cat(chunks, dim=0)
+        # Freed key by key, so the peak is the harvest plus one key's copy rather than two harvests.
+        chunks.clear()
         address = parse_address(key)
         if address.name in ATTN_STATIC_ROLES and address.layer is not None:
             attn_layers.add(int(address.layer))
