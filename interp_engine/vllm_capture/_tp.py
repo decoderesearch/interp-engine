@@ -54,6 +54,22 @@ def _all_gather(tensor: torch.Tensor, dim: int) -> torch.Tensor:
     return tensor_model_parallel_all_gather(tensor.contiguous(), dim)
 
 
+def raise_if_any_rank_failed(failure: str | None, what: str) -> None:
+    """Raise when ``failure`` is set on this rank or any other, so every rank raises together.
+
+    A collective, called before the next one at the same point on every rank. One rank raising
+    while the rest go on to a gather is a hang, not an error: they wait for it forever.
+    """
+    failed = failure is not None
+    if tp_size() > 1:
+        from vllm.distributed import tensor_model_parallel_all_reduce  # pyright: ignore[reportMissingImports]
+
+        flag = torch.tensor([1.0 if failed else 0.0], device=torch.device("cuda", torch.cuda.current_device()))
+        failed = bool(tensor_model_parallel_all_reduce(flag).item() > 0)
+    if failed:
+        raise RuntimeError(f"{what} failed: {failure or 'on another tensor-parallel rank'}")
+
+
 def _head_counts(layer: torch.nn.Module) -> tuple[int, int, int | None, int] | None:
     """``(heads_per_rank, kv_heads_per_rank, total_kv_heads, head_dim)`` off the attention module.
 
