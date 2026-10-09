@@ -16,7 +16,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 import torch
 import torch.nn.functional as F
@@ -25,16 +25,20 @@ from interp_engine.arch import special_token_positions
 from interp_engine.dispatch import CapabilityUnsupported, TokensLike, as_batched_tokens, as_token_ids
 from interp_engine.hooks import HookManager, flat_per_head
 from interp_engine.model import EagerModel
-from interp_engine.protocol import InterpModel
-from interp_engine.sampling import apply_presence_penalty
+from interp_engine.protocol import EmbedsSample, InterpModel
+from interp_engine.sampling import SamplingSettings, apply_presence_penalty
 from interp_engine.steer_specs import (
+    AblateSpec,
     AddSpec,
-    LayerSteeringSpec,
+    NormScaledAddSpec,
     OrthogonalDecompSpec,
     ProjectionCapSpec,
+    Steering,
     SteeringSpec,
     SteerMethod,
+    SwapSpec,
     steer_method,
+    steering_specs,
 )
 from interp_engine.sync import sync_model
 
@@ -159,6 +163,51 @@ def projection_cap_delta(
     return (capped - projection) * unit
 
 
+def norm_scaled_add_delta(
+    activations: torch.Tensor,
+    vector: torch.Tensor,
+    *,
+    strength: float,
+    max_fraction: float = 1.0,
+    eps: float = 1e-12,
+) -> torch.Tensor:
+    """``strength * ‖h‖ * vector`` per position, its norm capped at ``max_fraction * ‖h‖``.
+
+    The lens's steer, as the worker's ``norm_scaled_add`` op writes it. ``vector`` goes in as
+    given: a lens direction carries its magnitude, and a norm-relative strength on top of a unit
+    vector would be a different intervention from the one the lens UI has always applied.
+    """
+    v = vector.to(device=activations.device, dtype=activations.dtype)
+    scale = torch.linalg.vector_norm(activations, dim=-1, keepdim=True)
+    injected = (strength * scale) * v
+    injected_norm = torch.linalg.vector_norm(injected, dim=-1, keepdim=True)
+    max_norm = max_fraction * scale
+    clamp = torch.where(
+        injected_norm > max_norm,
+        max_norm / injected_norm.clamp_min(eps),
+        torch.ones_like(injected_norm),
+    )
+    return injected * clamp
+
+
+def ablate_delta(activations: torch.Tensor, vector: torch.Tensor) -> torch.Tensor:
+    """``-(h·v̂) v̂``: what to ADD to remove the component along ``vector`` entirely.
+
+    ``OrthogonalProjector(vector).delta(h, 0.0)`` in different words, kept as its own name because
+    the lens asks for it by this one and the worker has an op of the same name.
+    """
+    unit = unit_vector(vector).to(device=activations.device, dtype=activations.dtype)
+    return -(activations * unit).sum(dim=-1, keepdim=True) * unit
+
+
+def swap_delta(activations: torch.Tensor, vector: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    """``(h·v̂)(t̂ - v̂)``: what to ADD to move the component along ``vector`` onto ``target``."""
+    source_unit = unit_vector(vector).to(device=activations.device, dtype=activations.dtype)
+    target_unit = unit_vector(target).to(device=activations.device, dtype=activations.dtype)
+    coefficient = (activations * source_unit).sum(dim=-1, keepdim=True)
+    return coefficient * (target_unit - source_unit)
+
+
 #: The steering methods :class:`SteerSpec` accepts, as their spellings. Derived from
 #: :class:`~interp_engine.steer_specs.SteerMethod`, which the worker-side op reads from too, and
 #: kept under this name so callers that listed the methods keep working.
@@ -198,6 +247,12 @@ class SteerSpec:
     max: float | None = None
     """Upper bound for ``method="projection_cap"``. See :attr:`min`."""
 
+    max_fraction: float = 1.0
+    """Cap on the injected norm for ``method="norm_scaled_add"``, as a fraction of ``‖h‖``."""
+
+    target: torch.Tensor | None = None
+    """The direction ``method="swap"`` moves the component onto; ignored by the other methods."""
+
     def __post_init__(self) -> None:
         # A spec built from a string -- a config file, a wire payload -- is checked here, at
         # construction, rather than at the first forward it reaches. An unknown name lists the members.
@@ -229,14 +284,49 @@ def steer_delta(spec: SteerSpec, activations: torch.Tensor, vector: torch.Tensor
             return OrthogonalProjector(vector).delta(activations, spec.coeff)
         case SteerMethod.PROJECTION_CAP:
             return projection_cap_delta(activations, vector, minimum=spec.min, maximum=spec.max)
+        case SteerMethod.NORM_SCALED_ADD:
+            return norm_scaled_add_delta(activations, vector, strength=spec.coeff, max_fraction=spec.max_fraction)
+        case SteerMethod.ABLATE:
+            return ablate_delta(activations, vector)
+        case SteerMethod.SWAP:
+            if spec.target is None:
+                raise ValueError("method='swap' needs a target vector to move the component onto")
+            return swap_delta(activations, vector, spec.target)
 
 
 @dataclass(frozen=True)
 class ActiveSteering:
     """A :func:`steer` context that is currently open, for the non-eager arms to pick up."""
 
-    spec: SteeringSpec
+    specs: tuple[SteeringSpec, ...]
+    """One spec per point written, applied in order."""
     position_mask: PositionMask | None
+    generated: bool = True
+    """Whether positions past the prompt are written too. See :func:`steer`."""
+
+    def is_empty(self) -> bool:
+        return all(spec.is_empty() for spec in self.specs)
+
+    def scoped(self) -> bool:
+        """True when some position is left alone: a mask, or a prompt-only steer."""
+        return self.position_mask is not None or not self.generated
+
+
+# The absolute position of the first row the forward now running covers, set by the engine's own
+# loops (`eager_steps`, `EagerModel.capture`) so a steering hook can place its rows without
+# counting. A hook that finds it unset falls back to counting the rows it has seen, which is right
+# for one prefill followed by single-token decodes and wrong for a second prompt in the same block.
+_FORWARD_START: ContextVar[int | None] = ContextVar("interp_engine_forward_start", default=None)
+
+
+@contextmanager
+def forward_from(position: int) -> Iterator[None]:
+    """Declare that the forwards run inside cover positions from ``position`` on."""
+    token = _FORWARD_START.set(int(position))
+    try:
+        yield
+    finally:
+        _FORWARD_START.reset(token)
 
 
 # Which model has an open non-eager `steer()` context, and with what. A ContextVar rather than an
@@ -261,16 +351,34 @@ def active_steering(model: object) -> ActiveSteering | None:
     return entry[1]
 
 
-def _merge_steering(existing: ActiveSteering | None, spec: SteeringSpec, mask: PositionMask | None) -> ActiveSteering:
+def steering_scope_for_call(model: InterpModel, explicit: Any, *, what: str) -> ActiveSteering | None:
+    """What a served backend's call should steer with: ``explicit`` when given, else the open
+    :func:`steer` block -- spec, position mask and whether generated positions are written.
+
+    Eager needs nothing like this -- its block installs hooks that every forward runs through --
+    so this is what makes ``with steer(model, spec): await model.capture(...)`` mean the same on the
+    backends whose steering travels with the request. An explicit ``steering_spec`` wins over the
+    block and carries no scope: it steers every position, as it does on every backend. ``what``
+    names the call for the refusals a backend raises on what it was handed.
+    """
+    if explicit is not None:
+        return ActiveSteering(specs=steering_specs(explicit), position_mask=None)
+    return active_steering(model)
+
+
+def _merge_steering(
+    existing: ActiveSteering | None, specs: tuple[SteeringSpec, ...], mask: PositionMask | None, generated: bool
+) -> ActiveSteering:
     """Combine a nested :func:`steer` with the one already open, as eager's stacked hooks would.
 
-    Nesting composes on eager for free -- two hook sets both fire -- so it composes here too
-    rather than the inner block silently replacing the outer. Two *different* position masks are
-    refused instead of picked between, since there is no reading of "steer everything except A"
-    inside "steer everything except B" that is obviously the one the caller meant.
+    Nesting composes on eager for free -- two hook sets both fire -- so it composes here too: the
+    inner block's specs follow the outer's. Two *different* position masks are refused instead of
+    picked between, since there is no reading of "steer everything except A" inside "steer
+    everything except B" that is obviously the one the caller meant; two different answers to
+    whether generated positions are steered are refused for the same reason.
     """
     if existing is None:
-        return ActiveSteering(spec=spec, position_mask=mask)
+        return ActiveSteering(specs=specs, position_mask=mask, generated=generated)
     if mask is not None and existing.position_mask is not None and mask != existing.position_mask:
         raise ValueError(
             "Nested steer() blocks on the same model gave two different position_masks "
@@ -278,33 +386,47 @@ def _merge_steering(existing: ActiveSteering | None, spec: SteeringSpec, mask: P
             "meaning, so choose one: put the mask on the outer block, or open one block with the "
             "full spec."
         )
-    layers = {layer: LayerSteeringSpec(operations=list(ls.operations)) for layer, ls in existing.spec.layers.items()}
-    for layer, layer_spec in spec.layers.items():
-        layers.setdefault(layer, LayerSteeringSpec()).operations.extend(layer_spec.operations)
-    return ActiveSteering(spec=SteeringSpec(layers=layers), position_mask=mask or existing.position_mask)
+    if generated != existing.generated:
+        raise ValueError(
+            f"Nested steer() blocks on the same model disagree on generated= ({existing.generated} "
+            f"then {generated}). One recorded scope covers the request, so say it once, on the outer "
+            "block."
+        )
+    return ActiveSteering(
+        specs=existing.specs + specs, position_mask=mask or existing.position_mask, generated=generated
+    )
+
+
+def _is_eager_list(spec: Any) -> bool:
+    """True for a non-empty ``list[SteerSpec]``, the eager-only form :func:`steer` takes."""
+    return isinstance(spec, list) and bool(spec) and all(isinstance(s, SteerSpec) for s in spec)
 
 
 @contextmanager
 def steer(
     model: InterpModel,
-    spec: SteeringSpec | list[SteerSpec],
+    spec: Steering | list[SteerSpec],
     *,
     prompt_token_ids: Any = None,
     position_mask: PositionMask | None = None,
+    generated: bool = True,
 ) -> Iterator[HookManager | None]:
     """Steer for the duration of the context, on either backend.
 
-    ``spec`` is a backend-agnostic :class:`~interp_engine.steer_specs.SteeringSpec`. A
-    ``list[SteerSpec]`` is also accepted **on eager**, which is the older form and the only one
-    that can name a hook point other than ``resid_post``; it is refused on other backends, where
-    nothing can convert it.
+    ``spec`` is a backend-agnostic :class:`~interp_engine.steer_specs.SteeringSpec`, or a list of
+    them to write several points (:data:`~interp_engine.steer_specs.Steering`). A
+    ``list[SteerSpec]`` is also accepted **on eager**, which is the older form; it is refused on
+    other backends, where nothing can convert it.
 
     ``position_mask`` optionally excludes some prompt positions from steering (an explicit
     ``list[int]`` of positions or a :class:`SteerMask` preset such as ``SPECIAL_TOKENS``,
     resolved via ``prompt_token_ids`` + the model tokenizer). Excluded positions are left
-    unchanged during the prompt (prefill) forward; positions generated afterwards are always
-    steered (they are past the prompt and so never in the mask). This mirrors the inference
-    app's ``steer_special_tokens`` behavior, generically across model families.
+    unchanged during the prompt (prefill) forward; positions generated afterwards are steered
+    unless ``generated=False``, which confines the whole steer to the prompt -- the lens's
+    default, where the read-outs on generated tokens are meant to show what a steered prompt
+    does downstream. On eager that needs ``prompt_token_ids``, since the hooks cannot otherwise
+    tell where the prompt ends. This mirrors the inference app's ``steer_special_tokens`` and
+    ``steer_generated_tokens`` behavior, generically across model families.
 
     Yields the :class:`~interp_engine.hooks.HookManager` on eager, and ``None`` elsewhere --
     there is no in-process hook set to hand back when the hooks live in a worker. Nothing needs
@@ -317,8 +439,9 @@ def steer(
     from anywhere else in the process would be silently steered too. See
     ``docs/CROSS_SERVER_APIS.md`` and that method's own docstring.
     """
+    eager_list = _is_eager_list(spec)
     if not isinstance(model, EagerModel):
-        if isinstance(spec, list):
+        if eager_list:
             raise CapabilityUnsupported(
                 f"steer() takes a SteeringSpec on the {type(model).__name__} backend, not a "
                 "list[SteerSpec]. SteerSpec is the eager-side form -- it can name any hook point, "
@@ -326,19 +449,28 @@ def steer(
                 "SteeringSpec (interp_engine.SteeringSpec / AddSpec / OrthogonalDecompSpec / "
                 "ProjectionCapSpec), which converts to either backend."
             )
-        token = _OPEN_STEERING.set((id(model), _merge_steering(active_steering(model), spec, position_mask)))
+        specs = steering_specs(cast(Steering, spec))
+        token = _OPEN_STEERING.set(
+            (id(model), _merge_steering(active_steering(model), specs, position_mask, generated))
+        )
         try:
             yield None
         finally:
             _OPEN_STEERING.reset(token)
         return
 
-    eager_specs = spec if isinstance(spec, list) else steering_spec_to_eager_specs(spec)
+    eager_specs = cast(list[SteerSpec], spec) if eager_list else steering_spec_to_eager_specs(cast(Steering, spec))
     masked_positions = set(
         resolve_masked_positions(
             position_mask, prompt_token_ids=prompt_token_ids, tokenizer=getattr(model, "tokenizer", None)
         )
     )
+    prompt_len = None if prompt_token_ids is None else len(as_token_ids(prompt_token_ids, model=model, what="steer"))
+    if not generated and prompt_len is None:
+        raise ValueError(
+            "steer(generated=False) needs prompt_token_ids on the eager backend: the hooks see rows, "
+            "not tokens, and cannot otherwise tell where the prompt ends and the generation begins."
+        )
 
     # Group by (module, point) so each hook site is installed once. Most points steer a module's
     # output (e.g. resid_post); `z` steers the attention output projection's INPUT (the
@@ -349,7 +481,7 @@ def steer(
     grouped: dict[tuple[int, str, int | None], list[SteerSpec]] = {}
     modules: dict[tuple[int, str, int | None], torch.nn.Module] = {}
     for eager_spec in eager_specs:
-        module, point = model.resolve_point(eager_spec.point, eager_spec.layer, stream=eager_spec.stream)
+        module, point = _resolve_write(model, eager_spec)
         assert point in ("input", "output"), f"Steering expects an input/output hook point, got {point!r}"
         key = (id(module), point, eager_spec.stream)
         grouped.setdefault(key, []).append(eager_spec)
@@ -369,9 +501,10 @@ def steer(
                     if any(spec.point == "value" for spec in group)
                     else None
                 )
-                # Absolute position of the first row this hook sees on the next forward. The
-                # prompt (prefill) forward covers positions [0, prompt_len); every forward after
-                # generates one token, so positions >= prompt_len are never masked.
+                # Absolute position of the first row this hook sees on the next forward, when the
+                # engine's own loop has not declared it through `forward_from`. Counting is right
+                # for one prefill followed by single-token decodes, which is what a bare
+                # `hf_model(...)` loop inside the block does.
                 consumed = 0
 
                 def _fn(full: torch.Tensor) -> torch.Tensor:
@@ -384,14 +517,17 @@ def steer(
                     if kv_heads is not None:
                         tensor, per_head = flat_per_head(tensor, heads=kv_heads)
                     seq = tensor.shape[1] if tensor.ndim >= 2 else tensor.shape[0]
+                    declared = _FORWARD_START.get()
+                    start = consumed if declared is None else declared
+                    consumed = start + seq
                     keep = None  # per-position steering multiplier for this forward (None => all 1)
-                    if masked_positions:
-                        local = [p - consumed for p in masked_positions if consumed <= p < consumed + seq]
-                        if local:
-                            m = torch.ones(seq, device=tensor.device, dtype=tensor.dtype)
-                            m[local] = 0.0
-                            keep = m.view(1, seq, *([1] * (tensor.ndim - 2)))
-                    consumed += seq
+                    local = [p - start for p in masked_positions if start <= p < start + seq]
+                    if not generated and prompt_len is not None:
+                        local.extend(range(max(prompt_len - start, 0), seq))
+                    if local:
+                        m = torch.ones(seq, device=tensor.device, dtype=tensor.dtype)
+                        m[local] = 0.0
+                        keep = m.view(1, seq, *([1] * (tensor.ndim - 2)))
 
                     out = tensor
                     for spec in group:
@@ -407,8 +543,23 @@ def steer(
         yield hm
 
 
-def steering_spec_to_eager_specs(spec: SteeringSpec, *, point: str | None = None) -> list[SteerSpec]:
-    """Convert a :class:`~interp_engine.steer_specs.SteeringSpec` to eager ``SteerSpec``s.
+def _resolve_write(model: EagerModel, spec: SteerSpec) -> tuple[torch.nn.Module, str]:
+    """Where an eager steer writes. On ``resid_streams``, ``stream=k`` writes one row of the stack,
+    as vLLM's write does; the read-side check refuses it, since a read of that point is the stack."""
+    if spec.point != "resid_streams" or spec.stream is None:
+        return model.resolve_point(spec.point, spec.layer, stream=spec.stream)
+    n = model.residual_basis.n_streams
+    if not 0 <= spec.stream < n:
+        raise ValueError(
+            f"stream={spec.stream} is out of range for a steer of 'resid_streams': this model carries "
+            f"{n} residual streams (valid: 0..{n - 1})."
+        )
+    return model.resolve_point(spec.point, spec.layer)
+
+
+def steering_spec_to_eager_specs(spec: Steering, *, point: str | None = None) -> list[SteerSpec]:
+    """Convert a :class:`~interp_engine.steer_specs.SteeringSpec`, or a list of them, to eager
+    ``SteerSpec``s, in order.
 
     The eager twin of ``steering_spec_to_worker_specs``, so a caller holding the
     backend-agnostic spec can steer either backend. Every op in the backend-agnostic spec has an
@@ -421,6 +572,10 @@ def steering_spec_to_eager_specs(spec: SteeringSpec, *, point: str | None = None
     spec that names a hyper-connection collapse cannot mean one thing on eager and another on vLLM.
     Defaulting the point here to the spec's own is what keeps a caller from having to pass it twice.
     """
+    return [one for s in steering_specs(spec) for one in _eager_specs(s, point)]
+
+
+def _eager_specs(spec: SteeringSpec, point: str | None) -> list[SteerSpec]:
     where = {"point": spec.point if point is None else point, "stream": spec.stream}
     out: list[SteerSpec] = []
     for layer, layer_spec in spec.layers.items():
@@ -451,9 +606,38 @@ def steering_spec_to_eager_specs(spec: SteeringSpec, *, point: str | None = None
                         **where,
                     )
                 )
+            elif isinstance(op, NormScaledAddSpec):
+                out.append(
+                    SteerSpec(
+                        vector=_as_tensor(op.vector),
+                        layer=int(layer),
+                        coeff=float(op.strength),
+                        method=SteerMethod.NORM_SCALED_ADD,
+                        max_fraction=float(op.max_fraction),
+                        **where,
+                    )
+                )
+            elif isinstance(op, AblateSpec):
+                out.append(
+                    SteerSpec(vector=_as_tensor(op.vector), layer=int(layer), method=SteerMethod.ABLATE, **where)
+                )
+            elif isinstance(op, SwapSpec):
+                out.append(
+                    SteerSpec(
+                        vector=_as_tensor(op.vector),
+                        layer=int(layer),
+                        method=SteerMethod.SWAP,
+                        target=_as_tensor(op.target),
+                        **where,
+                    )
+                )
             else:
                 raise ValueError(f"Unknown steering op {type(op).__name__}")
     return out
+
+
+def _as_tensor(vector: torch.Tensor | list[float]) -> torch.Tensor:
+    return vector if isinstance(vector, torch.Tensor) else torch.tensor(vector)
 
 
 def _sample_next(
@@ -565,28 +749,121 @@ def generate_stream(
         )
         return
 
-    settings = model.sampling_settings(
-        temperature=temperature, top_k=top_k, top_p=top_p, presence_penalty=presence_penalty
+    yield from eager_steps(
+        model,
+        {"input_ids": as_batched_tokens(tokens, device=model.device)},
+        max_tokens=max_tokens,
+        sampling=model.sampling_settings(
+            temperature=temperature, top_k=top_k, top_p=top_p, presence_penalty=presence_penalty
+        ),
+        stop_at_eos=stop_at_eos,
+        n_logprobs=n_logprobs,
+        seed=seed,
     )
+
+
+async def sample_from_embeds(
+    model: InterpModel,
+    prompt_embeds: torch.Tensor,
+    *,
+    n: int = 1,
+    max_tokens: int = 64,
+    temperature: float | None = None,
+    top_k: int | None = None,
+    top_p: float | None = None,
+    presence_penalty: float | None = None,
+    seed: int | None = None,
+    lora_path: str | None = None,
+) -> list[EmbedsSample]:
+    """``n`` sampled completions of one prompt given as embeddings, in completion order.
+
+    On vLLM this is ONE request (``VLLMModel.sample_from_embeds``). Elsewhere it runs ``n``
+    :meth:`InterpModel.generate_steps_from_embeds` calls, completion ``j`` with seed ``seed + j``
+    as vLLM seeds them, so a fixed ``seed`` repeats the set on each backend. ``lora_path`` is
+    vLLM-only; other backends apply an adapter around the call (``interp_engine.oracle.eager_lora``).
+    """
+    batched = getattr(model, "sample_from_embeds", None)
+    if batched is not None:
+        return await batched(
+            prompt_embeds,
+            n=n,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+            presence_penalty=presence_penalty,
+            seed=seed,
+            lora_path=lora_path,
+        )
+    if lora_path is not None:
+        raise ValueError(
+            f"lora_path is a vLLM LoRA request; {type(model).__name__} has none. Apply the adapter around "
+            "the call instead (interp_engine.oracle.eager_lora on eager)."
+        )
+    if n < 1:
+        raise ValueError(f"n must be at least 1, got {n}")
+    eos_id = getattr(model.tokenizer, "eos_token_id", None)
+    out = []
+    for j in range(n):
+        steps = model.generate_steps_from_embeds(
+            prompt_embeds,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+            presence_penalty=presence_penalty,
+            seed=None if seed is None else seed + j,
+        )
+        ids = [step.token_id async for step in steps]
+        stopped = bool(ids) and (len(ids) < max_tokens or ids[-1] == eos_id)
+        if stopped:
+            ids = ids[:-1]
+        text = model.tokenizer.decode(ids, clean_up_tokenization_spaces=False)
+        out.append(EmbedsSample(text=text, token_ids=ids, finish="eos" if stopped else "length"))
+    return out
+
+
+def eager_steps(
+    model: EagerModel,
+    prefill: dict[str, torch.Tensor],
+    *,
+    max_tokens: int,
+    sampling: SamplingSettings,
+    stop_at_eos: bool,
+    n_logprobs: int,
+    seed: int | None,
+) -> Iterator[GenStep]:
+    """The in-process sampling loop behind every eager generator.
+
+    ``prefill`` is the first forward's input, ``{"input_ids": [1, n]}`` or
+    ``{"inputs_embeds": [1, n, d_model]}``; every later step feeds the sampled id back, so the two
+    prompts differ only in how the first forward is entered. One loop rather than one per prompt
+    kind, because the KV-cache handling and the EOS rule are what the two must agree on.
+    ``sampling`` is already resolved: the caller decided every knob (``model.sampling_settings``).
+    """
+    settings = sampling
     if seed is not None:
         torch.manual_seed(seed)
 
     device = model.device
-    ids = as_batched_tokens(tokens, device=device)
-
     eos_id = getattr(model.tokenizer, "eos_token_id", None)
     past = None
-    cur = ids
+    cur = prefill
     # Unconditional `no_grad`, with no `detach` escape hatch, and that is deliberate rather than an
     # oversight: a tape over `max_tokens` sequential forwards retains every step's activations at
     # once, so the memory grows with the generation length and a few hundred tokens is enough to OOM a
     # card that generates the same text fine. Differentiating a generation is a real thing to want, but
     # it wants a purpose-built path (a fixed short rollout, or gradient checkpointing), not a flag
     # here. Documented as a hard limit in docs/GRADIENTS.md.
+    # Each forward declares the absolute position of its first row, so a `steer()` block's hooks
+    # place a position mask, or a prompt-only steer, without counting rows themselves.
+    position = 0
     generated: list[int] = []
     with torch.no_grad():
         for _ in range(max_tokens):
-            out = model.hf_model(cur, past_key_values=past, use_cache=True)
+            with forward_from(position):
+                out = model.hf_model(**cur, past_key_values=past, use_cache=True)
+            position += next(iter(cur.values())).shape[1]
             past = out.past_key_values
             step_logits = out.logits[0, -1, :]
             next_id = _sample_next(
@@ -607,7 +884,7 @@ def generate_stream(
             )
             if stop_at_eos and eos_id is not None and next_id == eos_id:
                 break
-            cur = torch.tensor([[next_id]], device=device)
+            cur = {"input_ids": torch.tensor([[next_id]], device=device)}
 
 
 def _generate_stream_via_protocol(
@@ -651,8 +928,9 @@ def _generate_stream_via_protocol(
             stop_at_eos=stop_at_eos,
             n_logprobs=n_logprobs,
             seed=seed,
-            steering_spec=None if steering is None else steering.spec,
+            steering_spec=None if steering is None else steering.specs,
             position_mask=None if steering is None else steering.position_mask,
+            generated=True if steering is None else steering.generated,
         ),
         what="generate_stream()",
     )

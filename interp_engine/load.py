@@ -205,11 +205,12 @@ def load_model(
             trust_remote_code=trust_remote_code is not False,
         )
         logger.info("Backend selection for %s: %s", hf_model_id, selection.reason)
-        use_vllm, device, dtype = selection.use_vllm, selection.device, selection.dtype
+        device, dtype = selection.device, selection.dtype
         # The ladder chooses between engines it can reason about from configuration alone. A
         # static tap set is a claim about which points will be asked for, which is the caller's
         # to make, so "auto" never lands on one.
-        resolved = "vllm" if use_vllm else "eager"
+        resolved = selection.backend
+        use_vllm = resolved == "vllm"
     else:
         resolved = backend
         use_vllm = backend in VLLM_BACKENDS

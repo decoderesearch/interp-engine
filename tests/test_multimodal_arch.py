@@ -209,3 +209,96 @@ def test_composite_text_config_detects_nesting(monkeypatch):
     text_only = SimpleNamespace(num_hidden_layers=4, hidden_size=32, vocab_size=100)
     monkeypatch.setattr(model_mod.AutoConfig, "from_pretrained", lambda *a, **k: text_only)
     assert model_mod._composite_text_config("x", trust_remote_code=False) is None
+
+
+@pytest.mark.parametrize("passed_scheme", [False, True])
+def test_a_quantized_composite_checkpoint_loads_by_its_own_class(monkeypatch, passed_scheme):
+    """The scheme is on the outer config (Qwen/Qwen3.6-27B-FP8): narrowing to the text config
+    would drop it, so the load skips AutoModelForCausalLM. A scheme the caller passes survives."""
+    composite = _mm_config(32, 100, 4, 8, 2)
+    composite.quantization_config = {"quant_method": "fp8", "weight_block_size": [128, 128]}
+    monkeypatch.setattr(model_mod.AutoConfig, "from_pretrained", lambda *a, **k: composite)
+    used: list[str] = []
+    sentinel = nn.Linear(1, 1)
+
+    def loader(name: str):
+        def from_pretrained(model_id: str, **kwargs):
+            used.append(name)
+            return (sentinel, {"missing_keys": []})
+
+        return from_pretrained
+
+    monkeypatch.setattr(model_mod.AutoModelForCausalLM, "from_pretrained", loader("causal"))
+    monkeypatch.setattr(_FakeForConditionalGeneration, "from_pretrained", loader("own"), raising=False)
+    monkeypatch.setattr(
+        model_mod.transformers, "_FakeForConditionalGeneration", _FakeForConditionalGeneration, raising=False
+    )
+    kwargs = {**_load_kwargs(), **({"quantization_config": object()} if passed_scheme else {})}
+
+    assert model_mod._load_hf_model("fake/model-FP8", kwargs, trust_remote_code=False) is sentinel
+    assert used == (["causal"] if passed_scheme else ["own"])
+
+
+@pytest.mark.parametrize(
+    "method,refused", [("modelopt", True), ("fp8", False), ("compressed-tensors", False), ("bitsandbytes", False)]
+)
+def test_a_scheme_transformers_cannot_read_is_refused_before_the_load(monkeypatch, method, refused):
+    """transformers skips an unknown scheme and reads packed values as weights (nvidia/*-NVFP4)."""
+    composite = _mm_config(32, 100, 4, 8, 2)
+    composite.quantization_config = {"quant_method": method}
+    monkeypatch.setattr(model_mod.AutoConfig, "from_pretrained", lambda *a, **k: composite)
+    if refused:
+        with pytest.raises(ValueError, match=f"'{method}'.*no loader"):
+            model_mod._refuse_unreadable_scheme("fake/model", trust_remote_code=False)
+    else:
+        model_mod._refuse_unreadable_scheme("fake/model", trust_remote_code=False)
+
+
+@pytest.mark.parametrize("version,refused", [("5.10.0", False), ("5.16.1", True), ("5.17.0", False)])
+def test_fp8_is_refused_on_the_transformers_whose_quantizer_fails(monkeypatch, version, refused):
+    composite = SimpleNamespace(
+        quantization_config={"quant_method": "fp8"},
+        base_model_tp_plan={"layers.*.mlp.up_proj": "colwise"},
+        get_text_config=lambda: composite,
+    )
+    monkeypatch.setattr(model_mod.AutoConfig, "from_pretrained", lambda *a, **k: composite)
+    monkeypatch.setattr(model_mod.transformers, "__version__", version)
+    if refused:
+        with pytest.raises(ValueError, match="transformers>=5.17"):
+            model_mod._refuse_unreadable_scheme("fake/model-FP8", trust_remote_code=False)
+    else:
+        model_mod._refuse_unreadable_scheme("fake/model-FP8", trust_remote_code=False)
+
+
+def test_a_skip_list_matches_whole_segments_of_the_composite_names():
+    """Qwen3.6-FP8's ``mlp.gate`` must not skip ``mlp.gate_proj``; AWQ's ``visual`` must skip the tower."""
+    from transformers.quantizers.quantizers_utils import should_convert_module
+
+    skips = ["visual", "self_attn.q_proj", "model.layers.0.", "model.language_model.layers.5.mlp.gate", "re.*x"]
+    cfg = SimpleNamespace(quantization_config={"quant_method": "awq", "modules_to_not_convert": list(skips)})
+    assert model_mod._segment_skips(cfg)
+    segments = cfg.quantization_config["modules_to_not_convert"]
+    assert "re.*x" in segments
+
+    gate_proj = "model.language_model.layers.5.mlp.gate_proj"
+    missed = ("model.visual.blocks.0.mlp.linear_fc1", "model.language_model.layers.0.mlp.down_proj")
+    assert all(should_convert_module(name, skips) for name in missed)
+    assert not should_convert_module(gate_proj, skips)
+    for skipped in (
+        *missed,
+        "model.language_model.layers.3.self_attn.q_proj",
+        "model.language_model.layers.5.mlp.gate",
+    ):
+        assert not should_convert_module(skipped, segments), skipped
+    for converted in (gate_proj, "model.language_model.layers.10.mlp.up_proj"):
+        assert should_convert_module(converted, segments), converted
+
+    assert not model_mod._segment_skips(SimpleNamespace(quantization_config={"quant_method": "fp8"}))
+
+
+def test_a_quantized_tensor_left_unused_on_a_real_module_is_refused():
+    model = nn.Module()
+    model.gate_proj = nn.Linear(2, 2)
+    model_mod._refuse_unused_quant_tensors("fake/m", model, ["mtp.layers.0.gate_proj.weight_scale_inv", "extra.bias"])
+    with pytest.raises(ValueError, match=r"1 quantized tensor.*gate_proj\.weight_scale_inv"):
+        model_mod._refuse_unused_quant_tensors("fake/m", model, ["gate_proj.weight_scale_inv"])

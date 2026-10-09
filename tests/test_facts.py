@@ -520,6 +520,62 @@ def test_the_eager_walk_resolves_against_the_shared_vocabularies():
     )
 
 
+def _string_literals(module: object) -> tuple[ast.AST, list[list[str]]]:
+    """A module's parse tree, and every tuple/list of two or more string constants in it."""
+    source = (getattr(module, "__file__", "") or "").replace(".pyc", ".py")
+    with open(source) as handle:
+        tree = ast.parse(handle.read())
+    groups = [
+        [element.value for element in node.elts]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Tuple | ast.List)
+        and len(node.elts) >= 2
+        and all(isinstance(element, ast.Constant) and isinstance(element.value, str) for element in node.elts)
+    ]
+    return tree, groups
+
+
+@pytest.mark.parametrize("module", [arch, vllm_capture._tree], ids=lambda m: m.__name__)
+def test_no_backend_relists_the_vocabulary_for_finding_the_trunk(module):
+    """Where the text stack sits is a fact about the *checkpoint*, so every backend asks it the
+    same way -- against `facts.TRUNK_CONTAINER_ATTRS` and `facts.LAYER_LIST_ATTRS`.
+
+    Narrow on purpose. Each backend can keep its own names for what its library invents. Nesting
+    is the opposite kind of fact -- one checkpoint, one shape -- so a copy here is a copy that will
+    drift.
+    """
+    shared = {"containers": set(facts.TRUNK_CONTAINER_ATTRS), "block lists": set(facts.LAYER_LIST_ATTRS)}
+    _, groups = _string_literals(module)
+
+    for group in groups:
+        for role, names in shared.items():
+            assert not set(group) <= names, (
+                f"{module.__name__} re-lists {role} as {group}; walk facts.TRUNK_CONTAINER_ATTRS / "
+                "facts.LAYER_LIST_ATTRS instead, so a nesting learned once is known to every backend"
+            )
+
+
+@pytest.mark.parametrize("module", [arch, vllm_capture._tree], ids=lambda m: m.__name__)
+def test_no_backend_hardcodes_a_dotted_path_to_the_blocks(module):
+    """The same drift in its other spelling. A literal `"model.layers"` is a guess at both the
+    nesting *and* its depth, so it misses a wrapper that nests once more -- and unlike a tuple of
+    names it keeps working on the common case, which is what lets it survive review."""
+    containers, blocks = set(facts.TRUNK_CONTAINER_ATTRS), set(facts.LAYER_LIST_ATTRS)
+    tree, _ = _string_literals(module)
+
+    dotted = {
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and "." in node.value
+    }
+    for path in dotted:
+        head, _, tail = path.rpartition(".")
+        assert not (tail in blocks and set(head.split(".")) <= containers), (
+            f"{module.__name__} reaches the blocks through the literal path {path!r}; search the "
+            "container attributes instead, so a checkpoint that nests deeper still resolves"
+        )
+
+
 def test_facts_needs_neither_torch_nor_a_loaded_model():
     """Config arithmetic only, so the vLLM client can answer dims without building anything."""
     source = (facts.__file__ or "").replace(".pyc", ".py")

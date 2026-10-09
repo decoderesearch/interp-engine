@@ -1,8 +1,18 @@
-"""The jlens write-hook: steer, ablate or swap a residual mid-forward.
+"""The lens's writes -- steer, ablate, swap -- as the steering ops they are, and the global install.
 
 The other half of the lens from :mod:`~interp_engine.vllm_capture.lens.readout` -- this one
-changes the forward, that one observes it. Kept apart from the demux that installs it so the
-arithmetic an intervention performs is defined in one place regardless of which path runs it.
+changes the forward, that one observes it. The arithmetic lives in
+:func:`~interp_engine.vllm_capture.steering._make_steer_modifier`, one op each
+(``norm_scaled_add`` / ``ablate`` / ``swap``), which is what the per-request path registers
+through ``requests.worker_register_steering`` and what the static wraps compile. Nothing here
+computes a delta of its own.
+
+What this module keeps is the lens **wire format** -- ``steer`` / ``ablate`` / ``swap`` with
+``delta``, ``strength`` and ``tgt`` -- for the one caller still speaking it, the global
+``VLLMModel.set_lens_intervention`` the validation scripts use. :func:`lens_wire_to_steer_spec`
+renames it, and :func:`worker_install_lens_intervention` installs the renamed specs as
+process-wide hooks pinned to the decoder layer's output, because the scripts that use it are
+checking that path against the eager engine's, which is pinned there too.
 """
 
 from __future__ import annotations
@@ -12,82 +22,36 @@ from typing import Any
 import torch
 
 from interp_engine.vllm_capture._tree import _get_layers, _worker_model
-from interp_engine.vllm_capture.steering import _one_stream
+from interp_engine.vllm_capture.steering import _make_steer_modifier
 
-# --- worker-side lens intervention (jlens steer / ablate / swap) -------------
-#
-# Mirrors the eager lens interventions (endpoints/lens/prompt.py _apply_steer /
-# _apply_swap) on the vLLM worker, by default at the decoder-layer output (resid_post):
-#   steer:  injected = (strength * ||h||) * d, clamped to max_fraction * ||h||; h += injected
-#   ablate: h -= (h . d_hat) d_hat  (project the readout direction out)
-#   swap:   h += (h . s_hat)(t_hat - s_hat)  (replace source readout with target)
-# Prefill-vs-decode scoping: when steer_generated is False, only the prefill forward
-# (num_tokens > 1) is modified, so generated tokens stay unsteered. BOS positions in
-# the prefill are skipped (their attention-sink residual norm is huge).
-#
-# WHERE it lands is the caller's, on the per-request path only: a spec carries an optional `point`
-# (and `stream`), and `requests.worker_register_lens` keys the intervention by site. The global
-# install below stays pinned to the decoder layer's output, because the scripts that use it are
-# checking that path against the eager engine's, which is pinned there too. Uses the same
-# _np_steering handle list so worker_clear_steering tears it down.
+#: The three lens ops, by wire name, and the steering op each one is.
+LENS_WIRE_OPS: dict[str, str] = {"steer": "norm_scaled_add", "ablate": "ablate", "swap": "swap"}
 
 
-def _make_lens_modifier(spec: dict, dev, dt):
-    """Return ``modify(full_resid) -> delta`` for one lens intervention spec.
+def lens_wire_to_steer_spec(spec: dict) -> dict:
+    """One lens wire spec as the worker steering spec of the same arithmetic.
 
-    ``spec["stream"]`` confines the delta to one residual stream of a hyper-connection trunk, by the
-    same :func:`~interp_engine.vllm_capture.steering._one_stream` wrapper additive steering uses --
-    the point of sharing it is that ``ablate`` and ``swap`` then project against the stream being
-    written rather than against a mixture of all of them, which is what those ops mean. Absent, every
-    op broadcasts over the stream axis, so a lens direction is ablated from each stream in turn.
+    ``steer`` becomes ``norm_scaled_add`` with ``vector`` / ``coeff`` / ``max_fraction``; ``ablate``
+    and ``swap`` keep their names and take ``vector`` (and ``target``). ``layer``, ``point``,
+    ``stream`` and ``eps`` pass through. Confined to one residual stream of a hyper-connection
+    trunk, ``ablate`` and ``swap`` then project against the stream being written rather than
+    against a mixture of all of them, which is what those ops mean.
     """
     op = spec["op"]
-    eps = float(spec.get("eps", 1e-12))
-    stream = spec.get("stream")
-    if stream is not None:
-        return _one_stream(_make_lens_modifier({**spec, "stream": None}, dev, dt), int(stream))
+    if op not in LENS_WIRE_OPS:
+        raise ValueError(f"Unsupported lens intervention op {op!r}; one of {sorted(LENS_WIRE_OPS)}")
+    common = {k: spec[k] for k in ("layer", "point", "stream", "eps") if k in spec}
     if op == "steer":
-        d = torch.tensor(spec["delta"], dtype=torch.float32).to(dev, dt)
-        strength = float(spec["strength"])
-        max_frac = float(spec.get("max_fraction", 1.0))
-
-        def _modify(full: torch.Tensor) -> torch.Tensor:
-            scale = torch.linalg.vector_norm(full, dim=-1, keepdim=True)
-            injected = (strength * scale) * d
-            injected_norm = torch.linalg.vector_norm(injected, dim=-1, keepdim=True)
-            max_norm = max_frac * scale
-            clamp = torch.where(
-                injected_norm > max_norm,
-                max_norm / injected_norm.clamp_min(eps),
-                torch.ones_like(injected_norm),
-            )
-            return injected * clamp
-
-        return _modify
-
+        return {
+            **common,
+            "op": "norm_scaled_add",
+            "vector": spec["delta"],
+            "coeff": spec["strength"],
+            "max_fraction": spec.get("max_fraction", 1.0),
+        }
     if op == "ablate":
-        d = torch.tensor(spec["delta"], dtype=torch.float32).to(dev, dt)
-        d_hat = d / torch.linalg.vector_norm(d).clamp_min(eps)
-
-        def _modify(full: torch.Tensor) -> torch.Tensor:
-            proj = (full * d_hat).sum(dim=-1, keepdim=True)
-            return -(proj * d_hat)
-
-        return _modify
-
-    if op == "swap":
-        s = torch.tensor(spec["delta"], dtype=torch.float32).to(dev, dt)
-        t = torch.tensor(spec["tgt"], dtype=torch.float32).to(dev, dt)
-        s_hat = s / torch.linalg.vector_norm(s).clamp_min(eps)
-        t_hat = t / torch.linalg.vector_norm(t).clamp_min(eps)
-
-        def _modify(full: torch.Tensor) -> torch.Tensor:
-            coef = (full * s_hat).sum(dim=-1, keepdim=True)
-            return coef * (t_hat - s_hat)
-
-        return _modify
-
-    raise ValueError(f"Unsupported lens intervention op {op!r}")
+        return {**common, "op": "ablate", "vector": spec["delta"]}
+    return {**common, "op": "swap", "vector": spec["delta"], "target": spec["tgt"]}
 
 
 def worker_install_lens_intervention(
@@ -97,7 +61,12 @@ def worker_install_lens_intervention(
     skip_positions: list[int],
     prompt_len: int,
 ) -> None:
-    """Install jlens steer/ablate/swap write-hooks on decoder-layer outputs (resid_post)."""
+    """Install GLOBAL write-hooks for ``specs`` (worker steering specs) on decoder-layer outputs.
+
+    Every later request through this worker is written, which is why this is the validation
+    scripts' path and not the server's. ``steer_generated=False`` confines the write to the prefill
+    (``num_tokens > 1``); ``skip_positions`` are left alone on the full prefill.
+    """
     model = _worker_model(worker)
     layers = _get_layers(model)
     param = next(model.parameters())
@@ -107,7 +76,7 @@ def worker_install_lens_intervention(
 
     for s in specs:
         layer = layers[int(s["layer"])]
-        modify = _make_lens_modifier(s, dev, dt)
+        modify = _make_steer_modifier(s, dev, dt)
 
         def _mk(mod):
             def _hook(_m, _a, output: Any):
@@ -124,7 +93,7 @@ def worker_install_lens_intervention(
                 if not steer_generated and not is_prefill:
                     return output  # leave generated tokens unmodified
                 delta = mod(full)
-                # Skip BOS positions on the prefill forward (huge attention-sink norm).
+                # Skip masked positions on the prefill forward (a BOS has a huge attention-sink norm).
                 if is_prefill and skip_set and num_tokens == prompt_len:
                     mask = torch.zeros(num_tokens, 1, dtype=torch.bool, device=full.device)
                     for i in skip_set:

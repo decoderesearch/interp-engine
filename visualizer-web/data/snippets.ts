@@ -7,13 +7,16 @@
  * which two side-by-side snippets actively hid. The card offers them as tabs
  * over one snippet so that switching tabs moves exactly the line that differs.
  *
- * The third tab is the async method form. That one is a genuinely different
- * call rather than the same one relabelled: it is what a server holding the
- * model inside its own event loop writes, where the sync functions refuse rather
- * than nest a loop. It returns a plain dict keyed by `Address` with no batch
- * axis, so both differences show up in the last two lines.
+ * Under the tabs, a second switch picks the form of the call: the sync free
+ * functions, or the awaited methods on the model. The awaited form is a
+ * genuinely different call rather than the same one relabelled: it is what a
+ * server holding the model inside its own event loop writes, where the sync
+ * functions refuse rather than nest a loop. It returns a plain dict keyed by
+ * `Address` with no batch axis, so both differences show up in the last two
+ * lines. Every backend has both forms, since every method on the model has a
+ * sync twin.
  *
- * All three name the tensor with an `Address` bound to a variable, then use it
+ * Both forms name the tensor with an `Address` bound to a variable, then use it
  * for the request and the read. Every address form is accepted on the way in —
  * the canonical string the diagram prints included — but a `Cache` is the only
  * thing that coerces on the way *out*; `capture` returns a dict where a string
@@ -44,37 +47,52 @@ export const PLACEHOLDER_HF_ID = "org/model";
 const PROMPT = "Hello, world";
 
 /**
- * The four ways to make the call, in tab order. vLLM leads because it is what a
- * served deployment runs; eager sits next to it because the two are the same
- * snippet, which is easiest to see when they are adjacent. `vllm-static` follows
- * both because it is the one that is *not* the same snippet: it names the point a
- * second time, at load, which is the whole content of the tab.
+ * The three ways to make the call, grouped by the machine a reader is on.
+ *
+ * `eager` stands alone under CPU: it is the one backend that runs without a
+ * GPU, and the reference the others are scored against. The CUDA section is
+ * vLLM's two engines, and `vllm-static` is the one that is *not* the same
+ * snippet as the rest: it names the point a second time, at load, which is the
+ * whole content of the tab.
  */
-export type Variant = "vllm" | "eager" | "vllm-static" | "vllm-async";
+export type Variant = "eager" | "vllm" | "vllm-static";
 
-export const VARIANT_ORDER: readonly Variant[] = [
-  "vllm",
-  "eager",
-  "vllm-static",
-  "vllm-async",
+/** One section of the tab row: its eyebrow, and the tabs under it. */
+export interface Section {
+  eyebrow: string;
+  variants: readonly Variant[];
+}
+
+export const SECTIONS: readonly Section[] = [
+  { eyebrow: "CPU", variants: ["eager"] },
+  { eyebrow: "CUDA", variants: ["vllm", "vllm-static"] },
 ];
 
+export const VARIANT_ORDER: readonly Variant[] = SECTIONS.flatMap(
+  (s) => s.variants,
+);
+
 /**
- * The tab labels. Short, because these share one row with the copy button inside a
- * card narrower than 500px, and
- * because the surrounding section already says this is interp-engine — a bare
- * `vllm` would otherwise read as vLLM's own hooks, which is a different thing
- * and one this repo also scores.
+ * The tab a card opens on when the point has a path there: what a served
+ * deployment runs. A point vLLM cannot serve opens on the first tab that can.
+ */
+export const DEFAULT_VARIANT: Variant = "vllm";
+
+/**
+ * The tab labels. Short, because the two sections share one row inside a card
+ * narrower than 500px, and because the surrounding section already says this is
+ * interp-engine — a bare `vllm` would otherwise read as vLLM's own hooks, which
+ * is a different thing and one this repo also scores.
  */
 export const VARIANT_LABEL: Record<Variant, string> = {
-  vllm: "vllm",
   eager: "eager",
+  vllm: "vllm",
   "vllm-static": "vllm static",
-  "vllm-async": "vllm async",
 };
 
 export interface Snippet {
   variant: Variant;
+  form: Form;
   /** Python, or null where this variant has no path to the point. */
   code: string | null;
   /**
@@ -91,14 +109,17 @@ type Reading = Pick<Snippet, "code" | "note">;
 
 /**
  * How the call is written: through the sync free functions, or awaiting the
- * methods on the model. Usually implied by the tab — `vllm async` is the awaited
- * one — but the notebook form overrides it, so it travels as its own argument.
+ * methods on the model. The card's second switch, under the backend tabs.
  */
-type Form = "sync" | "await";
+export type Form = "sync" | "await";
 
-function formOf(variant: Variant): Form {
-  return variant === "vllm-async" ? "await" : "sync";
-}
+export const FORM_LABEL: Record<Form, string> = {
+  sync: "sync",
+  await: "async",
+};
+
+/** The forms every tab offers: each method on `InterpModel` has a sync twin. */
+export const FORMS: readonly Form[] = ["sync", "await"];
 
 /**
  * The form each tab is handed over in when it is going to a notebook.
@@ -107,17 +128,16 @@ function formOf(variant: Variant): Form {
  * does anything on ipykernel 6 — and there the sync free functions raise
  * `NestedEventLoop` rather than nest a second one. That is every call which
  * reaches the engine through the sync bridge, which is both vLLM tabs:
- * `run_with_cache` on a vLLM model dispatches through `sync_model`.
+ * `capture` on a vLLM model dispatches through `sync_model`.
  *
  * `eager` is left alone rather than awaited for symmetry. Its free functions
  * keep in-process bodies for an `EagerModel` and never reach that bridge, so the
  * tab's own snippet is already the one to paste.
  */
 const NOTEBOOK_FORM: Record<Variant, Form> = {
-  vllm: "await",
   eager: "sync",
+  vllm: "await",
   "vllm-static": "await",
-  "vllm-async": "await",
 };
 
 /**
@@ -130,22 +150,28 @@ export type Located = Pick<GraphNode, "point" | "layer" | "stream">;
 /** The attention pattern is a matrix per head, so it has no `pos` axis to name. */
 const PATTERN_POINTS = new Set(["attn_probs", "attn_scores"]);
 
-/** Every reading of `node`, one per variant, in `VARIANT_ORDER`. */
+/**
+ * Every reading of `node`, one per variant in `VARIANT_ORDER`, in the sync form.
+ * Whether a tab has a path is read off the point and not the form, so this is
+ * what the tab row needs; the card asks `readingSnippet` for the form it shows.
+ */
 export function readingSnippets(node: Located, hfId: string): Snippet[] {
   return VARIANT_ORDER.map((variant) => readingSnippet(variant, node, hfId));
 }
 
-/** One named variant's reading, for a caller that wants a particular tab. */
+/** One tab's reading in one form, for a caller that wants a particular pair. */
 export function readingSnippet(
   variant: Variant,
   node: Located,
   hfId: string,
+  form: Form = "sync",
 ): Snippet {
-  const reading = snippet(variant, node, hfId);
+  const reading = snippet(variant, node, hfId, form);
   return {
     variant,
+    form,
     ...reading,
-    notebook: notebookForm(variant, node, hfId, reading),
+    notebook: notebookForm(variant, node, hfId, reading, form),
   };
 }
 
@@ -153,24 +179,25 @@ export function readingSnippet(
  * `reading` again in the form `NOTEBOOK_FORM` asks for, and said so in the code.
  *
  * The substitution is written into the snippet because it is the one thing about
- * it a reader did not choose: they pressed the button on the `vllm` tab and are
- * about to paste something that does not match it line for line. The alternative
- * — copying the tab verbatim — is a `NestedEventLoop` traceback on the first run,
- * which says the same thing much later and after an install.
+ * it a reader did not choose: they pressed the button on the `vllm` tab's sync
+ * form and are about to paste something that does not match it line for line.
+ * The alternative — copying the tab verbatim — is a `NestedEventLoop` traceback
+ * on the first run, which says the same thing much later and after an install.
  */
 function notebookForm(
   variant: Variant,
   node: Located,
   hfId: string,
   reading: Reading,
+  shown: Form,
 ): string | null {
   const form = NOTEBOOK_FORM[variant];
-  if (reading.code === null || form === formOf(variant)) return reading.code;
+  if (reading.code === null || form === shown) return reading.code;
   // A refusal is read off the point, not off the form, so this is the same
   // non-null code as above and the fallback is unreachable.
   const awaited = snippet(variant, node, hfId, form).code ?? reading.code;
   return [
-    `# The ${VARIANT_LABEL[variant]} tab's snippet, awaited: a notebook runs its cells inside an`,
+    `# The ${VARIANT_LABEL[variant]} tab's sync snippet, awaited: a notebook runs its cells inside an`,
     "# event loop, where interp-engine's sync functions refuse rather than nest a second one.",
     awaited,
   ].join("\n");
@@ -194,7 +221,7 @@ function snippet(
   variant: Variant,
   node: Located,
   hfId: string,
-  form: Form = formOf(variant),
+  form: Form,
 ): Reading {
   const refusal = variant === "eager" ? null : vllmRefusal(node);
   if (refusal) return refusal;
@@ -254,7 +281,7 @@ function staticSnippet(node: Located, hfId: string, form: Form): Reading {
     code: [
       awaited
         ? "from interp_engine import Address, load_model"
-        : "from interp_engine import Address, load_model, run_with_cache",
+        : "from interp_engine import Address, capture, load_model",
       "",
       `point = ${addressCall(node)}`,
       `model = load_model("${hfId}", backend="vllm-static", static_points=[point])`,
@@ -267,7 +294,7 @@ function staticSnippet(node: Located, hfId: string, form: Form): Reading {
           ]
         : [
             `ids = model.to_tokens("${PROMPT}")`,
-            "cache = run_with_cache(model, ids, [point])",
+            "cache = capture(model, ids, [point])",
             "cache[point]  # [batch, pos, ...]",
           ]),
     ].join("\n"),
@@ -377,12 +404,12 @@ function activation(node: Located, load: string, form: Form): Reading {
 
   return {
     code: [
-      "from interp_engine import Address, load_model, run_with_cache",
+      "from interp_engine import Address, capture, load_model",
       "",
       load,
       `ids = model.to_tokens("${PROMPT}")`,
       `point = ${addressCall(node)}`,
-      "cache = run_with_cache(model, ids, [point])",
+      "cache = capture(model, ids, [point])",
       "cache[point]  # [batch, pos, ...]",
     ].join("\n"),
   };

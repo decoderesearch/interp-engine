@@ -21,7 +21,8 @@ import asyncio
 import importlib.util
 import logging
 import os
-from collections.abc import Awaitable, Callable, Iterable, Sequence
+import warnings
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mapping, Sequence
 from typing import Any, TypeVar
 
 import torch
@@ -29,10 +30,22 @@ import torch
 from interp_engine import facts
 from interp_engine._loop import refuse_foreign_loop
 from interp_engine.address import Address, format_address, to_address
+from interp_engine.api import DirectionSet, EngineDescription, LensSpec, LensStep
 from interp_engine.autograd_support import GradSupport, vllm_grad_support
+from interp_engine.describe import describe_model
+from interp_engine.directions import check_directions, project_by_capture, to_wire
+from interp_engine.dispatch import refuse
 from interp_engine.notebook_stdout import ensure_stdout_descriptor
-from interp_engine.points import d_model_wide, hyper_connection_names, refusal_reasons
+from interp_engine.points import Scope, d_model_wide, hyper_connection_names, point_spec, refusal_reasons
 from interp_engine.points import steer_refusal_reason as points_steer_refusal
+from interp_engine.protocol import (
+    REFUSAL_ERRORS,
+    EmbedsSample,
+    Point,
+    checked_prompt_embeds,
+    checked_rows,
+    layer_out_of_range,
+)
 from interp_engine.residual_basis import ResidualBasis, vllm_residual_basis
 from interp_engine.sampling import RecommendedSampling, SamplingSettings, read_recommended_sampling, resolve_sampling
 from interp_engine.steer_specs import SteerMethod
@@ -729,6 +742,53 @@ async def _settle(collect: Callable[[], Awaitable[_T]], release: Callable[[], Aw
     return await asyncio.shield(run())
 
 
+def _legacy_lens_steering(lens_intervention: dict | None, steering_spec: Any, method: str) -> Any:
+    """Deprecated ``lens_intervention=`` (``{specs, steer_generated, skip_positions}``) as an ActiveSteering.
+
+    Each wire spec (``op`` ``steer`` / ``ablate`` / ``swap`` with ``layer`` and ``delta``, plus
+    ``strength`` / ``max_fraction`` or ``tgt``) becomes the matching op. Specs that share a point and
+    stream share one :class:`~interp_engine.steer_specs.SteeringSpec`. None when there is nothing.
+    """
+    if not lens_intervention or not lens_intervention.get("specs"):
+        return None
+    from interp_engine.steer import ActiveSteering
+    from interp_engine.steer_specs import AblateSpec, LayerSteeringSpec, NormScaledAddSpec, SteeringSpec, SwapSpec
+
+    warnings.warn(
+        f"VLLMModel.{method}(lens_intervention=...) is deprecated; open a steer() block with "
+        "NormScaledAddSpec / AblateSpec / SwapSpec ops instead.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+    if steering_spec is not None:
+        raise ValueError(f"{method} takes steering_spec or lens_intervention, not both.")
+    sites: dict[tuple[str, int | None], dict[int, LayerSteeringSpec]] = {}
+    for wire in lens_intervention["specs"]:
+        op = wire["op"]
+        if op == "steer":
+            new_op: Any = NormScaledAddSpec(
+                vector=wire["delta"],
+                strength=float(wire["strength"]),
+                max_fraction=float(wire.get("max_fraction", 1.0)),
+            )
+        elif op == "ablate":
+            new_op = AblateSpec(vector=wire["delta"])
+        elif op == "swap":
+            new_op = SwapSpec(vector=wire["delta"], target=wire["tgt"])
+        else:
+            raise ValueError(f"Unsupported lens intervention op {op!r}; one of ['ablate', 'steer', 'swap']")
+        site = (str(wire.get("point") or "resid_post"), wire.get("stream"))
+        sites.setdefault(site, {}).setdefault(int(wire["layer"]), LayerSteeringSpec()).operations.append(new_op)
+    skip = [int(i) for i in (lens_intervention.get("skip_positions") or [])]
+    return ActiveSteering(
+        specs=tuple(
+            SteeringSpec(layers=layers, point=point, stream=stream) for (point, stream), layers in sites.items()
+        ),
+        position_mask=skip or None,
+        generated=bool(lens_intervention.get("steer_generated", False)),
+    )
+
+
 def _step_logprobs(per_position: object, index: int, n_logprobs: int) -> list[dict[str, float | int]] | None:
     """One generated position's top-n, in the shape :class:`~interp_engine.steer.GenStep` carries.
 
@@ -762,9 +822,13 @@ def _merge_captures(dst: dict[Address, torch.Tensor], new: dict[Address, torch.T
 
 
 def _validate_hook_points(
-    points: Sequence[Address | str | tuple[str, int]], basis: ResidualBasis | None = None
+    points: Sequence[Address | str | tuple[str, int]],
+    basis: ResidualBasis | None = None,
+    served: frozenset[str] = HOOK_CAPTURE_POINTS,
 ) -> list[str]:
     """Check the requests against what worker hooks can serve, and return them in **wire** form.
+
+    ``served`` is the worker's point set: the CUDA worker's by default.
 
     Wire form is the canonical address string, which is what the worker parses and what it keys its
     store with, so nothing between here and the store rebuilds the grammar by hand.
@@ -796,15 +860,13 @@ def _validate_hook_points(
             f"index; got {missing_layer}. (The trunk-level points -- "
             f"{', '.join(sorted(_GLOBAL_POINTS))} -- are the exception and take no layer.)"
         )
-    bad = sorted({a.name for a in addresses if a.name not in HOOK_CAPTURE_POINTS})
+    bad = sorted({a.name for a in addresses if a.name not in served})
     if bad:
         # Each refused point quotes its own reason from the point table, which is the difference
         # between "nobody has implemented this yet" and "no such tensor exists in a fused engine" --
         # and is the difference between filing a bug and switching backend.
         raise ValueError(
-            f"vLLM worker-hook capture cannot serve points {bad}:\n"
-            f"{refusal_reasons(bad)}\n"
-            f"Supported: {sorted(HOOK_CAPTURE_POINTS)}."
+            f"vLLM worker-hook capture cannot serve points {bad}:\n{refusal_reasons(bad)}\nSupported: {sorted(served)}."
         )
     return [str(a) for a in addresses]
 
@@ -884,6 +946,7 @@ def _build_extract_engine_kwargs(
     enable_prompt_embeds: bool,
     tensor_parallel_size: int,
     extra_vllm_kwargs: dict[str, Any] | None,
+    max_lora_rank: int | None = None,
 ) -> tuple[dict[str, Any], list[int], int, int, int]:
     """Shared construction kwargs for sync LLM / async AsyncEngineArgs.
 
@@ -950,14 +1013,15 @@ def _build_extract_engine_kwargs(
     # since that is applied last, so a caller who wants the old behaviour can pass False.
     kwargs["enable_prefix_caching"] = True
     if enable_prompt_embeds:
-        # Independently of everything above, prefix caching keys on token IDs, which an
-        # embeds prompt does NOT have; leaving it on hangs engine init (the sglang path used
-        # disable_radix_cache=True for the same reason). A salt cannot help here -- there is
-        # nothing to salt -- so this whole engine gives the feature up.
-        kwargs["enable_prefix_caching"] = False
+        # Prefix caching stays on: vLLM hashes each block's embeds rows into the block key, so an
+        # embeds prompt hits the cache only for identical rows. Tested on vLLM 0.28 (GDN hybrid).
         # Accept EmbedsPrompt ({"prompt_embeds": [T, d]}) inputs -- powers NLA concept
         # injection (activation vector spliced into the prompt embedding sequence).
         kwargs["enable_prompt_embeds"] = True
+    if max_lora_rank is not None:
+        # One adapter at a time (a LoRA read's). A request without a LoRARequest runs the base
+        # weights, so capture and the lenses on this engine are unchanged.
+        kwargs.update(enable_lora=True, max_lora_rank=int(max_lora_rank), max_loras=1)
     if max_model_len is not None:
         kwargs["max_model_len"] = max_model_len
     # Some architectures serve attention through a KV layout that exists in one dtype only, and vLLM's
@@ -994,6 +1058,13 @@ class VLLMModel:
     #: which loop owns it, and the guard has no business refusing on a guess.
     _engine_loop: asyncio.AbstractEventLoop | None = None
 
+    #: The points this front end's worker can tap: what a request is checked against before it
+    #: leaves the process, and what the warmup probe asks the worker about.
+    served_points: frozenset[str] = HOOK_CAPTURE_POINTS
+
+    #: Whether the worker has ``collect_projected``. Without it, ``project`` captures, then projects here.
+    _projects_on_worker: bool = True
+
     def __init__(
         self,
         hf_model_id: str,
@@ -1006,6 +1077,7 @@ class VLLMModel:
         storage_path: str = DEFAULT_HS_STORAGE_PATH,
         enable_extraction: bool = False,
         enable_prompt_embeds: bool = False,
+        max_lora_rank: int | None = None,
         tensor_parallel_size: int = 1,
         extra_vllm_kwargs: dict[str, Any] | None = None,
         static_points: Sequence[Address | str | tuple[str, int]] | str | None = None,
@@ -1026,6 +1098,8 @@ class VLLMModel:
         self._recommended_sampling: RecommendedSampling | None = None
         self.enable_extraction = enable_extraction
         self.enable_prompt_embeds = enable_prompt_embeds
+        self.max_lora_rank = max_lora_rank
+        self._lora_ids: dict[str, int] = {}
         self.tensor_parallel_size = int(tensor_parallel_size)
         if enable_prompt_embeds:
             # prompt_embeds forces vLLM's legacy V1 model runner, which HANGS during
@@ -1052,6 +1126,7 @@ class VLLMModel:
             enable_prompt_embeds=enable_prompt_embeds,
             tensor_parallel_size=tensor_parallel_size,
             extra_vllm_kwargs=extra_vllm_kwargs,
+            max_lora_rank=max_lora_rank,
         )
         facts = read_residual_facts(hf_model_id, trust_remote_code)
         self._attn_dims = read_attn_dims(hf_model_id, trust_remote_code)
@@ -1106,6 +1181,8 @@ class VLLMModel:
         # window carry it as their cache salt, because the hooks change the KV they compute
         # and vLLM's block hash knows nothing about them. See `_prompt`.
         self._global_intervention: str | None = None
+        # Per J_bar set, which layers are resident on the worker, after `set_lens_jacobians`.
+        self._lens_jacobian_sets: dict[str, frozenset[int]] = {}
 
     def _apply_static_state(
         self,
@@ -1350,6 +1427,49 @@ class VLLMModel:
                 exc_info=True,
             )
         await self._self_test_static(token_ids)
+        await self._probe_resolvable()
+
+    async def _probe_resolvable(self) -> None:
+        """Ask the worker which points this checkpoint actually carries, and cache the answer.
+
+        Being *hookable* is a property of the point and is on the client already; being *present* is
+        a property of the checkpoint, and the modules are in another process. So :meth:`refuses`
+        cannot answer the second half on its own, and answering only the first half over-advertises:
+        it promises QK-norm on gpt2 and a router on a dense block, and the caller finds out from a
+        worker exception several frames into a request it was told would work.
+
+        Here rather than in :meth:`refuses` because the probe is an ``await`` and the verdict is
+        sync, and here rather than at construction because there is no engine to ask yet. Warmup is
+        already where a server pays deferred costs before it advertises anything, which is the same
+        moment this needs to be true by.
+
+        One round trip for every hookable point at every layer -- a module walk each, no forward, so
+        a 60-layer checkpoint costs milliseconds. Asked for the whole set rather than a hand-picked
+        "architecture-sensitive" subset, which would be a table to keep in step with the resolver.
+        """
+        addresses = self._hookable_addresses()
+        if not addresses:
+            return
+        try:
+            results = await self.engine.collective_rpc("resolvable_points", args=(addresses,))
+        except Exception:
+            # A failed probe leaves the verdict as the client half alone, which is what it was
+            # before this existed. Not fatal: warmup's contract is to pay costs early, and a model
+            # that cannot answer this can still capture.
+            logger.warning("vLLM point probe failed; refuses() will answer from the point table alone")
+            return
+        self._resolvable = dict(results[0]) if results else {}
+
+    def _hookable_addresses(self) -> list[str]:
+        """Every hookable point at every layer it applies to, in wire form, for the probe."""
+        out: list[str] = []
+        for name in sorted(self.served_points):
+            spec = point_spec(name, self.residual_basis.n_streams)
+            if spec is not None and spec.scope is not Scope.LAYER:
+                out.append(name)
+            else:
+                out.extend(f"{name}.{layer}" for layer in range(int(self.num_hidden_layers)))
+        return out
 
     async def _self_test_static(self, token_ids: Sequence[int]) -> None:
         """Prove static ``copy_`` / ``add_`` ran on graph replay, or refuse to serve.
@@ -1433,6 +1553,25 @@ class VLLMModel:
         return self._hidden_size
 
     @property
+    def n_heads(self) -> int:
+        """Query heads for the whole model, not this rank's share. See the protocol."""
+        return int(self._attn_dims["n_heads"])
+
+    @property
+    def n_kv_heads(self) -> int:
+        """Key/value heads for the whole model. See the protocol."""
+        return int(self._attn_dims["n_kv_heads"])
+
+    @property
+    def head_dim(self) -> int:
+        """Width of one attention head. See the protocol."""
+        return int(self._attn_dims["head_dim"])
+
+    def is_linear_attention_layer(self, layer: int) -> bool:
+        """Whether ``layer`` computes no softmax attention. See the protocol."""
+        return is_linear_attention_layer(self._attn_dims, layer)
+
+    @property
     def grad_support(self) -> GradSupport:
         """What kind of gradients this model can provide. See :mod:`interp_engine.autograd_support`.
 
@@ -1476,6 +1615,68 @@ class VLLMModel:
     @property
     def static_writes(self) -> tuple[Address, ...]:
         return tuple(sorted(getattr(self, "_static_writes", ()), key=str))
+
+    def refuses(self, point: Address | str | Point, layer: int | None = None) -> str | None:
+        """Why this engine cannot produce ``point``, or None when it can. See the protocol.
+
+        Three questions. Whether *any* vLLM engine can serve the point is the point table's
+        business, and a fused engine that never forms the tensor is a different sentence from one
+        that has it and baked no tap for it. Whether *this* engine can is about how it was built:
+        hooked serves everything the table allows, and a graph engine serves the sites it declared.
+        Whether this *checkpoint* carries the module is the worker's answer, cached by
+        :meth:`_probe_resolvable` at warmup -- and **before warmup this method answers the first two
+        only**, so it can say yes to QK-norm on a model that has none. A server should warm up
+        before it advertises, which it has its own reasons to do anyway.
+
+        Tensor parallelism is deliberately not a fourth question. The worker gathers the sharded
+        points at collect (:mod:`interp_engine.vllm_capture._tp`), so a multi-GPU pod serves the
+        same set a single-GPU one does -- and a caller narrowing by shard width here would refuse
+        points that work.
+
+        The answer is about the point, not about one method: the attention pair is never hookable on
+        any backend and is reported here as :meth:`capture_attention` can serve it, which is how a
+        caller gets it.
+        """
+        address = to_address(point if layer is None else (point, layer))  # pyright: ignore[reportArgumentType]
+        if bad_layer := layer_out_of_range(address, self.n_layers):
+            return bad_layer
+        if address.name in ("attn_probs", "attn_scores"):
+            try:
+                # The pair is per-layer, so a caller who named no layer is asking whether the
+                # engine recomputes attention at all. Layer 0 answers that.
+                if not self._use_static_attn([address.layer if address.layer is not None else 0]):
+                    self._require_hooks("Attention capture")
+            except REFUSAL_ERRORS as exc:
+                return str(exc)
+            # The recompute rebuilds the softmax from captured q/k, so a config term it cannot
+            # reproduce yields a plausible pattern that is not the model's. That is a refusal, not
+            # a caveat: a caller cannot tell the difference by looking at the numbers.
+            unsupported = tuple(getattr(self, "_attn_dims", {}).get("unsupported", ()))
+            if unsupported:
+                return (
+                    f"the off-kernel attention recompute cannot reproduce this model's "
+                    f"configuration: {'; '.join(unsupported)}"
+                )
+            return None
+        try:
+            _validate_hook_points([address], self.residual_basis, self.served_points)
+            self._require_capture_points([str(address)], "Activation capture")
+        except REFUSAL_ERRORS as exc:
+            return str(exc)
+        return getattr(self, "_resolvable", {}).get(format_address(address)) or None
+
+    def serves(self, point: Address | str | Point, layer: int | None = None) -> bool:
+        """Whether this engine can produce ``point``. See :meth:`refuses` for why not."""
+        return self.refuses(point, layer) is None
+
+    def describe(self) -> EngineDescription:
+        """What this engine can serve, in one record. See :mod:`interp_engine.describe`."""
+        return describe_model(self, self._backend_label(), native_residual=self.enable_extraction)
+
+    def _backend_label(self) -> str:
+        if not self.graph_replay:
+            return "vllm"
+        return "vllm-static" if self.static_points or self.static_writes else "vllm-generate"
 
     def _require_hooks(self, what: str) -> None:
         """Refuse a hook-dependent operation on a graph-replaying engine with no static site.
@@ -1528,8 +1729,8 @@ class VLLMModel:
     def _require_static_writes(self, specs: Sequence[dict], what: str) -> None:
         """Allow static writes when hooks run, or when every write site is declared.
 
-        The additive static ``add_`` and live-read ops (orthogonal, projection_cap, lens
-        steer/ablate/swap) all ride the same static wrap. A site miss is a 400, not a silent no-op.
+        Additive ``additive`` and the live-read ops (orthogonal, projection_cap, norm_scaled_add, ablate,
+        swap) all ride the same static wrap. A site miss is a 400, not a silent no-op.
         """
         if self.hooks_available:
             return
@@ -1603,23 +1804,6 @@ class VLLMModel:
         _validate_steer_points(specs, self._basis_if_loaded())
         return specs
 
-    def _lens_specs(self, lens_intervention: dict) -> list[dict]:
-        """A lens intervention's specs, with the point filled in and checked like a steer's.
-
-        A jlens intervention is a write, so it faces the same question a steer does -- can this point
-        be written on this model -- and gets the same answer from the same place. The default is
-        ``resid_post``, which is what jlens has always sent and what the eager path still hardcodes;
-        naming an mHC collapse instead is how a swap/steer works on a hyper-connection trunk, where
-        ``resid_post`` refers to nothing the caller can write.
-
-        Filling the default in here rather than on the worker means the client-side refusal sees the
-        point the worker will use, instead of passing an under-specified spec and being told about it
-        from inside a forward in another process.
-        """
-        specs = [{**s, "point": str(s.get("point") or "resid_post")} for s in lens_intervention["specs"]]
-        _validate_steer_points(specs, self.residual_basis)
-        return specs
-
     async def _register_static_write(
         self,
         rid: str,
@@ -1627,46 +1811,62 @@ class VLLMModel:
         *,
         position_mask: Any = None,
         prompt_token_ids: Sequence[int] | None = None,
-        lens_scope: dict | None = None,
+        generated: bool = True,
     ) -> None:
         """Per-request static write. ``position_mask`` becomes skip_positions on the wrap."""
         from interp_engine.steer import resolve_masked_positions
 
-        if lens_scope is not None:
-            skip = [int(i) for i in (lens_scope.get("skip_positions") or [])]
-            prompt_len = int(lens_scope.get("prompt_len") or 0)
-        else:
-            ids = [int(t) for t in (prompt_token_ids or [])]
-            skip = resolve_masked_positions(
-                position_mask, prompt_token_ids=ids, tokenizer=getattr(self, "tokenizer", None)
-            )
-            prompt_len = len(ids)
+        ids = [int(t) for t in (prompt_token_ids or [])]
+        skip = resolve_masked_positions(position_mask, prompt_token_ids=ids, tokenizer=getattr(self, "tokenizer", None))
+        scope = {"steer_generated": bool(generated), "skip_positions": skip, "prompt_len": len(ids)}
         await self.engine.collective_rpc(
             "register_static_write",
-            args=(rid, specs, skip, prompt_len, lens_scope),
+            args=(rid, specs, skip, len(ids), scope),
         )
 
     async def _unregister_static_write(self, rid: str) -> None:
         await self.engine.collective_rpc("unregister_static_write", args=(rid,))
 
-    async def _release_writes(self, rid: str, *, static_write: bool, steered: bool) -> None:
-        """Drop ``rid``'s steering or lens writes from the worker, whichever it registered."""
-        if static_write:
+    async def _register_write(
+        self, rid: str, steering: Any, prompt_token_ids: Sequence[int], *, what: str
+    ) -> str | None:
+        """Register a :class:`~interp_engine.steer.ActiveSteering` against ``rid``, scope included.
+
+        The one place a request's steer is registered, so the capture and generation paths cannot
+        disagree about what a block's ``position_mask`` or ``generated=False`` means here: masked
+        prompt positions are skipped on the prefill, and a prompt-only steer leaves every decode
+        step alone, on the hooked and the static write alike. Returns which of the two was used --
+        ``"static"``, ``"hooks"`` or ``None`` for nothing to steer -- for :meth:`_unregister_write`.
+        """
+        from interp_engine.steer import resolve_masked_positions
+
+        if steering is None or steering.is_empty():
+            return None
+        if not (self.hooks_available or self._use_static_writes()):
+            self._require_hooks(what)
+        worker_specs = self._steer_specs(steering.specs)
+        self._require_static_writes(worker_specs, what)
+        ids = [int(t) for t in prompt_token_ids]
+        if self._use_static_writes():
+            await self._register_static_write(
+                rid,
+                worker_specs,
+                position_mask=steering.position_mask,
+                prompt_token_ids=ids,
+                generated=steering.generated,
+            )
+            return "static"
+        skip = resolve_masked_positions(steering.position_mask, prompt_token_ids=ids, tokenizer=self.tokenizer)
+        await self.engine.collective_rpc(
+            "register_steering", args=(rid, worker_specs, skip, len(ids), bool(steering.generated))
+        )
+        return "hooks"
+
+    async def _unregister_write(self, rid: str, registered: str | None) -> None:
+        if registered == "static":
             await self._unregister_static_write(rid)
-        elif steered:
+        elif registered == "hooks":
             await self.engine.collective_rpc("unregister_steering", args=(rid,))
-
-    def _lens_scope(self, lens_intervention: dict) -> dict:
-        return {
-            "steer_generated": bool(lens_intervention.get("steer_generated", False)),
-            "skip_positions": [int(i) for i in (lens_intervention.get("skip_positions") or [])],
-            "prompt_len": int(lens_intervention.get("prompt_len") or 0),
-        }
-
-    async def _register_static_lens(self, rid: str, lens_intervention: dict) -> None:
-        specs = self._lens_specs(lens_intervention)
-        self._require_static_writes(specs, "A lens intervention")
-        await self._register_static_write(rid, specs, lens_scope=self._lens_scope(lens_intervention))
 
     @property
     def residual_basis(self) -> ResidualBasis:
@@ -1690,6 +1890,10 @@ class VLLMModel:
 
     def to_string(self, tokens):
         return self.tok.to_string(tokens)
+
+    @property
+    def tokenizer_prepends_bos(self) -> bool:
+        return self.tok.tokenizer_prepends_bos
 
     @property
     def recommended_sampling(self) -> RecommendedSampling:
@@ -1766,6 +1970,7 @@ class VLLMModel:
         *,
         steering_spec: Any = None,
         position_mask: Any = None,
+        generated: bool = True,
         stream: bool = False,
         capture_points: Sequence[Address | str | tuple[str, int]] | None = None,
         capture_out: dict[Address, torch.Tensor] | None = None,
@@ -1773,12 +1978,12 @@ class VLLMModel:
     ):
         """VLLMSteerModel-style generation: apply an engine SteeringSpec, then generate.
 
-        ``steering_spec`` is a ``interp_engine.SteeringSpec`` (or None). Returns
+        ``steering_spec`` is a ``interp_engine.SteeringSpec``, a list of them, or None. Returns
         the full text (stream=False) or an async generator of text deltas
         (stream=True). Steering is installed for the duration and cleared after.
         ``position_mask`` (``SteerMask`` preset or ``list[int]``) excludes prompt positions
         from steering; it's resolved here against the actual prompt token ids + tokenizer.
-        Single request-locked use.
+        ``generated=False`` confines the steer to the prompt. Single request-locked use.
 
         ``capture_points`` registers activation capture on the SAME request, so the
         generation's own forwards yield ``[prompt + generated - 1, width]`` per point
@@ -1795,46 +2000,32 @@ class VLLMModel:
         ``collective_rpc``, so this trades a small per-request RPC count against holding
         a ``[prompt + generated, hidden]`` tensor on every GPU for the whole generation.
         """
-        from interp_engine.steer import resolve_masked_positions
+        from interp_engine.steer import ActiveSteering
+        from interp_engine.steer_specs import steering_specs
 
         await self._ensure_engine()
-        steered = steering_spec is not None and not steering_spec.is_empty()
+        specs = steering_specs(steering_spec)
+        steered = any(not spec.is_empty() for spec in specs)
         capturing = bool(capture_points) and capture_out is not None
         if capturing and not (self.hooks_available or self._use_static_capture()):
             self._require_hooks("Capture during generation")
-        if steered and not (self.hooks_available or self._use_static_writes()):
-            self._require_hooks("Steered generation")
         token_ids = [int(t) for t in prompt_token_ids]
         rid = self._new_request_id("np-steer")
         prompt = self._prompt(token_ids, private_kv_for=rid if (capturing or steered) else None)
         pts: list[str] = []
-        worker_specs: list[dict] = []
         if capturing:
             assert capture_points is not None
-            pts = _validate_hook_points(capture_points, self._basis_if_loaded())
+            pts = _validate_hook_points(capture_points, self._basis_if_loaded(), self.served_points)
             self._require_capture_points(pts, "Capture during generation")
-        if steered:
-            assert steering_spec is not None
-            worker_specs = self._steer_specs(steering_spec)
-            self._require_static_writes(worker_specs, "Steered generation")
         static_cap = capturing and self._use_static_capture()
-        static_write = steered and self._use_static_writes()
-        if static_write:
-            await self._register_static_write(
-                rid, worker_specs, position_mask=position_mask, prompt_token_ids=token_ids
-            )
+        steering = None
+        if steered:
+            steering = ActiveSteering(specs=specs, position_mask=position_mask, generated=generated)
+        registered = await self._register_write(rid, steering, token_ids, what="Steered generation")
         if capturing and not static_cap:
             await self.engine.collective_rpc("register_capture", args=(rid, pts))
         elif static_cap:
             await self.engine.collective_rpc("register_static_capture", args=(rid, pts))
-        if steered and not static_write:
-            skip_positions = resolve_masked_positions(
-                position_mask, prompt_token_ids=token_ids, tokenizer=self.tokenizer
-            )
-            await self.engine.collective_rpc(
-                "register_steering",
-                args=(rid, worker_specs, skip_positions, len(token_ids)),
-            )
 
         async def _finish() -> None:
             async def collect() -> object:
@@ -1843,9 +2034,7 @@ class VLLMModel:
                 method = "collect_static" if static_cap else "collect_request"
                 return await self.engine.collective_rpc(method, args=(rid,))
 
-            payloads = await _settle(
-                collect, lambda: self._release_writes(rid, static_write=static_write, steered=steered)
-            )
+            payloads = await _settle(collect, lambda: self._unregister_write(rid, registered))
             if capturing and capture_out is not None:
                 _merge_captures(capture_out, _decode_rank0(payloads))
                 _assert_points_captured(capture_out, pts)
@@ -1882,12 +2071,12 @@ class VLLMModel:
         prompt_token_ids: Sequence[int],
         sampling_params: Any,
         *,
-        steering_spec: Any = None,
-        position_mask: Any = None,
+        steering: Any = None,
     ):
         """Stream this request's ``RequestOutput``s, with a per-request steer if one was given.
 
-        The register/generate/unregister dance, in one place, so that everything wanting a steered
+        ``steering`` is an :class:`~interp_engine.steer.ActiveSteering` or None. The
+        register/generate/unregister dance, in one place, so that everything wanting a steered
         stream shares it. Extracted rather than copied because the ``finally`` is the load-bearing
         part: ``unregister_steering`` has to run on every exit path including a client
         disconnecting mid-stream, and a second hand-written copy of that is a hook leak onto every
@@ -1897,39 +2086,17 @@ class VLLMModel:
         things off them -- text deltas for the SSE path, per-token ids and logprobs for
         :meth:`generate_steps`.
         """
-        from interp_engine.steer import resolve_masked_positions
-
         await self._ensure_engine()
-        steered = steering_spec is not None and not steering_spec.is_empty()
-        if steered and not (self.hooks_available or self._use_static_writes()):
-            self._require_hooks("Steered generation")
+        steered = steering is not None and not steering.is_empty()
         token_ids = [int(t) for t in prompt_token_ids]
         rid = self._new_request_id("np-steer" if steered else "np-steps")
         prompt = self._prompt(token_ids, private_kv_for=rid if steered else None)
-        worker_specs: list[dict] = []
-        static_write = False
-        if steered:
-            assert steering_spec is not None
-            worker_specs = self._steer_specs(steering_spec)
-            self._require_static_writes(worker_specs, "Steered generation")
-            if self._use_static_writes():
-                await self._register_static_write(
-                    rid, worker_specs, position_mask=position_mask, prompt_token_ids=token_ids
-                )
-                static_write = True
-            else:
-                skip_positions = resolve_masked_positions(
-                    position_mask, prompt_token_ids=token_ids, tokenizer=self.tokenizer
-                )
-                await self.engine.collective_rpc(
-                    "register_steering",
-                    args=(rid, worker_specs, skip_positions, len(token_ids)),
-                )
+        registered = await self._register_write(rid, steering, token_ids, what="Steered generation")
         try:
             async for out in self.engine.generate(prompt, sampling_params, rid):
                 yield out
         finally:
-            await asyncio.shield(self._release_writes(rid, static_write=static_write, steered=steered))
+            await asyncio.shield(self._unregister_write(rid, registered))
 
     async def _drain_into(self, rid: str, capture_out: dict[Address, torch.Tensor], *, static: bool = False) -> None:
         """Move ``rid``'s captured rows so far to the host, leaving the hooks / static taps installed."""
@@ -2023,6 +2190,19 @@ class VLLMModel:
         )
         return out.outputs[0]
 
+    def _text_sampling(self, *, max_tokens: int, settings: SamplingSettings, seed: int | None) -> Any:
+        """Sampling for the protocol's text methods, decoded the way eager decodes.
+
+        Eager decodes every sampled id, special tokens included, so its text carries a chat turn's
+        structure -- the channel markers and the end-of-turn token. vLLM's detokenizer drops those
+        by default, which made the same prompt read differently across backends and left an
+        assistant turn unrecoverable from this one. :meth:`generate_steps` decodes each id itself,
+        so its steps concatenate to this text; ``generate_full`` keeps vLLM's defaults.
+        """
+        from vllm import SamplingParams  # pyright: ignore[reportMissingImports]
+
+        return SamplingParams(max_tokens=max_tokens, seed=seed, skip_special_tokens=False, **settings.vllm_kwargs())
+
     async def generate_text(
         self,
         prompt_token_ids: Sequence[int],
@@ -2034,56 +2214,24 @@ class VLLMModel:
         presence_penalty: float | None = None,
         seed: int | None = None,
     ) -> str:
-        out = await self.generate_full(
+        """Generate the completion text. Honors an open ``steer()`` context; see the protocol."""
+        from interp_engine.steer import active_steering
+
+        steering = active_steering(self)
+        text = await self.generate_steered(
             prompt_token_ids,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            top_k=top_k,
-            top_p=top_p,
-            presence_penalty=presence_penalty,
-            seed=seed,
+            self._text_sampling(
+                max_tokens=max_tokens,
+                settings=self.sampling_settings(
+                    temperature=temperature, top_k=top_k, top_p=top_p, presence_penalty=presence_penalty
+                ),
+                seed=seed,
+            ),
+            steering_spec=None if steering is None else steering.specs,
+            position_mask=None if steering is None else steering.position_mask,
         )
-        return out.text
-
-    async def generate_from_embeds(
-        self,
-        prompt_embeds: torch.Tensor,
-        sampling_params: Any,
-        *,
-        request_id: str | None = None,
-        stream: bool = False,
-    ) -> Any:
-        """Generate from a prompt EMBEDDING sequence instead of token ids.
-
-        ``prompt_embeds`` is ``[num_tokens, hidden]`` (per-token input embeddings) in the
-        model dtype -- the vLLM ``EmbedsPrompt`` input, requires ``enable_prompt_embeds``.
-        Powers NLA concept injection (an activation vector spliced into the prompt
-        embeddings). Returns the final vLLM ``RequestOutput`` (``stream=False``) or an
-        async generator of ``RequestOutput`` (``stream=True``); ``.outputs[0]`` exposes
-        ``.text`` / ``.token_ids`` / ``.finish_reason``.
-
-        Annotated ``Any`` because the return type is selected by ``stream`` and
-        ``RequestOutput`` is not importable here (vLLM is an optional dependency), so the
-        inferred union would otherwise make ``.outputs`` an error for every caller.
-        """
-        await self._ensure_engine()
-        prompt = {"prompt_embeds": prompt_embeds}
-        rid = request_id or self._new_request_id("np-embed")
-
-        if stream:
-
-            async def _stream():
-                async for out in self.engine.generate(prompt, sampling_params, rid):
-                    yield out
-
-            return _stream()
-
-        final = None
-        async for out in self.engine.generate(prompt, sampling_params, rid):
-            final = out
-        if final is None:
-            raise RuntimeError("vLLM produced no output for prompt_embeds request")
-        return final
+        # `stream=False` returns the text; the union on the signature is the streaming form's.
+        return str(text)
 
     async def generate_stream(
         self,
@@ -2096,23 +2244,30 @@ class VLLMModel:
         presence_penalty: float | None = None,
         seed: int | None = None,
     ):
-        """Yield decoded text deltas as generation proceeds (for SSE endpoints)."""
-        import uuid
+        """Yield decoded text deltas as generation proceeds (for SSE endpoints).
 
-        from vllm import SamplingParams  # pyright: ignore[reportMissingImports]
+        Inside an open ``steer()`` context the request is steered, by the same per-request path
+        ``generate_steered`` takes; nothing is installed on the shared engine. See the protocol.
+        """
+        from interp_engine.steer import active_steering
 
-        await self._ensure_engine()
-        settings = self.sampling_settings(
-            temperature=temperature, top_k=top_k, top_p=top_p, presence_penalty=presence_penalty
+        steering = active_steering(self)
+        deltas = await self.generate_steered(
+            prompt_token_ids,
+            self._text_sampling(
+                max_tokens=max_tokens,
+                settings=self.sampling_settings(
+                    temperature=temperature, top_k=top_k, top_p=top_p, presence_penalty=presence_penalty
+                ),
+                seed=seed,
+            ),
+            steering_spec=None if steering is None else steering.specs,
+            position_mask=None if steering is None else steering.position_mask,
+            generated=True if steering is None else steering.generated,
+            stream=True,
         )
-        sp = SamplingParams(max_tokens=max_tokens, seed=seed, **settings.vllm_kwargs())
-        prompt = self._prompt(prompt_token_ids)
-        prev = ""
-        async for out in self.engine.generate(prompt, sp, f"np-{uuid.uuid4().hex}"):
-            text = out.outputs[0].text
-            if len(text) > len(prev):
-                yield text[len(prev) :]
-                prev = text
+        async for delta in deltas:
+            yield delta
 
     #: vLLM's own default cap on how many logprobs a request may ask for. An engine built with a
     #: different ``max_logprobs`` overrides it; this is the value to compare against when the
@@ -2133,6 +2288,7 @@ class VLLMModel:
         seed: int | None = None,
         steering_spec: Any = None,
         position_mask: Any = None,
+        generated: bool = True,
     ):
         """Yield one :class:`~interp_engine.steer.GenStep` per generated token.
 
@@ -2148,11 +2304,236 @@ class VLLMModel:
 
         With ``steering_spec`` the steer is registered against THIS request only, so a request
         co-batched with it is unaffected -- unlike :meth:`set_steering`, which installs a hook
-        over the whole forward. That is why the free ``steer()`` context routes here.
+        over the whole forward. That is why the free ``steer()`` context routes here, and why an
+        open ``steer()`` block is read when no spec is passed: the block cannot install anything
+        on this backend, so the request has to carry it, ``position_mask`` and ``generated``
+        included.
+        """
+        from interp_engine.steer import ActiveSteering, active_steering
+        from interp_engine.steer_specs import steering_specs
+
+        if steering_spec is not None:
+            steering = ActiveSteering(
+                specs=steering_specs(steering_spec), position_mask=position_mask, generated=generated
+            )
+        else:
+            steering = active_steering(self)
+        sampling = self._step_sampling(
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+            presence_penalty=presence_penalty,
+            stop_at_eos=stop_at_eos,
+            n_logprobs=n_logprobs,
+            seed=seed,
+        )
+        outputs = self._generate_request_outputs(prompt_token_ids, sampling, steering=steering)
+        async for step in self._steps_from_outputs(outputs, n_logprobs):
+            yield step
+
+    async def generate_from_embeds(
+        self,
+        prompt_embeds: torch.Tensor,
+        sampling_params: Any,
+        *,
+        request_id: str | None = None,
+        stream: bool = False,
+    ) -> Any:
+        """Deprecated: use :meth:`generate_steps_from_embeds` or :meth:`sample_from_embeds`.
+
+        Generates from ``prompt_embeds`` (``[num_tokens, hidden]``) with vLLM ``SamplingParams``.
+        Returns the final ``RequestOutput``, or with ``stream=True`` an async generator of them.
+        ``Any`` because vLLM is optional and ``stream`` selects the type.
+        """
+        warnings.warn(
+            "VLLMModel.generate_from_embeds is deprecated; use generate_steps_from_embeds or sample_from_embeds.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        prompt = self._embeds_prompt(prompt_embeds, "generate_from_embeds")
+        await self._ensure_engine()
+        prompt["prompt_embeds"] = prompt["prompt_embeds"].to(self.engine.model_config.dtype).contiguous()
+        rid = request_id or self._new_request_id("np-embed")
+
+        if stream:
+
+            async def _stream():
+                async for out in self.engine.generate(prompt, sampling_params, rid):
+                    yield out
+
+            return _stream()
+
+        final = None
+        async for out in self.engine.generate(prompt, sampling_params, rid):
+            final = out
+        if final is None:
+            raise RuntimeError("vLLM produced no output for prompt_embeds request")
+        return final
+
+    async def generate_steps_from_embeds(
+        self,
+        prompt_embeds: torch.Tensor,
+        *,
+        max_tokens: int = 64,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
+        stop_at_eos: bool = True,
+        n_logprobs: int = 0,
+        seed: int | None = None,
+        lora_path: str | None = None,
+    ):
+        """:meth:`generate_steps` over vLLM's ``EmbedsPrompt``. See the protocol.
+
+        Needs an engine built with ``enable_prompt_embeds=True``, which is refused here by name
+        rather than left to the input processor's error. The rows are cast to the engine's own
+        model dtype, as vLLM's HTTP front end does for its clients, so a caller holding fp32
+        activations need not know what ``dtype="auto"`` resolved to.
+
+        An open ``steer()`` block is refused: the per-request steer is built around an ids prompt
+        (its position mask resolves against the ids) and has not been carried to this one.
+
+        ``lora_path`` runs this one request through a PEFT adapter in vLLM's layout (the engine
+        needs ``max_lora_rank``). Closing the iterator early aborts the request in the engine.
+        """
+        from contextlib import aclosing
+
+        prompt = self._embeds_prompt(prompt_embeds, "generate_steps_from_embeds")
+        sampling = self._step_sampling(
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+            presence_penalty=presence_penalty,
+            stop_at_eos=stop_at_eos,
+            n_logprobs=n_logprobs,
+            seed=seed,
+        )
+        lora = self._lora_request(lora_path) if lora_path is not None else None
+        await self._ensure_engine()
+        prompt["prompt_embeds"] = prompt["prompt_embeds"].to(self.engine.model_config.dtype).contiguous()
+        rid = self._new_request_id("np-embeds")
+        async with aclosing(self.engine.generate(prompt, sampling, rid, lora_request=lora)) as outputs:
+            async for step in self._steps_from_outputs(outputs, n_logprobs):
+                yield step
+
+    async def sample_from_embeds(
+        self,
+        prompt_embeds: torch.Tensor,
+        *,
+        n: int = 1,
+        max_tokens: int = 64,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
+        seed: int | None = None,
+        lora_path: str | None = None,
+    ) -> list[EmbedsSample]:
+        """``n`` completions of one embeds prompt, as ONE vLLM request with ``SamplingParams(n=n)``.
+
+        What :func:`interp_engine.sample_from_embeds` runs on this backend. vLLM gives completion
+        ``j`` the seed ``seed + j``, so a fixed ``seed`` repeats the set. Nothing streams: the
+        request reports once, when all ``n`` are done, and vLLM does not detokenize along the way,
+        which is most of the per-token cost of :meth:`generate_steps_from_embeds` at high
+        concurrency. The same prompt checks and ``lora_path`` apply as there.
         """
         from vllm import SamplingParams  # pyright: ignore[reportMissingImports]
+        from vllm.sampling_params import RequestOutputKind  # pyright: ignore[reportMissingImports]
 
-        from interp_engine.steer import GenStep
+        if n < 1:
+            raise ValueError(f"n must be at least 1, got {n}")
+        prompt = self._embeds_prompt(prompt_embeds, "sample_from_embeds")
+        settings = self.sampling_settings(
+            temperature=temperature, top_k=top_k, top_p=top_p, presence_penalty=presence_penalty
+        )
+        sampling = SamplingParams(
+            n=n,
+            max_tokens=max_tokens,
+            seed=seed,
+            detokenize=False,
+            output_kind=RequestOutputKind.FINAL_ONLY,
+            **settings.vllm_kwargs(),
+        )
+        lora = self._lora_request(lora_path) if lora_path is not None else None
+        await self._ensure_engine()
+        prompt["prompt_embeds"] = prompt["prompt_embeds"].to(self.engine.model_config.dtype).contiguous()
+        final = None
+        async for out in self.engine.generate(prompt, sampling, self._new_request_id("np-sample"), lora_request=lora):
+            final = out
+        if final is None:
+            raise RuntimeError("vLLM produced no output")
+        samples = []
+        for c in sorted(final.outputs, key=lambda c: c.index):
+            ids = [int(t) for t in c.token_ids]
+            # A stop token ends the ids; a stop string (never set here) would leave nothing to drop.
+            stopped = c.finish_reason == "stop"
+            if stopped and ids and not isinstance(c.stop_reason, str):
+                ids = ids[:-1]
+            text = self.tokenizer.decode(ids, clean_up_tokenization_spaces=False)
+            samples.append(EmbedsSample(text=text, token_ids=ids, finish="eos" if stopped else "length"))
+        return samples
+
+    def _embeds_prompt(self, prompt_embeds: torch.Tensor, what: str) -> dict[str, Any]:
+        """vLLM's ``EmbedsPrompt`` dict for ``prompt_embeds`` (on CPU, not yet cast), after the checks.
+
+        An open ``steer()`` block is refused: the per-request steer is built around an ids prompt
+        (its position mask resolves against the ids) and has not been carried to this one.
+        """
+        from interp_engine.steer import active_steering
+
+        if active_steering(self) is not None:
+            raise refuse(self, f"steer() around {what}", capability="steered_prompt_embeds")
+        if not self.enable_prompt_embeds:
+            raise ValueError(
+                f"{what} needs an engine built with enable_prompt_embeds=True; this "
+                "one was not. Pass it to load_model (or VLLMModel): vLLM's input processor rejects an "
+                "embeds prompt on an engine that was not told to expect one."
+            )
+        prompt: dict[str, Any] = {"prompt_embeds": checked_prompt_embeds(prompt_embeds, self.d_model).to("cpu")}
+        if self._global_intervention is not None:
+            prompt["cache_salt"] = self._global_intervention
+        return prompt
+
+    def _lora_request(self, path: str) -> Any:
+        """vLLM's ``LoRARequest`` for the adapter at ``path``, with one stable id per path."""
+        from vllm.lora.request import LoRARequest  # pyright: ignore[reportMissingImports]
+
+        if self.max_lora_rank is None:
+            raise ValueError(
+                "A LoRA request needs an engine built with max_lora_rank (vLLM's enable_lora); this "
+                "one was not. Pass max_lora_rank to load_model (or VLLMModel)."
+            )
+        lora_id = self._lora_ids.setdefault(path, len(self._lora_ids) + 1)
+        return LoRARequest(f"adapter-{lora_id}", lora_id, path)
+
+    async def embed_rows(self, token_ids: Sequence[int]) -> torch.Tensor:
+        """The input embeddings of ``token_ids`` ([k, d_model]), as the forward sees them."""
+        await self._ensure_engine()
+        results = await self.engine.collective_rpc("embed_rows", args=([int(t) for t in token_ids],))
+        out = results[0] if isinstance(results, list | tuple) else results
+        return decode_tensor_payload(out)
+
+    def _step_sampling(
+        self,
+        *,
+        max_tokens: int,
+        temperature: float | None,
+        top_k: int | None,
+        top_p: float | None,
+        presence_penalty: float | None,
+        stop_at_eos: bool,
+        n_logprobs: int,
+        seed: int | None,
+    ) -> Any:
+        """The protocol's per-step sampling knobs, resolved, as vLLM's ``SamplingParams``.
+
+        ``n_logprobs`` is checked against the engine's cap up front rather than silently truncated:
+        vLLM would reject the request, so it is refused here where the number can be named.
+        """
+        from vllm import SamplingParams  # pyright: ignore[reportMissingImports]
 
         if n_logprobs > self.DEFAULT_MAX_LOGPROBS:
             raise ValueError(
@@ -2165,7 +2546,7 @@ class VLLMModel:
         settings = self.sampling_settings(
             temperature=temperature, top_k=top_k, top_p=top_p, presence_penalty=presence_penalty
         )
-        sampling = SamplingParams(
+        return SamplingParams(
             max_tokens=max_tokens,
             ignore_eos=not stop_at_eos,
             logprobs=n_logprobs or None,
@@ -2173,10 +2554,17 @@ class VLLMModel:
             **settings.vllm_kwargs(),
         )
 
+    async def _steps_from_outputs(self, outputs: AsyncIterator[Any], n_logprobs: int):
+        """One ``GenStep`` per new token across a request's ``RequestOutput`` stream.
+
+        vLLM reports the whole completion so far on every output, so this tracks how many ids it
+        has already emitted and yields only the tail. Each id is decoded on its own, as eager does,
+        so the steps concatenate to the completion text.
+        """
+        from interp_engine.steer import GenStep
+
         emitted = 0
-        async for out in self._generate_request_outputs(
-            prompt_token_ids, sampling, steering_spec=steering_spec, position_mask=position_mask
-        ):
+        async for out in outputs:
             completion = out.outputs[0]
             token_ids, logprobs = completion.token_ids, completion.logprobs
             while emitted < len(token_ids):
@@ -2217,45 +2605,105 @@ class VLLMModel:
         *,
         steering_spec: Any = None,
         detach: bool = True,
+        rows: Sequence[int] | None = None,
     ) -> dict[Address, torch.Tensor]:
         """Async per-request worker-hook capture for a single prompt (concurrency-safe).
 
         Registers the points under a unique ``request_id``, runs that request, then
         collects only that request's rows (see the per-request demux in
         ``vllm_capture.requests``). Safe to call concurrently with other requests. When
-        ``steering_spec`` (an engine ``SteeringSpec``) is given, the SAME request also
+        ``steering_spec`` (a ``SteeringSpec`` or a list of them) is given, the SAME request also
         steers, so the captured activations are post-cap (persona assistant-axis).
+
+        With ``rows``, a static worker checks the full row count and then keeps only those
+        rows, so a short capture of a long prompt costs one row per point to send back. Hooked
+        workers send every row, and the rows are picked here.
 
         ``detach=False`` always raises here: the returned tensors are rebuilt from bytes on this
         side of the process boundary, so no graph reaches back into the worker's forward. They are
         ordinary tensors, though, so a caller can build their own graph on top -- which is the
         ``downstream`` half of :attr:`grad_support`.
         """
-        from vllm import SamplingParams  # pyright: ignore[reportMissingImports]
-
         if not detach:
             self.grad_support.require_through_forward()
-        pts = _validate_hook_points(points, self._basis_if_loaded())
+        pts = _validate_hook_points(points, self._basis_if_loaded(), self.served_points)
         self._require_capture_points(pts, "Activation capture")
+        n_prompt = len(prompt_token_ids)
+        picked = checked_rows(rows, n_prompt)
+        payload, static_cap = await self._captured_forward(prompt_token_ids, pts, steering_spec, picked)
+        out = decode_capture_payload(payload)
+        _assert_points_captured(out, pts)
+        if picked is not None and static_cap:
+            wrong = {str(pt): int(t.shape[0]) for pt, t in out.items() if int(t.shape[0]) != len(picked)}
+            if wrong:
+                raise RuntimeError(f"vLLM capture returned {wrong} rows for {len(picked)} requested rows.")
+        else:
+            _assert_full_prompt_captured(out, n_prompt)
+            if picked is not None:
+                out = {pt: t[picked] for pt, t in out.items()}
+        _assert_full_width_captured(out, self._hidden_size)
+        return out
+
+    async def project(
+        self,
+        prompt_token_ids: Sequence[int],
+        directions: Sequence[DirectionSet],
+        *,
+        steering_spec: Any = None,
+    ) -> list[torch.Tensor]:
+        """Per set, ``[n_prompt, k]`` float32: the worker projects its rows, so only the values cross.
+
+        One forward with every set's point registered, as :meth:`capture` runs it, and one collect
+        that projects on the worker (``vllm_capture.project``).
+        """
+        if not self._projects_on_worker:
+            return await project_by_capture(self, prompt_token_ids, directions, steering_spec)
+        addresses = check_directions(directions)
+        pts = _validate_hook_points(list(dict.fromkeys(addresses)), self._basis_if_loaded(), self.served_points)
+        self._require_capture_points(pts, "Projection")
+        wire = [to_wire(s) for s in directions]
+        payload, _ = await self._captured_forward(prompt_token_ids, pts, steering_spec, None, sets=wire)
+        n_prompt = len(prompt_token_ids)
+        out = []
+        for i, address in enumerate(addresses):
+            if str(i) not in payload:
+                raise RuntimeError(f"vLLM captured no rows at {address} for DirectionSet {i}.")
+            values = decode_tensor_payload(payload[str(i)])
+            if int(values.shape[0]) != n_prompt:
+                raise RuntimeError(
+                    f"vLLM projected {int(values.shape[0])} rows at {address} for a {n_prompt}-token prompt."
+                )
+            out.append(values)
+        return out
+
+    async def _captured_forward(
+        self,
+        prompt_token_ids: Sequence[int],
+        pts: list[str],
+        steering_spec: Any,
+        picked: list[int] | None,
+        *,
+        sets: list[dict] | None = None,
+    ) -> tuple[Any, bool]:
+        """One prompt's forward with ``pts`` registered; the rank-0 collect, and whether it was static.
+
+        With ``sets`` (``directions.to_wire``), the collect is the worker's projection of the rows.
+        """
+        from vllm import SamplingParams  # pyright: ignore[reportMissingImports]
+
+        from interp_engine.steer import steering_scope_for_call
+
+        n_prompt = len(prompt_token_ids)
         await self._ensure_engine()
-        steered = steering_spec is not None and not steering_spec.is_empty()
-        worker_specs: list[dict] = []
-        static_write = False
-        if steered:
-            assert steering_spec is not None
-            worker_specs = self._steer_specs(steering_spec)
-            self._require_static_writes(worker_specs, "Steered generation")
+        steering = steering_scope_for_call(self, steering_spec, what="a capture")
         rid = self._new_request_id("np-cap")
         static_cap = self._use_static_capture()
+        # The write first: its refusals all fire before any RPC, so nothing is left registered.
+        registered = await self._register_write(rid, steering, prompt_token_ids, what="Steered capture")
         if static_cap:
-            await self.engine.collective_rpc("register_static_capture", args=(rid, pts))
+            await self.engine.collective_rpc("register_static_capture", args=(rid, pts, picked, n_prompt))
         else:
             await self.engine.collective_rpc("register_capture", args=(rid, pts))
-        if steered and self._use_static_writes():
-            await self._register_static_write(rid, worker_specs, prompt_token_ids=prompt_token_ids)
-            static_write = True
-        elif steered:
-            await self.engine.collective_rpc("register_steering", args=(rid, worker_specs))
         try:
             await self._run_one(
                 self._prompt(prompt_token_ids, private_kv_for=rid),
@@ -2263,15 +2711,14 @@ class VLLMModel:
                 request_id=rid,
             )
         finally:
-            payloads = await _settle(
-                lambda: self.engine.collective_rpc("collect_static" if static_cap else "collect_request", args=(rid,)),
-                lambda: self._release_writes(rid, static_write=static_write, steered=steered),
-            )
-        out = decode_capture_payload(payloads[0] if isinstance(payloads, list | tuple) else payloads)
-        _assert_points_captured(out, pts)
-        _assert_full_prompt_captured(out, len(prompt_token_ids))
-        _assert_full_width_captured(out, self._hidden_size)
-        return out
+
+            def collect() -> Awaitable[Any]:
+                if sets is not None:
+                    return self.engine.collective_rpc("collect_projected", args=(rid, sets, static_cap))
+                return self.engine.collective_rpc("collect_static" if static_cap else "collect_request", args=(rid,))
+
+            payloads = await _settle(collect, lambda: self._unregister_write(rid, registered))
+        return (payloads[0] if isinstance(payloads, list | tuple) else payloads), static_cap
 
     async def capture_generation(
         self,
@@ -2291,58 +2738,29 @@ class VLLMModel:
         never fed back through the model, which is universal autoregressive behavior rather
         than a vLLM quirk.
 
-        Optional ``steering_spec`` (engine ``SteeringSpec``, additive/cap) OR
-        ``lens_intervention`` (jlens steer/ablate/swap: ``{specs, steer_generated,
-        skip_positions, prompt_len}``) is applied during generation so captured residuals
-        reflect the intervention. Single request-locked use.
+        ``steering_spec``, or the open ``steer()`` block when none is passed, is applied during
+        generation so captured residuals reflect the intervention; the block's ``position_mask``
+        and ``generated`` are honoured. A lens intervention is a block of ``NormScaledAddSpec`` /
+        ``AblateSpec`` / ``SwapSpec`` ops like any other. ``lens_intervention`` is the deprecated dict
+        form of such a block. Single request-locked use.
         """
         from vllm import SamplingParams  # pyright: ignore[reportMissingImports]
 
-        pts = _validate_hook_points(points, self._basis_if_loaded())
+        from interp_engine.steer import steering_scope_for_call
+
+        pts = _validate_hook_points(points, self._basis_if_loaded(), self.served_points)
         self._require_capture_points(pts, "Capture during generation")
         await self._ensure_engine()
-        steered = steering_spec is not None and not steering_spec.is_empty()
-        lens = bool(lens_intervention and lens_intervention.get("specs"))
-        if lens and steered and self._use_static_writes():
-            raise ValueError(
-                'backend="vllm-static" cannot apply a steering spec and a lens intervention on '
-                "the same request: both write the same static site. Run them as two requests, "
-                'or reload with backend="vllm", whose per-request hooks can carry both.'
-            )
+        steering = _legacy_lens_steering(
+            lens_intervention, steering_spec, "capture_generation"
+        ) or steering_scope_for_call(self, steering_spec, what="a generation capture")
         rid = self._new_request_id("np-capgen")
         static_cap = self._use_static_capture()
-        worker_specs: list[dict] = []
-        static_write = False
+        registered = await self._register_write(rid, steering, prompt_token_ids, what="Steered generation")
         if static_cap:
             await self.engine.collective_rpc("register_static_capture", args=(rid, pts))
         else:
             await self.engine.collective_rpc("register_capture", args=(rid, pts))
-        if steered:
-            assert steering_spec is not None
-            worker_specs = self._steer_specs(steering_spec)
-            self._require_static_writes(worker_specs, "Steered generation")
-            if self._use_static_writes():
-                await self._register_static_write(rid, worker_specs, prompt_token_ids=prompt_token_ids)
-                static_write = True
-            else:
-                await self.engine.collective_rpc("register_steering", args=(rid, worker_specs))
-        if lens:
-            assert lens_intervention is not None
-            if self._use_static_writes():
-                await self._register_static_lens(rid, lens_intervention)
-                static_write = True
-            else:
-                self._require_hooks("A lens intervention")
-                await self.engine.collective_rpc(
-                    "register_lens",
-                    args=(
-                        rid,
-                        self._lens_specs(lens_intervention),
-                        lens_intervention.get("steer_generated", False),
-                        lens_intervention.get("skip_positions", []),
-                        lens_intervention.get("prompt_len", 0),
-                    ),
-                )
         try:
             out = await self._run_one(
                 self._prompt(prompt_token_ids, private_kv_for=rid),
@@ -2352,7 +2770,7 @@ class VLLMModel:
         finally:
             payloads = await _settle(
                 lambda: self.engine.collective_rpc("collect_static" if static_cap else "collect_request", args=(rid,)),
-                lambda: self._release_writes(rid, static_write=static_write, steered=bool(steered or lens)),
+                lambda: self._unregister_write(rid, registered),
             )
         caps = decode_capture_payload(payloads[0] if isinstance(payloads, list | tuple) else payloads)
         _assert_points_captured(caps, pts)
@@ -2367,6 +2785,7 @@ class VLLMModel:
         max_tokens: int = 8,
         temperature: float = 0.0,
         seed: int | None = None,
+        steering_spec: Any = None,
         lens_intervention: dict | None = None,
     ):
         """Streaming :meth:`capture_generation`: yield ``(new_captures, token_ids)`` per step.
@@ -2384,38 +2803,27 @@ class VLLMModel:
         ids come from. See :meth:`lens_capture_readout_stream` for what withholding them cost.
 
         The engine is never blocked on the consumer: it keeps generating and the hooks keep
-        accumulating, so falling behind costs nothing but latency. Optional
-        ``lens_intervention`` behaves exactly as in :meth:`capture_generation`.
+        accumulating, so falling behind costs nothing but latency. ``steering_spec`` and the
+        open ``steer()`` block behave exactly as in :meth:`capture_generation`, and so does the deprecated
+        ``lens_intervention``.
         """
         from vllm import SamplingParams  # pyright: ignore[reportMissingImports]
 
-        pts = _validate_hook_points(points, self._basis_if_loaded())
+        from interp_engine.steer import steering_scope_for_call
+
+        pts = _validate_hook_points(points, self._basis_if_loaded(), self.served_points)
         self._require_capture_points(pts, "Streaming capture during generation")
         await self._ensure_engine()
-        lens = bool(lens_intervention and lens_intervention.get("specs"))
+        steering = _legacy_lens_steering(
+            lens_intervention, steering_spec, "capture_generation_stream"
+        ) or steering_scope_for_call(self, steering_spec, what="a streaming generation capture")
         rid = self._new_request_id("np-capgen")
         static_cap = self._use_static_capture()
-        static_write = False
+        registered = await self._register_write(rid, steering, prompt_token_ids, what="Steered generation")
         if static_cap:
             await self.engine.collective_rpc("register_static_capture", args=(rid, pts))
         else:
             await self.engine.collective_rpc("register_capture", args=(rid, pts))
-        if lens and lens_intervention is not None:
-            if self._use_static_writes():
-                await self._register_static_lens(rid, lens_intervention)
-                static_write = True
-            else:
-                self._require_hooks("A lens intervention")
-                await self.engine.collective_rpc(
-                    "register_lens",
-                    args=(
-                        rid,
-                        self._lens_specs(lens_intervention),
-                        lens_intervention.get("steer_generated", False),
-                        lens_intervention.get("skip_positions", []),
-                        lens_intervention.get("prompt_len", 0),
-                    ),
-                )
 
         sp = SamplingParams(max_tokens=max_tokens, temperature=temperature, seed=seed)
         prompt = self._prompt(prompt_token_ids, private_kv_for=rid)
@@ -2447,7 +2855,7 @@ class VLLMModel:
             # the last forward appended after the final drain so no position is dropped.
             payloads = await _settle(
                 lambda: self.engine.collective_rpc("collect_static" if static_cap else "collect_request", args=(rid,)),
-                lambda: self._release_writes(rid, static_write=static_write, steered=bool(lens)),
+                lambda: self._unregister_write(rid, registered),
             )
             tail = decode_capture_payload(payloads[0] if isinstance(payloads, list | tuple) else payloads)
         if completed and (tail or len(token_ids) > reported):
@@ -2473,6 +2881,7 @@ class VLLMModel:
         max_tokens: int = 1,
         temperature: float = 0.0,
         seed: int | None = None,
+        steering_spec: Any = None,
         lens_intervention: dict | None = None,
         stream_reduce: str = "none",
         stream_index: int | None = None,
@@ -2509,10 +2918,16 @@ class VLLMModel:
         later call comes back empty; withholding those yields left the caller's last-known id
         list short of the positions it was already holding, and it dropped them -- a lens run
         asking for 5 tokens returned 3, and the count moved with how far the engine ran ahead.
+
+        ``steering_spec`` and the open ``steer()`` block behave exactly as in
+        :meth:`capture_generation`; a lens intervention is such a block. ``lens_intervention`` is its
+        deprecated dict form.
         """
         from vllm import SamplingParams  # pyright: ignore[reportMissingImports]
 
-        pts = _validate_hook_points(points, self._basis_if_loaded())
+        from interp_engine.steer import steering_scope_for_call
+
+        pts = _validate_hook_points(points, self._basis_if_loaded(), self.served_points)
         self._require_capture_points(pts, "Streaming lens read-out")
         # The specs name layers; the worker rebuilds each capture key from this point name, so every
         # requested point has to be the same one (a lens reads one stream per layer).
@@ -2524,30 +2939,16 @@ class VLLMModel:
         # forward and surfaces in the caller's own frame rather than out of a worker RPC.
         self.residual_basis.require_stream_reduction(stream_reduce, stream_index, point=point)
         await self._ensure_engine()
-        lens = bool(lens_intervention and lens_intervention.get("specs"))
+        steering = _legacy_lens_steering(
+            lens_intervention, steering_spec, "lens_capture_readout_stream"
+        ) or steering_scope_for_call(self, steering_spec, what="a lens read-out")
         rid = self._new_request_id("np-lensread")
         static_cap = self._use_static_capture()
-        static_write = False
+        registered = await self._register_write(rid, steering, prompt_token_ids, what="A lens intervention")
         if static_cap:
             await self.engine.collective_rpc("register_static_capture", args=(rid, pts))
         else:
             await self.engine.collective_rpc("register_capture", args=(rid, pts))
-        if lens and lens_intervention is not None:
-            if self._use_static_writes():
-                await self._register_static_lens(rid, lens_intervention)
-                static_write = True
-            else:
-                self._require_hooks("A lens intervention")
-                await self.engine.collective_rpc(
-                    "register_lens",
-                    args=(
-                        rid,
-                        self._lens_specs(lens_intervention),
-                        lens_intervention.get("steer_generated", False),
-                        lens_intervention.get("skip_positions", []),
-                        lens_intervention.get("prompt_len", 0),
-                    ),
-                )
 
         # Encoded once: the mask is a process-lifetime constant, and it rode along on every
         # read-out call when the client drove the chunking.
@@ -2609,10 +3010,7 @@ class VLLMModel:
         finally:
             # Deregister on every exit path (including client disconnect), and read out whatever
             # the last forward appended after the final drain so no position is dropped.
-            tail = await _settle(
-                lambda: readout(final=True),
-                lambda: self._release_writes(rid, static_write=static_write, steered=bool(lens)),
-            )
+            tail = await _settle(lambda: readout(final=True), lambda: self._unregister_write(rid, registered))
         if completed and (tail[1] or len(token_ids) > reported):
             yield tail[0], tail[2], tail[3], token_ids
         if completed and captured_rows == 0:
@@ -2631,9 +3029,9 @@ class VLLMModel:
     ) -> None:
         """Install GLOBAL jlens write-hooks (single-request; validation only).
 
-        The server path uses per-request lens registration inside
-        :meth:`capture_generation`; this global variant remains for the sync/validation
-        scripts. Cleared by :meth:`clear_steering`.
+        The server path opens a ``steer()`` block of ``NormScaledAddSpec`` / ``AblateSpec`` /
+        ``SwapSpec`` ops around its capture, registered per request; this global variant keeps
+        the lens wire format for the sync/validation scripts. Cleared by :meth:`clear_steering`.
 
         Pinned to the decoder layer's output, so a spec that names a point or a stream is refused
         rather than ignored: the per-request path honours both and this one has no way to, and a caller
@@ -2646,11 +3044,16 @@ class VLLMModel:
         if aimed:
             raise ValueError(
                 f"set_lens_intervention writes the decoder layer's output and cannot aim at {aimed}. "
-                "Pass the intervention to capture_generation / capture_generation_stream / "
-                "lens_capture_readout_stream instead -- the per-request path installs a hook per site "
-                "and honours the point (and stream) a spec names."
+                "Open a steer() block of SteeringSpec(point=..., stream=...) ops around the capture "
+                "instead -- the per-request path installs a hook per site and honours the point (and "
+                "stream) the spec names."
             )
-        filled = [{**s, "point": str(s.get("point") or "resid_post")} for s in specs]
+        from interp_engine.vllm_capture.lens import lens_wire_to_steer_spec
+
+        # The gate before the rename, so a backend that cannot write refuses as such.
+        if not self._use_static_writes():
+            self._require_hooks("A lens intervention")
+        filled = [lens_wire_to_steer_spec({**s, "point": str(s.get("point") or "resid_post")}) for s in specs]
         if self._use_static_writes():
             self._require_static_writes(filled, "A lens intervention")
             await self._ensure_engine()
@@ -2671,11 +3074,10 @@ class VLLMModel:
             self._static_global_lease = lease
             self._global_intervention = self._new_request_id("np-global-lens")
             return
-        self._require_hooks("A lens intervention")
         await self._ensure_engine()
         await self.engine.collective_rpc(
             "install_lens_intervention",
-            args=(specs, steer_generated, skip_positions, prompt_len),
+            args=(filled, steer_generated, skip_positions, prompt_len),
         )
         self._global_intervention = self._new_request_id("np-global-lens")
 
@@ -2723,13 +3125,88 @@ class VLLMModel:
         out = results[0] if isinstance(results, list | tuple) else results
         return decode_tensor_payload(out["top_idx"]), decode_tensor_payload(out["top_probs"])
 
-    async def set_lens_jacobians(self, jacobians: dict[int, torch.Tensor] | None) -> int:
-        """Make the Jacobian-lens matrices resident on the worker(s). Returns bytes per rank.
+    async def generate_with_lens(
+        self,
+        prompt_token_ids: Sequence[int],
+        lenses: Sequence[LensSpec],
+        *,
+        point: str = "resid_post",
+        top_n: int = 10,
+        max_tokens: int = 0,
+        temperature: float = 0.0,
+        seed: int | None = None,
+        word_mask: torch.Tensor | None = None,
+        skip_before: int = 0,
+        stream_reduce: str = "none",
+        stream_index: int | None = None,
+        jacobians: Mapping[int, torch.Tensor] | None = None,
+        softcap: float | None = None,
+        steering_spec: Any = None,
+    ) -> AsyncIterator[LensStep]:
+        """The lens at every position, streamed token by token. See the protocol.
+
+        Read out in the worker, so only top-k crosses ``collective_rpc``. Given ``jacobians`` for a
+        Jacobian lens, the rows come here instead, to be carried through them, and go back for the
+        unembed: the path for a lens too large to sit on the worker.
+        """
+        from interp_engine import lens_stream
+
+        here = jacobians is not None and any(s.jacobian for s in lenses)
+        if here and any(s.jacobian and s.jacobian_set != lens_stream.DEFAULT_JACOBIAN_SET for s in lenses):
+            raise ValueError(
+                "jacobians= carries the default set to this side, but a named set stays on the "
+                "worker: read named sets in a call that passes no jacobians"
+            )
+        held_sets = (
+            ([lens_stream.DEFAULT_JACOBIAN_SET] if jacobians else [])
+            if here
+            else [name for name, held in self._lens_jacobian_sets.items() if held]
+        )
+        layers = lens_stream.prepare(
+            self,
+            lenses,
+            top_n=top_n,
+            point=point,
+            stream_reduce=stream_reduce,
+            stream_index=stream_index,
+            jacobian_sets=held_sets,
+        )
+        kw: dict[str, Any] = {
+            "point": point,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "seed": seed,
+            "skip_before": min(max(int(skip_before), 0), len(prompt_token_ids)),
+            "stream_reduce": stream_reduce,
+            "stream_index": stream_index,
+            "steering_spec": steering_spec,
+        }
+        if not here:
+            async for step in lens_stream.fused_steps(
+                self, prompt_token_ids, lenses, layers, top_n=top_n, word_mask=word_mask, softcap=softcap, **kw
+            ):
+                yield step
+            return
+        assert jacobians is not None
+        dtype = next(iter(jacobians.values())).dtype if jacobians else None
+        topk = lens_stream.worker_topk(self, top_n=top_n, softcap=softcap, word_mask=word_mask, dtype=dtype)
+        source = lens_stream.protocol_rows(self, prompt_token_ids, layers, **kw)
+        async for step in lens_stream.read_out(
+            source,
+            lenses,
+            prompt_len=len(prompt_token_ids),
+            jacobians={lens_stream.DEFAULT_JACOBIAN_SET: jacobians},
+            topk=topk,
+        ):
+            yield step
+
+    async def set_lens_jacobians(self, jacobians: Mapping[int, torch.Tensor] | None, *, name: str = "default") -> int:
+        """Make the Jacobian-lens set ``name`` resident on the worker(s). Returns bytes per rank.
 
         Hand this the whole lens once at startup and the read-out never has to ship residuals:
         :meth:`lens_capture_readout` transports and unembeds where the rows were captured. Pass
-        ``None`` to release. Under tensor parallelism every rank holds a full copy (``J_bar`` is
-        not sharded), so the return value is PER RANK, not in total.
+        ``None`` to release that set; other sets stay. Under tensor parallelism every rank holds a
+        full copy (``J_bar`` is not sharded), so the return value is PER RANK, not in total.
         """
         await self._ensure_engine()
         payloads = (
@@ -2737,11 +3214,17 @@ class VLLMModel:
             if jacobians is None
             else {str(int(layer)): encode_tensor_payload(matrix) for layer, matrix in jacobians.items()}
         )
-        results = await self.engine.collective_rpc("set_lens_jacobians", args=(payloads,))
+        results = await self.engine.collective_rpc("set_lens_jacobians", args=(payloads, name))
         out = results[0] if isinstance(results, list | tuple) else results
+        if jacobians is None:
+            self._lens_jacobian_sets.pop(name, None)
+        else:
+            self._lens_jacobian_sets[name] = frozenset(int(layer) for layer in jacobians)
         return int(out["bytes"])
 
-    async def lens_transport(self, rows: torch.Tensor, layers: Sequence[int]) -> tuple[torch.Tensor, list[bool]]:
+    async def lens_transport(
+        self, rows: torch.Tensor, layers: Sequence[int], *, jacobian_set: str = "default"
+    ) -> tuple[torch.Tensor, list[bool]]:
         """Pull ``[k, d_model]`` rows back through each layer's resident ``J_bar``: ``rows @ J_bar``.
 
         Returns ``([n_layers, k, d_model]`` float32, ``per-layer transported flags)``. Layers with
@@ -2751,7 +3234,9 @@ class VLLMModel:
         """
         await self._ensure_engine()
         payload = encode_tensor_payload(rows)
-        results = await self.engine.collective_rpc("lens_transport", args=(payload, [int(x) for x in layers]))
+        results = await self.engine.collective_rpc(
+            "lens_transport", args=(payload, [int(x) for x in layers], jacobian_set)
+        )
         out = results[0] if isinstance(results, list | tuple) else results
         return decode_tensor_payload(out["rows"]), [bool(flag) for flag in out["transported"]]
 

@@ -104,8 +104,8 @@ model = load_model("Qwen/Qwen3-8B", backend="vllm", enable_prompt_embeds=True)
 
 
 async def from_embeds(model, embeds):
-    from vllm import SamplingParams
-
-    out = await model.generate_from_embeds(embeds, SamplingParams(max_tokens=32))
-    return out.outputs[0].text
+    text = ""
+    async for step in model.generate_steps_from_embeds(embeds, max_tokens=32):
+        text += step.token_str
+    return text
 ```

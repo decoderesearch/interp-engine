@@ -126,11 +126,11 @@ The norm's _boundaries_ are `resid_mid` (input) and `mlp_in` (output), and the e
 for you rather than making you reproduce TransformerLens' `RMSNorm.forward` from memory:
 
 ```python
-from interp_engine import pre_gain_normalized, rms_norm_eps_for_model, run_with_cache, tlens_normalized_hook
+from interp_engine import capture, pre_gain_normalized, rms_norm_eps_for_model, tlens_normalized_hook
 
 address = tlens_normalized_hook("blocks.19.ln2.hook_normalized")  # -> Address("resid_mid", 19)
 eps = rms_norm_eps_for_model(model)  # None on a LayerNorm family, where this equation does not apply
-cache = run_with_cache(model, tokens, [address])
+cache = capture(model, tokens, [address])
 normalized = pre_gain_normalized(cache[address], eps)
 ```
 
@@ -246,7 +246,7 @@ module is present and never called. `router_logits` survives that anyway — `ml
 `return routed_out, router_logits`, so the logits the kernel routed on leave the block, and the point
 resolves to the block's own `output:1`, bit-identical to `F.linear(hidden, router.weight, router.bias)`.
 `expert_weights` and `expert_indices` have no boundary there at all — the selection happens inside the
-kernel — so on that path they are **rebuilt** from those logits by `run_with_cache`
+kernel — so on that path they are **rebuilt** from those logits by `capture`
 (`interp_engine.moe_routing`), and `resolve_point` still refuses them because there is no address to
 return. The index the logits come off is allowlisted per replacement (`facts.INLINE_ROUTING_FORWARDS`)
 rather than assumed, because `output:1` on the _un-replaced_ gpt-oss block is `router_scores` — the
@@ -422,12 +422,13 @@ Both mechanisms carry the optional `stream` coordinate, which on a write means o
 in one row of a stack the worker already holds — a weaker claim than the one a read makes, which is why
 vLLM serves it here while still refusing to *read* a single stream through the resid points.
 
-A jlens steer/ablate/swap goes through the same gate and the same sites: its spec carries a `point`
-(defaulting to `resid_post`, which is what it has always meant on a conventional trunk) and the
-per-request path keys the intervention by site rather than by layer. That is what makes the lens usable
-on this family at all — `resid_post` there names the whole stack, which no sublayer reads, so the tensor
-a swap wants is a collapse. The global `set_lens_intervention` stays pinned to the decoder layer's output
-and refuses a spec that names a point, rather than ignoring it.
+A lens steer/ablate/swap is a `steer()` block of `NormScaledAddSpec` / `AblateSpec` / `SwapSpec` ops
+and goes through the same gate and the same sites: the spec's `point` (`resid_post` by default, which
+is what it has always meant on a conventional trunk) is where the per-request path keys the write.
+That is what makes the lens usable on this family at all — `resid_post` there names the whole stack,
+which no sublayer reads, so the tensor a swap wants is a collapse. The global `set_lens_intervention`
+stays pinned to the decoder layer's output and refuses a spec that names a point, rather than ignoring
+it.
 
 ### On the AMD and XPU trees they are ordinary modules
 

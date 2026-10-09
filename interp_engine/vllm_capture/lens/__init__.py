@@ -16,11 +16,10 @@ the read-out that shows its effect are one feature to whoever is changing them.
 
 from __future__ import annotations
 
-# Internals with callers outside this subpackage -- the demux builds the intervention modifier,
-# and tests reach for the unembedding helpers directly. See the note in the parent package's
-# ``__init__``: patch the defining module, not one of these aliases.
-from interp_engine.vllm_capture.lens.intervene import _make_lens_modifier as _make_lens_modifier
-from interp_engine.vllm_capture.lens.intervene import worker_install_lens_intervention
+# Internals with callers outside this subpackage -- tests reach for the unembedding helpers
+# directly. See the note in the parent package's ``__init__``: patch the defining module, not one
+# of these aliases.
+from interp_engine.vllm_capture.lens.intervene import lens_wire_to_steer_spec, worker_install_lens_intervention
 from interp_engine.vllm_capture.lens.readout import _lens_topk as _lens_topk
 from interp_engine.vllm_capture.lens.readout import (
     worker_lens_capture_readout,
@@ -40,12 +39,15 @@ from interp_engine.vllm_capture.lens.unembed import _worker_unembed_layer as _wo
 from interp_engine.vllm_capture.lens.unembed import _worker_unembed_weight as _worker_unembed_weight
 from interp_engine.vllm_capture.lens.unembed import (
     merge_lm_head_row_payloads,
+    worker_embed_rows,
     worker_lm_head_rows,
     worker_unembed,
 )
 
 __all__ = [
+    "lens_wire_to_steer_spec",
     "merge_lm_head_row_payloads",
+    "worker_embed_rows",
     "worker_install_lens_intervention",
     "worker_lens_capture_readout",
     "worker_lens_readout",

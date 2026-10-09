@@ -24,7 +24,7 @@ from collections.abc import Callable, Sequence
 import torch
 
 from interp_engine.address import Address
-from interp_engine.capture import run_with_cache
+from interp_engine.capture import capture
 from interp_engine.dispatch import TokensLike, as_token_ids, refuse_arguments, require_eager
 from interp_engine.model import EagerModel
 from interp_engine.protocol import InterpModel
@@ -135,7 +135,7 @@ def capture_residuals(
         return _capture_residuals_via_protocol(model, tokens, layers, detach=detach)
     wanted = range(model.n_layers) if layers is None else layers
     points = [Address("resid_post", layer) for layer in wanted]
-    cache = run_with_cache(model, tokens, points, detach=detach)
+    cache = capture(model, tokens, points, detach=detach)
     return {layer: cache.get("resid_post", layer)[0] for layer in wanted}
 
 
@@ -150,7 +150,7 @@ def _capture_residuals_via_protocol(
 
     ``VLLMModel.capture_resid_post`` reads the residual stream out of what the forward already
     produced, instead of attaching a Python hook to every layer. Two things follow, and both are
-    why this arm does not simply go through :func:`run_with_cache`: it is cheaper for the
+    why this arm does not simply go through :func:`capture`: it is cheaper for the
     all-layers case a lens read-out asks for, and it keeps working when ``hooks_available`` is
     False, so a graph-mode engine can still serve a lens.
 
@@ -161,7 +161,7 @@ def _capture_residuals_via_protocol(
     native = getattr(model, "capture_resid_post", None)
     if native is None:
         wanted = range(model.n_layers) if layers is None else layers
-        cache = run_with_cache(model, tokens, [Address("resid_post", layer) for layer in wanted], detach=detach)
+        cache = capture(model, tokens, [Address("resid_post", layer) for layer in wanted], detach=detach)
         return {layer: cache.get("resid_post", layer)[0] for layer in wanted}
     if not detach:
         model.grad_support.require_through_forward()

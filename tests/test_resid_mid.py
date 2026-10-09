@@ -35,7 +35,7 @@ import torch
 from harness import GEMMA_IT, GPT2, QWEN_THINKING, ModelSpec, load_model, require_hf_token
 from synthetic_families import shrunk_lfm2_moe
 
-from interp_engine import run_with_cache
+from interp_engine import capture
 from interp_engine.capture import AddressLike
 from interp_engine.facts import pre_mlp_norm_attr
 
@@ -60,7 +60,7 @@ def _load(spec: ModelSpec):
 
 def _capture(model, points: Sequence[AddressLike]):
     ids = model.tokenizer(PROMPT, add_special_tokens=False, return_tensors="pt")["input_ids"].to(model.device)
-    return run_with_cache(model, ids, points)
+    return capture(model, ids, points)
 
 
 def _softmax_layer(model) -> int:
@@ -230,7 +230,7 @@ def test_the_residual_on_a_conv_block_is_the_one_after_the_convolutions_add():
     whole sublayer away from `resid_pre` -- which is what an engine returns when it gets this wrong."""
     model = shrunk_lfm2_moe()
     ids = torch.tensor([[3, 17, 42, 8, 100]])
-    cache = run_with_cache(model, ids, [("resid_pre", 0), ("resid_mid", 0), ("resid_post", 0)])
+    cache = capture(model, ids, [("resid_pre", 0), ("resid_mid", 0), ("resid_post", 0)])
     resid_pre, resid_mid = cache.get("resid_pre", 0), cache.get("resid_mid", 0)
 
     conv_out = {}

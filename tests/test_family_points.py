@@ -20,7 +20,7 @@ import pytest
 import torch
 
 from interp_engine import Address, facts, points
-from interp_engine.capture import run_with_cache
+from interp_engine.capture import capture
 from interp_engine.facts import FACTORED_PROJECTION_ATTRS, HyperConnectionLayout, factored_projection
 from interp_engine.points import POINTS, Scope, Width, known_names, point_spec, points_for
 from tests.synthetic_families import (
@@ -153,7 +153,7 @@ def test_the_captured_tensors_are_the_ones_the_block_computed(dsv4, dsv4_tokens)
         lambda mod, args, out: recorded.update(write=out[0], mix=out[1], collapse=out[2])
     )
     try:
-        cache = run_with_cache(
+        cache = capture(
             dsv4,
             dsv4_tokens,
             [Address(f"attn_stream_{quantity}", 1) for quantity in ("write", "mix", "collapse")],
@@ -168,7 +168,7 @@ def test_the_captured_tensors_are_the_ones_the_block_computed(dsv4, dsv4_tokens)
 def test_the_stream_points_have_the_shapes_their_widths_declare(dsv4, dsv4_tokens):
     n_streams, d_model = dsv4.residual_basis.n_streams, dsv4.d_model
     requests = [Address(f"attn_stream_{q}", 1) for q in ("write", "mix", "collapse")]
-    cache = run_with_cache(dsv4, dsv4_tokens, requests)
+    cache = capture(dsv4, dsv4_tokens, requests)
 
     assert cache.get("attn_stream_write", 1).shape == (1, 8, n_streams)
     assert cache.get("attn_stream_mix", 1).shape == (1, 8, n_streams, n_streams)
@@ -192,7 +192,7 @@ def test_the_mixing_matrix_is_column_stochastic_and_only_roughly_row_stochastic(
     7e-2 at ``hidden_size=4096`` while columns hold at 1e-6; this fixture is 128 wide, which keeps
     the matrix near-uniform and hides the difference entirely.
     """
-    mix = run_with_cache(dsv4, dsv4_tokens, [Address("attn_stream_mix", 1)]).get("attn_stream_mix", 1)
+    mix = capture(dsv4, dsv4_tokens, [Address("attn_stream_mix", 1)]).get("attn_stream_mix", 1)
     assert torch.allclose(mix.sum(dim=-2), torch.ones_like(mix.sum(dim=-2)), atol=1e-3)
     assert torch.allclose(mix.sum(dim=-1), torch.ones_like(mix.sum(dim=-1)), atol=0.15)
     assert (mix >= 0).all(), "a doubly stochastic matrix cannot have a negative entry"
@@ -207,7 +207,7 @@ def test_the_collapsed_vector_sits_one_norm_before_what_attention_reads(dsv4, ds
     an exact identity through the model's own norm rather than as an inequality, so the two points
     cannot quietly swap meaning.
     """
-    cache = run_with_cache(dsv4, dsv4_tokens, [Address("attn_stream_collapse", 1), Address("attn_in", 1)])
+    cache = capture(dsv4, dsv4_tokens, [Address("attn_stream_collapse", 1), Address("attn_in", 1)])
     collapsed, normed = cache.get("attn_stream_collapse", 1), cache.get("attn_in", 1)
 
     assert not torch.equal(collapsed, normed)
@@ -216,11 +216,11 @@ def test_the_collapsed_vector_sits_one_norm_before_what_attention_reads(dsv4, ds
 
 
 def test_resid_streams_is_the_whole_stack_that_resid_post_refuses_to_be(dsv4, dsv4_tokens):
-    cache = run_with_cache(dsv4, dsv4_tokens, [Address("resid_streams", 1)])
+    cache = capture(dsv4, dsv4_tokens, [Address("resid_streams", 1)])
     stack = cache.get("resid_streams", 1)
     assert stack.shape == (1, 8, dsv4.residual_basis.n_streams, dsv4.d_model)
 
-    per_stream = run_with_cache(dsv4, dsv4_tokens, [Address("resid_post", 1, stream=2)])
+    per_stream = capture(dsv4, dsv4_tokens, [Address("resid_post", 1, stream=2)])
     assert torch.equal(per_stream.get("resid_post", 1, stream=2), stack[:, :, 2, :])
 
 
@@ -235,6 +235,14 @@ def test_a_hyper_connection_point_on_a_conventional_model_says_what_is_missing()
     model = eager_on_meta("LlamaForCausalLM")
     with pytest.raises(ValueError, match="hyper-connection point"):
         model.resolve_point("attn_stream_mix", 0)
+
+
+def test_a_linear_attention_layer_refuses_a_query_point_rather_than_raising():
+    """Qwen3.5's layer 0 is a linear-attention mixer with no q_proj. ``describe`` probes layer 0,
+    so an exception here fails a server at startup."""
+    model = eager_on_meta("Qwen3_5ForCausalLM")
+    assert "No query projection" in (model.refuses("attn_gate", 0) or "")
+    assert "attn_gate" not in model.describe().capture_points
 
 
 # --- the two module layouts -------------------------------------------------------------------
@@ -417,7 +425,7 @@ def test_z_on_v4_is_the_input_to_the_first_half_of_the_pair(dsv4, dsv4_tokens):
         lambda mod, args: recorded.update(seen=args[0])
     )
     try:
-        cache = run_with_cache(dsv4, dsv4_tokens, [Address("z", 1)])
+        cache = capture(dsv4, dsv4_tokens, [Address("z", 1)])
     finally:
         handle.remove()
     assert torch.equal(cache.get("z", 1), recorded["seen"])
@@ -487,6 +495,51 @@ def test_factoring_alone_is_not_the_marker():
     from interp_engine.vllm_capture._tree import absent_point_reason
 
     assert absent_point_reason(None, "z", _vllm_fused_mla_layer(with_o_proj_method=False)) is None
+
+
+def _vllm_gemma4_layer(shared: bool) -> torch.nn.Module:
+    """vLLM's `Gemma4Attention` as the tree sees it: the norms are built on every layer, and a flag
+    says whether the forward runs them. The attention op names the layer whose cache a shared layer
+    reads, the way vLLM's `kv_sharing_target_layer_name` does."""
+
+    class Attn(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.k_norm = torch.nn.LayerNorm(8)
+            self.v_norm = torch.nn.LayerNorm(8)
+            self.qkv_proj = torch.nn.Linear(8, 24, bias=False)
+            self.is_kv_shared_layer = shared
+            self.attn = torch.nn.Module()
+            self.attn.kv_sharing_target_layer_name = "language_model.model.layers.14.self_attn.attn" if shared else None
+
+    class Gemma4DecoderLayer(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.self_attn = Attn()
+
+    return Gemma4DecoderLayer()
+
+
+@pytest.mark.parametrize("name", ["k_norm_in", "k_norm_out", "value"])
+def test_the_vllm_tree_refuses_the_kv_points_on_a_kv_shared_layer(name: str):
+    """Gemma 4 E2B's `vllm-static` cell scored `k_norm_in`, `k_norm_out` and `value` on layers 17,
+    26 and 34 -- layers whose forward never calls those norms -- from a tap buffer nothing had written.
+    Eager refuses them there; the vLLM tree has to as well, and name the layer that has them."""
+    from interp_engine.vllm_capture._tree import absent_point_reason
+
+    reason = absent_point_reason(None, name, _vllm_gemma4_layer(shared=True))
+    assert reason is not None
+    assert "layer 14" in reason and name in reason
+    assert absent_point_reason(None, name, _vllm_gemma4_layer(shared=False)) is None
+
+
+def test_the_query_side_is_served_on_a_kv_shared_layer():
+    """The layer computes its own queries and normalizes them; only the key/value side is borrowed."""
+    from interp_engine.vllm_capture._tree import absent_point_reason
+
+    layer = _vllm_gemma4_layer(shared=True)
+    assert absent_point_reason(None, "q_norm_in", layer) is None
+    assert absent_point_reason(None, "q_norm_out", layer) is None
 
 
 def test_an_ordinary_output_projection_is_neither_refused_nor_unresolvable():

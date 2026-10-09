@@ -677,9 +677,9 @@ def fit_max_num_batched_tokens(
 
 
 #: Ops static writes can serve. ``additive`` uses a static ``add_``; the rest read the live residual.
-_STEER_OPS = frozenset(m.value for m in SteerMethod)
-_LENS_OPS = frozenset({"steer", "ablate", "swap"})
-STATIC_WRITE_OPS = _STEER_OPS | _LENS_OPS
+#: Every op :func:`~interp_engine.vllm_capture.steering._make_steer_modifier` builds, the lens's
+#: three included: a lens intervention arrives here as the steering ops it is.
+STATIC_WRITE_OPS = frozenset(m.value for m in SteerMethod)
 
 
 @dataclass
@@ -740,6 +740,8 @@ class StaticState:
     writes: dict[str, _Site] = field(default_factory=dict)
     harvest: dict[str, dict[str, list[torch.Tensor]]] = field(default_factory=dict)
     cap_points: dict[str, set[str]] = field(default_factory=dict)
+    # Per request: the rows to send back, and the prompt length the harvest must have first.
+    cap_rows: dict[str, tuple[list[int], int]] = field(default_factory=dict)
     lens_cursor: dict[str, int] = field(default_factory=dict)
     registered: set[str] = field(default_factory=set)
     write_reqs: dict[str, dict[str, _WriteReq]] = field(default_factory=dict)
@@ -1600,7 +1602,7 @@ def _is_fused_resid(module: torch.nn.Module, name: str, residual: torch.Tensor |
 
 
 def _apply_lens_scope(delta: torch.Tensor, n: int, scope: dict[str, Any] | None) -> torch.Tensor | None:
-    """Prefill-vs-decode skip used by jlens. None means leave the live tensor alone.
+    """A write's position scope: masked prefill rows, and prompt-only. None means leave the live tensor alone.
 
     The mask comes from :func:`~interp_engine.vllm_capture._hooks.position_mask`, the one the hooked
     path uses, rather than being built here: a ``[tokens, 1]`` mask is right for every point with one
@@ -1843,6 +1845,7 @@ def take_static_rows(
         return rows, static.failed.get(req_id)
     failure = static.failed.pop(req_id, None)
     static.cap_points.pop(req_id, None)
+    static.cap_rows.pop(req_id, None)
     static.lens_cursor.pop(req_id, None)
     return rows, failure
 
@@ -1865,9 +1868,9 @@ def worker_set_static_delta(
 ) -> None:
     """Install static writes from worker specs. Zeros every write site first.
 
-    A site of only plain adds, with no lens scope, fills the static ``delta`` buffer with their
-    sum. Any other op attaches one live ``modify`` for the site's ops, in order, that reads the
-    residual each forward (breakable ``add_eager``). ``lens_scope`` is the jlens skip.
+    Additive ``op="additive"`` without a scope fills the static ``delta`` buffer. Every other op attaches
+    a live ``modify`` that reads the residual each forward (breakable ``add_eager``). ``lens_scope``
+    is the write's position scope: ``skip_positions``, ``prompt_len`` and ``steer_generated``.
 
     A ``stream`` disqualifies the static buffer too. The buffer is added whole to a ``[tokens,
     streams, width]`` activation, so it has no way to say "this stream and not the others"; taking
@@ -1880,6 +1883,8 @@ def worker_set_static_delta(
     if static is None:
         raise RuntimeError("set_static_delta: this worker has no static wraps")
     worker_clear_static_delta(worker)
+    from interp_engine.vllm_capture.steering import _make_steer_modifiers
+
     for site, group in _group_by_site(static, specs).items():
         assert site.delta is not None
         constant = _constant_delta(group, site.delta.device, site.delta.dtype) if lens_scope is None else None
@@ -1887,7 +1892,7 @@ def worker_set_static_delta(
             site.delta.copy_(constant.expand_as(site.delta))
             site.delta_set = True
             continue
-        site.modify = _group_modifier(group, site.delta.device, site.delta.dtype)
+        site.modify = _make_steer_modifiers(group, site.delta.device, site.delta.dtype)
         site.lens_scope = dict(lens_scope) if lens_scope else None
 
 
@@ -1917,21 +1922,6 @@ def _constant_delta(group: list[dict], device: torch.device, dtype: torch.dtype)
     return torch.as_tensor(total).to(dtype=dtype).reshape(1, -1)
 
 
-def _group_modifier(group: list[dict], device: torch.device, dtype: torch.dtype):
-    """One ``modify`` for every op in ``group``, steer and lens ops alike, applied in order."""
-    from interp_engine.vllm_capture.lens.intervene import _make_lens_modifier
-    from interp_engine.vllm_capture.steering import _compose_modifiers, _make_steer_modifier
-
-    return _compose_modifiers(
-        [
-            _make_lens_modifier(s, device, dtype)
-            if str(s.get("op", SteerMethod.ADDITIVE)) in _LENS_OPS
-            else _make_steer_modifier(s, device, dtype)
-            for s in group
-        ]
-    )
-
-
 def _compile_write_req(
     group: list[dict],
     site: _Site,
@@ -1950,8 +1940,10 @@ def _compile_write_req(
             prompt_len=prompt_len,
             steer_generated=steer_generated,
         )
+    from interp_engine.vllm_capture.steering import _make_steer_modifiers
+
     return _WriteReq(
-        modify=_group_modifier(group, device, dtype),
+        modify=_make_steer_modifiers(group, device, dtype),
         skip_positions=skip_positions,
         prompt_len=prompt_len,
         steer_generated=steer_generated,
@@ -2008,7 +2000,13 @@ def worker_clear_static_delta(worker: object) -> None:
         site.delta_set = False
 
 
-def worker_register_static_capture(worker: object, req_id: str, points: list[str]) -> None:
+def worker_register_static_capture(
+    worker: object,
+    req_id: str,
+    points: list[str],
+    rows: list[int] | None = None,
+    n_prompt: int | None = None,
+) -> None:
     static = _state(worker)
     if static is None:
         raise RuntimeError("register_static_capture: this worker has no static wraps")
@@ -2031,6 +2029,10 @@ def worker_register_static_capture(worker: object, req_id: str, points: list[str
     if missing:
         raise ValueError(f"static capture asked for {missing}, not in static reads {sorted(static.reads)}")
     static.cap_points[req_id] = wanted
+    if rows is not None and n_prompt is not None:
+        static.cap_rows[req_id] = ([int(r) for r in rows], int(n_prompt))
+    else:
+        static.cap_rows.pop(req_id, None)
     static.harvest.pop(req_id, None)
     static.failed.pop(req_id, None)
     static.registered.add(req_id)
@@ -2039,29 +2041,62 @@ def worker_register_static_capture(worker: object, req_id: str, points: list[str
 
 
 def worker_collect_static(worker: object, req_id: str) -> dict[str, tuple]:
+    return _collect_static(worker, req_id, _encode_harvest)
+
+
+def collect_static_rows(worker: object, req_id: str) -> dict[str, torch.Tensor]:
+    """:func:`worker_collect_static` before encoding, and without the attention sinks."""
+    return _collect_static(worker, req_id, lambda rows, picked, w: _harvest_rows(rows, picked, w)[0])
+
+
+_Picked = tuple[list[int], int] | None
+
+
+def _collect_static(
+    worker: object, req_id: str, read: Callable[[dict[str, list[torch.Tensor]], _Picked, object], dict]
+) -> dict:
     static = _state(worker)
     if static is None:
         return {}
+    picked = static.cap_rows.get(req_id)
     rows, failure = take_static_rows(static, req_id, final=True)
     if req_id not in static.write_reqs:
         static.registered.discard(req_id)
     raise_if_any_rank_failed(failure, f"static capture for {req_id}")
-    return _encode_harvest(rows, worker)
+    return read(rows, picked, worker)
 
 
 def worker_drain_static(worker: object, req_id: str) -> dict[str, tuple]:
     static = _state(worker)
     if static is None:
         return {}
+    picked = static.cap_rows.get(req_id)
     rows, failure = take_static_rows(static, req_id, final=False)
     raise_if_any_rank_failed(failure, f"static capture for {req_id}")
-    return _encode_harvest(rows, worker)
+    return _encode_harvest(rows, picked, worker)
 
 
-def _encode_harvest(rows: dict[str, list[torch.Tensor]], worker: object) -> dict[str, tuple]:
+def _encode_harvest(rows: dict[str, list[torch.Tensor]], picked: _Picked, worker: object) -> dict[str, tuple]:
     """Encode harvested rows, which the caller has already taken out of the worker state."""
+    gathered, attn_layers = _harvest_rows(rows, picked, worker)
+    out = {key: encode_tensor_payload(t) for key, t in gathered.items()}
+    if attn_layers:
+        from interp_engine.vllm_capture.attn import _attn_sinks
+
+        layer_list = _get_layers(_worker_model(worker))
+        for layer in sorted(attn_layers):  # one order on every rank: the sinks gather is a collective
+            sinks = _attn_sinks(layer_list[layer])
+            if sinks is not None:
+                out[attn_payload_key("sinks", layer)] = encode_tensor_payload(sinks)
+    return out
+
+
+def _harvest_rows(
+    rows: dict[str, list[torch.Tensor]], picked: _Picked, worker: object
+) -> tuple[dict[str, torch.Tensor], set[int]]:
+    """Taken rows, picked, gathered and scaled per point, and the layers they read attention at."""
     model = _worker_model(worker)
-    out: dict[str, tuple] = {}
+    out: dict[str, torch.Tensor] = {}
     attn_layers: set[int] = set()
     layers = None
     # Sharded points and the attention roles are gathered across ranks before they are encoded:
@@ -2072,6 +2107,14 @@ def _encode_harvest(rows: dict[str, list[torch.Tensor]], worker: object) -> dict
         tensor = chunks[0] if len(chunks) == 1 else torch.cat(chunks, dim=0)
         # Freed key by key, so the peak is the harvest plus one key's copy rather than two harvests.
         chunks.clear()
+        if picked is not None:
+            wanted_rows, n_prompt = picked
+            if int(tensor.shape[0]) != n_prompt:
+                raise RuntimeError(
+                    f"static capture harvested {int(tensor.shape[0])} rows of {key} for a {n_prompt}-token "
+                    "prompt. Most likely the request reached the prefix cache (see VLLMModel._prompt)."
+                )
+            tensor = tensor[wanted_rows]
         address = parse_address(key)
         if address.name in ATTN_STATIC_ROLES and address.layer is not None:
             attn_layers.add(int(address.layer))
@@ -2079,16 +2122,8 @@ def _encode_harvest(rows: dict[str, list[torch.Tensor]], worker: object) -> dict
             tensor = gather_attn_role(layers[int(address.layer)], address.name, tensor)
         else:
             tensor = gather_capture(model, key, tensor)
-        out[key] = encode_tensor_payload(scale_capture(model, key, tensor))
-    if attn_layers:
-        from interp_engine.vllm_capture.attn import _attn_sinks
-
-        layer_list = _get_layers(model)
-        for layer in sorted(attn_layers):  # one order on every rank: the sinks gather is a collective
-            sinks = _attn_sinks(layer_list[layer])
-            if sinks is not None:
-                out[attn_payload_key("sinks", layer)] = encode_tensor_payload(sinks)
-    return out
+        out[key] = scale_capture(model, key, tensor)
+    return out, attn_layers
 
 
 def decode_static_payload(payloads: object) -> dict[Address, torch.Tensor]:

@@ -14,6 +14,7 @@ import torch
 from interp_engine import (
     EagerModel,
     SteerSpec,
+    capture,
     capture_attention,
     capture_generation,
     per_head_value,
@@ -30,7 +31,7 @@ def test_capture_generation_covers_the_prompt_and_all_but_the_last_new_token(gpt
 
     assert len(completion.token_ids) == 4
     # The last sampled token is never fed back, so it has no activations -- and the batch axis is
-    # there so `cache[point][0]` reads the same as it does out of `run_with_cache`.
+    # there so `cache[point][0]` reads the same as it does out of `capture`.
     assert cache.get("resid_post", 5).shape == (1, seq + 3, gpt2.d_model)
     assert completion.text == "".join(gpt2.to_str_tokens(completion.token_ids))
 
@@ -86,7 +87,7 @@ def test_every_eager_entry_point_takes_a_plain_list_of_ids(gpt2: EagerModel, pro
     """
     ids = [int(t) for t in gpt2.to_tokens(prompt)[0]]
     assert sorted(capture_attention(gpt2, ids, [0])) == [0]
-    assert run_with_cache(gpt2, ids, [("resid_post", 0)]).get("resid_post", 0).shape[1] == len(ids)
+    assert capture(gpt2, ids, [("resid_post", 0)]).get("resid_post", 0).shape[1] == len(ids)
 
 
 @pytest.mark.gpu
@@ -96,13 +97,13 @@ def test_a_list_of_ids_reaches_the_accelerator(prompt: str):
     model = EagerModel("openai-community/gpt2", device="cuda", attn_implementation="eager")
     ids = [int(t) for t in model.to_tokens(prompt)[0]]
     assert capture_attention(model, ids, [0])[0]["scores"].device.type == "cuda"
-    assert run_with_cache(model, ids, [("resid_post", 0)]).get("resid_post", 0).device.type == "cuda"
+    assert capture(model, ids, [("resid_post", 0)]).get("resid_post", 0).device.type == "cuda"
 
 
 def test_capture_attention_agrees_with_the_points_it_is_built_from(gpt2: EagerModel, prompt: str):
     ids = gpt2.to_tokens(prompt)
     got = capture_attention(gpt2, ids, [4])
-    cache = run_with_cache(gpt2, ids, [("attn_scores", 4), ("attn_probs", 4), ("value", 4)])
+    cache = capture(gpt2, ids, [("attn_scores", 4), ("attn_probs", 4), ("value", 4)])
 
     torch.testing.assert_close(got[4]["scores"], cache.get("attn_scores", 4)[0])
     torch.testing.assert_close(got[4]["probs"], cache.get("attn_probs", 4)[0])
@@ -136,3 +137,13 @@ def test_the_facade_reaches_both_of_the_new_methods(gpt2: EagerModel, prompt: st
     assert len(completion.token_ids) == 2
     assert caps[next(iter(caps))].shape == (len(ids) + 1, gpt2.d_model)
     assert sorted(sync.capture_attention(ids, [3])[3]) == ["probs", "scores", "value"]
+
+
+def test_run_with_cache_is_an_alias_of_capture(gpt2: EagerModel, prompt: str):
+    """The TransformerLens name stays: same signature, same numbers, same ``Cache``."""
+    import inspect
+
+    assert inspect.signature(run_with_cache) == inspect.signature(capture)
+    ids = gpt2.to_tokens(prompt)
+    point = ("resid_post", 5)
+    assert torch.equal(run_with_cache(gpt2, ids, [point])[point], capture(gpt2, ids, [point])[point])

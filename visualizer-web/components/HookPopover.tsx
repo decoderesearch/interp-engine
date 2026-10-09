@@ -20,8 +20,15 @@ import { formulaFor, traitImpacts } from "@/data/formulas";
 import { ALL_POINTS, pointSpec } from "@/data/points";
 import {
   addressCall,
+  DEFAULT_VARIANT,
+  FORM_LABEL,
+  FORMS,
+  readingSnippet,
   readingSnippets,
+  SECTIONS,
   VARIANT_LABEL,
+  type Form,
+  type Located,
   type Snippet,
   type Variant,
 } from "@/data/snippets";
@@ -70,10 +77,10 @@ const ROLE_OF = new Map<PointName, Role>(
  * point the card fits on. Must match the `w-[…px]` classes below — Tailwind reads
  * those literally, so the numbers cannot be interpolated from here.
  *
- * The narrow one is not a scaled-down card, it is a different shape: 468px does
+ * The narrow one is not a scaled-down card, it is a different shape: 484px does
  * not fit beside a point on a phone, or on a phone at all.
  */
-export const POPOVER_WIDTH = 468;
+export const POPOVER_WIDTH = 484;
 export const POPOVER_NARROW_WIDTH = 320;
 
 interface Props {
@@ -126,7 +133,7 @@ export function HookPopover({
           ? // Half the height, because the card is above or below the point on a
             // phone rather than beside it, and the point has to stay visible.
             "max-h-[min(46dvh,420px)] w-[min(320px,calc(100vw-16px))]"
-          : "max-h-[min(74dvh,620px)] w-[468px]"
+          : "max-h-[min(74dvh,620px)] w-[484px]"
       }`}
     >
       <div className="flex items-baseline justify-between gap-x-2">
@@ -229,33 +236,79 @@ export function HookPopover({
       )}
 
       {snippets.length > 0 && (
-        <ReadingIt key={node.point} snippets={snippets} />
+        <ReadingIt
+          key={node.point}
+          snippets={snippets}
+          node={node}
+          hfId={hfId}
+        />
       )}
     </div>
   );
 }
 
 /**
- * The one snippet, over a tab per variant. Tabs rather than a stack because the
- * eager and vLLM readings are now the same call and differ by one argument: side
- * by side that reads as repetition, while switching a tab moves exactly the line
- * that changed.
+ * The one snippet, over a tab per variant and a switch per form. Tabs rather
+ * than a stack because the eager and vLLM readings are the same call and differ
+ * by one argument: side by side that reads as repetition, while switching a tab
+ * moves exactly the line that changed.
  *
- * The card opens on the first tab that has a path to the point rather than on
- * the first tab, so a point vLLM cannot serve opens on eager with its code
- * showing instead of on a refusal the reader has to click out of. The refused
- * tabs stay in the row: which backend cannot reach a point is part of the
- * answer.
+ * The tabs sit in two sections, one per machine, with the eyebrow saying
+ * which: a reader is on one of them, and the section is what tells them which
+ * tabs are theirs. The form switch is a second row because it is a second
+ * question -- how to write the call, not where to run it -- and it stays put
+ * across tabs, so a reader who writes servers sees `await` on every backend they
+ * click.
+ *
+ * The card opens on `DEFAULT_VARIANT` when the point has a path there, else on
+ * the first tab that does, so a point vLLM cannot serve opens on eager with its
+ * code showing instead of on a refusal the reader has to click out of. The
+ * refused tabs stay in the row: which backend cannot reach a point is part of
+ * the answer.
  *
  * The selection is keyed on the point, so opening a different point's card
  * starts from that default again rather than inheriting a choice made about
  * another point — the tab that was selected may not even be available here.
  */
-function ReadingIt({ snippets }: { snippets: Snippet[] }) {
+/** Copy and Notebook inside the code block: bordered and lifted off its ground. */
+const ACTION_ON_SLATE = "border border-slate-300 bg-white hover:bg-slate-100";
+
+function ReadingIt({
+  snippets,
+  node,
+  hfId,
+}: {
+  /** One per tab, in the sync form: what the row needs to mark `no path`. */
+  snippets: Snippet[];
+  node: Located;
+  hfId: string;
+}) {
   const [selected, setSelected] = useState<Variant>(
-    (snippets.find((s) => s.code !== null) ?? snippets[0]).variant,
+    (
+      snippets.find((s) => s.variant === DEFAULT_VARIANT && s.code !== null) ??
+      snippets.find((s) => s.code !== null) ??
+      snippets[0]
+    ).variant,
   );
-  const active = snippets.find((s) => s.variant === selected) ?? snippets[0];
+  const [form, setForm] = useState<Form>("sync");
+  const active = readingSnippet(selected, node, hfId, form);
+
+  // `onSlate` is the form switch inside the code block: a border a shade darker
+  // than that ground keeps an unselected pill from sinking into it, and the
+  // selected one is a shade lighter than a backend tab, so the two rows read
+  // as first and second choice.
+  const tab = (checked: boolean, onSlate = false) =>
+    `cursor-pointer rounded-sm px-1.5 font-mono text-[9px] whitespace-nowrap transition-colors ${
+      onSlate ? "py-0.5" : "py-1"
+    } ${
+      checked
+        ? onSlate
+          ? "border border-slate-500 bg-slate-500 text-white"
+          : "bg-slate-700 text-white"
+        : onSlate
+          ? "border border-slate-300 bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
+          : "bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
+    }`;
 
   return (
     <div className="mt-2.5 border-t border-slate-100 pt-2">
@@ -263,68 +316,102 @@ function ReadingIt({ snippets }: { snippets: Snippet[] }) {
         Reading it
       </div>
 
-      {/* Both actions sit opposite the tabs rather than up by the heading, so they read
-          as acting on the selected variant -- they carry that tab's code, not the card's.
-          Which is also why Notebook is here and not once per card: the template it opens
-          is chosen by the backend, so `eager` and `vllm` do not lead to the same one.
-
-          The tabs wrap rather than push the actions off the edge. Four of them with a
-          `no path` suffix on some is wider than the 320px card a phone gets, and a
-          scrollbar under a row of buttons is worse than a second line. */}
-      <div className="mt-2 flex items-start justify-between gap-x-2">
-        {/* A radiogroup rather than buttons in a row: these select one view of the
-            same content, and that is what tells a screen reader the set is one
-            control. `aria-checked` carries the state the ring shows. */}
-        <div role="radiogroup" className="flex flex-wrap items-center gap-1">
-          {snippets.map(({ variant, code }) => (
-            <button
-              key={variant}
-              type="button"
-              role="radio"
-              aria-checked={variant === selected}
-              onClick={() => setSelected(variant)}
-              className={`cursor-pointer rounded-sm px-1.5 py-0.5 font-mono text-[9px] whitespace-nowrap transition-colors ${
-                variant === selected
-                  ? "bg-slate-700 text-white"
-                  : "bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
-              }`}
+      {/* The sections wrap rather than overflow: on the 320px card a phone gets,
+          two sections with `no path` suffixes are wider than one line. */}
+      <div className="mt-2 flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5">
+        {SECTIONS.map((section) => (
+          <div key={section.eyebrow}>
+            <div className="text-[8px] font-medium tracking-wide text-slate-400 uppercase">
+              {section.eyebrow}
+            </div>
+            {/* A radiogroup rather than buttons in a row: these select one view of
+                the same content, and that is what tells a screen reader the set is
+                one control. `aria-checked` carries the state the ring shows. */}
+            <div
+              role="radiogroup"
+              aria-label={section.eyebrow}
+              className="mt-0.5 flex flex-wrap items-center gap-1"
             >
-              {VARIANT_LABEL[variant]}
-              {/* The em dash keeps the tab honest before it is opened: a point
-                  vLLM cannot serve at all would otherwise look like two working
-                  variants until you click through them. */}
-              {code === null && (
-                <span
-                  className={
-                    variant === selected ? "text-slate-300" : "text-slate-400"
-                  }
-                >
-                  {" \u2014 no path"}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-        {active.code !== null && (
-          <div className="flex shrink-0 items-center gap-x-0.5">
-            <CopyButton text={active.code} />
-            {/* `notebook` rather than `code`: on the vLLM tabs those differ, and
-                the one that runs in a notebook is the one that should travel to
-                one. It is null only when `code` is, so this narrows a type
-                rather than describing a case. */}
-            {active.notebook !== null && (
-              <NotebookButton text={active.notebook} variant={active.variant} />
-            )}
+              {section.variants.map((variant) => {
+                const { code } = snippets.find((s) => s.variant === variant)!;
+                return (
+                  <button
+                    key={variant}
+                    type="button"
+                    role="radio"
+                    aria-checked={variant === selected}
+                    onClick={() => setSelected(variant)}
+                    className={tab(variant === selected)}
+                  >
+                    {VARIANT_LABEL[variant]}
+                    {/* The em dash keeps the tab honest before it is opened: a
+                        point vLLM cannot serve at all would otherwise look like a
+                        working variant until you click through to it. */}
+                    {code === null && (
+                      <span
+                        className={
+                          variant === selected
+                            ? "text-slate-300"
+                            : "text-slate-400"
+                        }
+                      >
+                        {" \u2014 no path"}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        )}
+        ))}
       </div>
 
-      {/* The code's own bottom padding is for the horizontal scrollbar a long
+      {/* The form switch and both actions sit inside the code block, on its top
+          edge, so they read as acting on the code they share a box with -- they
+          carry that pair's code, not the card's. Which is also why Notebook is
+          here and not once per card: the template it opens is chosen by the
+          backend, so `eager` and `vllm` do not lead to the same one. Each gets a
+          border a shade darker than the block, so a control on a slate ground
+          still reads as one.
+
+          The code's own bottom padding is for the horizontal scrollbar a long
           checkpoint id brings, so it never lands on the last line. */}
       {active.code !== null && (
-        <pre className="thin-scrollbar mt-1.5 overflow-x-auto rounded-sm bg-slate-50 px-2 pt-1.5 pb-2 font-mono text-[10px] leading-relaxed text-slate-700">
-          <Code text={active.code} />
-        </pre>
+        <div className="mt-1.5 rounded-sm bg-slate-50">
+          <div className="flex min-h-[18px] items-center justify-between gap-x-2 px-1.5 pt-1.5">
+            <div role="radiogroup" className="flex items-center gap-1">
+              {FORMS.map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  role="radio"
+                  aria-checked={f === form}
+                  onClick={() => setForm(f)}
+                  className={tab(f === form, true)}
+                >
+                  {FORM_LABEL[f]}
+                </button>
+              ))}
+            </div>
+            <div className="flex shrink-0 items-center gap-x-1">
+              <CopyButton text={active.code} className={ACTION_ON_SLATE} />
+              {/* `notebook` rather than `code`: on the vLLM tabs' sync form those
+                  differ, and the one that runs in a notebook is the one that
+                  should travel to one. It is null only when `code` is, so this
+                  narrows a type rather than describing a case. */}
+              {active.notebook !== null && (
+                <NotebookButton
+                  text={active.notebook}
+                  variant={active.variant}
+                  className={ACTION_ON_SLATE}
+                />
+              )}
+            </div>
+          </div>
+          <pre className="thin-scrollbar overflow-x-auto px-2 pt-1 pb-2 font-mono text-[10px] leading-relaxed text-slate-700">
+            <Code text={active.code} />
+          </pre>
+        </div>
       )}
       {active.note && (
         <p className="mt-1.5 text-[10px] leading-relaxed text-slate-400">

@@ -36,7 +36,7 @@ import torch
 import yaml
 from harness import MODELS, ModelSpec, evict_models, load_model, parity_required
 
-from interp_engine import EagerModel, generate_stream, layer_logits, run_with_cache
+from interp_engine import EagerModel, capture, generate_stream, layer_logits
 
 _YAML = Path(__file__).parent / "model_expectations.yaml"
 
@@ -294,7 +294,7 @@ def test_attention_rows_are_distributions(row: Expectation):
         f"{row.key}: attnLayer {layer} is a linear-attention layer; pick one of {model.arch.softmax_attention_layers()}"
     )
 
-    attn = run_with_cache(model, _prompt_ids(model, row), [("attn_probs", layer)]).get("attn_probs", layer)
+    attn = capture(model, _prompt_ids(model, row), [("attn_probs", layer)]).get("attn_probs", layer)
     assert attn.shape[1] == model.n_heads, f"{row.key}: expected {model.n_heads} heads, got {attn.shape[1]}"
     assert (attn >= -1e-6).all(), f"{row.key}: negative attention weight"
 

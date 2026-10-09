@@ -1,4 +1,4 @@
-"""A left-padded batch through ``run_with_cache`` on a real vLLM engine.
+"""A left-padded batch through ``capture`` on a real vLLM engine.
 
 The CPU half (``tests/test_padded_positions.py``) runs the non-eager arm on an eager model seen
 through the protocol. This half runs it on vLLM, where each row is its own concurrent request, and
@@ -12,7 +12,7 @@ import pytest
 import torch
 from harness import require_vllm
 
-from interp_engine import Address, load_model, run_with_cache, sync_model
+from interp_engine import Address, capture, load_model, sync_model
 
 require_vllm()  # skips this module without vLLM; fails under IE_REQUIRE_VLLM (set by the GPU CI job)
 
@@ -45,7 +45,7 @@ def padded() -> tuple[torch.Tensor, torch.Tensor]:
 def eager_cache(padded: tuple[torch.Tensor, torch.Tensor]) -> dict[Address, torch.Tensor]:
     ids, mask = padded
     model = load_model(MODEL, backend="eager", dtype="float32", device="cuda")
-    cache = run_with_cache(model, ids, POINTS, attention_mask=mask)
+    cache = capture(model, ids, POINTS, attention_mask=mask)
     captured = {a: cache[a].float().cpu() for a in POINTS}
     del model, cache
     torch.cuda.empty_cache()
@@ -66,7 +66,7 @@ def test_each_padded_row_agrees_with_eager_at_every_unmasked_position(
 ) -> None:
     """Relative, because vLLM's fused kernels are not bit-identical to eager PyTorch."""
     ids, mask = padded
-    cache = run_with_cache(vllm_model, ids, POINTS, attention_mask=mask)
+    cache = capture(vllm_model, ids, POINTS, attention_mask=mask)
     keep = mask.bool()
     for address in POINTS:
         mine, theirs = cache[address].float().cpu(), eager_cache[address]

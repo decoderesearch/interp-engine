@@ -9,6 +9,7 @@ table. [docs/USAGE.md](docs/USAGE.md) is the same ground at a slower pace.
 
 ```
 interp_engine/     the package -- this is what `pip install interp-engine` gives you
+api/         engine.yaml, the operations every backend serves, and the generator and fixture writer
 docs/  tests/  benchmarks/
 validator/   scores the engine above against TransformerLens, nnsight, vLLM and SGLang
 visualizer-web/    a Next.js diagram of the engine's point / naming / trait model
@@ -53,9 +54,9 @@ in neither.
 path the repository itself declares — so check `git config --get core.hooksPath` before concluding
 from a clean commit that the hooks agreed with you. Read what they print:
 
-- **pre-commit** reformats the staged Python with `ruff format` and rebuilds
-  `visualizer-web/knowledge/bundle.generated.ts` when you stage any source it is compiled from, then
-  stages both. A commit therefore carries files you did not add, and they belong in it. A file with
+- **pre-commit** reformats the staged Python with `ruff format`, rebuilds
+  `visualizer-web/knowledge/bundle.generated.ts` when you stage any source it is compiled from, and
+  regenerates the API contract when you stage `api/engine.yaml`, then stages all of them. A commit therefore carries files you did not add, and they belong in it. A file with
   staged *and* unstaged changes is deliberately left alone and named in the output.
 - **pre-push** runs CI's static half, scoped to the paths the push carries: ruff, both pyright
   configs, the lint-config parity check, the weight-free guard tests and the visualizer's checks.
@@ -179,6 +180,26 @@ names its way forward.
 `tests/test_steer_math_parity.py` runs them against each other on CPU. A new steering method is a
 new delta function plus a row in that test -- not an eager implementation now and a worker one later,
 which is how `projection_cap` spent a release raising `NotImplementedError` on eager.
+
+## One manifest for every backend
+
+`api/engine.yaml` lists the operations every backend serves: eager and vLLM. `make api` generates
+`interp_engine/api.py`, the `EngineAPI` Protocol, from it. Nobody edits that file by hand.
+
+Three checks catch drift:
+
+- `tests/test_api_generated.py` fails when a generated file is stale. It also compares each
+  backend's runtime signature with the manifest: names, kinds and defaults. pyright does not
+  check defaults.
+- pyright checks `interp_engine/_conformance.py`, which returns each backend as an `EngineAPI`.
+- The fixtures check values. `make fixtures` runs every case on the eager engine, on CPU in fp32,
+  and writes the output to `~/.cache/interp-engine/fixtures` (or `IE_FIXTURES_DIR`). Then
+  `tests/test_api_fixtures.py` compares vLLM against it, with the tolerance the case names. Each
+  fixture records its case's digest, so if a case changes, the old fixture fails. It does not pass
+  silently.
+
+To add an operation, add its entry and at least one case to the manifest and run `make api`. Then
+implement it in each backend until the three checks pass.
 
 ## Other frameworks' vocabulary stays at the edges
 

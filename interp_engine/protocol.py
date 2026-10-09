@@ -9,7 +9,7 @@ work is synchronous underneath. The alternative -- a sync protocol with an async
 escape hatch -- pushes the difference back onto every caller, which is the thing this is
 here to remove. Eager's wrappers are thin (see :meth:`EagerModel.capture`), so a caller
 with no event loop can drive them through ``asyncio.run`` or reach past the protocol to
-the free functions (``run_with_cache``, ``steer``, ``generate_stream``), which stay sync
+the free functions (``capture``, ``steer``, ``generate_stream``), which stay sync
 and are the better fit for notebook use.
 
 ``asyncio.run`` is eager-only advice. A vLLM model is bound to the loop that built its
@@ -20,12 +20,13 @@ both backends, and are what a sync caller should use when the backend is not kno
 
 Deliberately NOT in the protocol:
 
-- **Per-head points** (``value``, ``attn_probs``) and attention patterns. vLLM's paged
-  attention kernel never materializes a probability matrix, so it needs the off-kernel
-  recompute in ``capture_attention``, which does not exist eagerly (eager just reads the
-  real softmax). Ask for these behind an ``isinstance`` check or a capability query.
-- **Prompt embeddings** (``generate_from_embeds``), which requires the vLLM engine to have
-  been built with ``enable_prompt_embeds``.
+- **Per-head points through ``capture``** (``value``, ``attn_probs``). No backend holds these
+  at a module boundary, so each reconstructs them, and the reconstruction is
+  ``capture_attention`` -- which *is* in the protocol. What is not is asking for them as
+  ordinary capture points. Gate on ``refuses(point, layer)`` rather than on the backend name.
+- **vLLM ``SamplingParams`` over embeddings** (``VLLMModel.generate_from_embeds``, deprecated).
+  Use ``generate_steps_from_embeds``, which is in the protocol, or for batched sampling the free
+  :func:`interp_engine.sample_from_embeds`: one request on vLLM, a loop elsewhere.
 - **Weight and module access** (``hf_model``, ``resolve_point``, and gradients *through the
   forward*). vLLM owns its weights in a worker subprocess; anything reaching for a module is
   eager-only by nature. The gradient *verdict* is in the protocol (``grad_support``) even though
@@ -40,14 +41,22 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import torch
 
 from interp_engine.address import Address
+from interp_engine.arch import ModuleNotFound
 from interp_engine.autograd_support import GradSupport
 from interp_engine.residual_basis import ResidualBasis
 from interp_engine.sampling import RecommendedSampling, SamplingSettings
+
+if TYPE_CHECKING:
+    from interp_engine.api import DirectionSet, EngineDescription
+
+    # Both import this module, so their types are named here without importing them at runtime.
+    from interp_engine.steer import GenStep
+    from interp_engine.tokenize import Tokenize
 
 # Re-exported so a protocol-typed caller needs one import. The type itself lives in
 # `interp_engine.address`, which owns the grammar; this module defines a Protocol and should not.
@@ -58,6 +67,77 @@ __all__ = ["Address", "Completion", "InterpModel", "Point"]
 #: import time rather than at the call site that needs updating. Accepted wherever an address is
 #: taken (see :func:`interp_engine.address.to_address`); never returned.
 Point = tuple[str, int]
+
+#: What a refusal arrives as, for the one caller that turns an exception back into a verdict:
+#: :meth:`InterpModel.refuses`, which dry-runs each backend's own resolver rather than restating what
+#: that resolver knows. Two types, and the split is historical rather than meaningful -- the point
+#: refusals are ``ValueError`` (``CapabilityUnsupported``, ``ResidualBasisUnsupported``, the
+#: resolvers' own), while the two *gates* that guard an operation rather than a tensor, the gradient
+#: one and vLLM's hook one, raise ``RuntimeError``. ``ModuleNotFound`` is a layer with no module for
+#: the role, such as a linear-attention layer's query projection.
+#:
+#: Named once because a backend catching them must not have to guess the set: a type left out does
+#: not weaken the verdict, it escapes as an exception from a method documented never to raise. Here
+#: rather than beside the rest of the refusal machinery in ``dispatch``, which imports ``EagerModel``
+#: and so cannot be imported back by it.
+REFUSAL_ERRORS = (ValueError, RuntimeError, ModuleNotFound)
+
+
+def layer_out_of_range(address: Address, n_layers: int) -> str | None:
+    """The refusal for a layer this model does not have, or None. What every ``refuses`` checks
+    first, so a bad layer reads the same on each backend and never reaches a resolver that raises."""
+    if address.layer is not None and not 0 <= address.layer < n_layers:
+        return f"layer {address.layer} is out of range for a model with {n_layers} layers"
+    return None
+
+
+def checked_vocab_ids(token_ids: Sequence[int], vocab_size: int) -> list[int]:
+    """The ids as ints, or ``ValueError`` naming the first one outside ``[0, vocab_size)``.
+
+    What every :meth:`InterpModel.unembed_rows` runs before it gathers, so the check reads the same
+    on each backend. Here beside :data:`REFUSAL_ERRORS` for the same import reason.
+    """
+    ids = [int(t) for t in token_ids]
+    for token_id in ids:
+        if not 0 <= token_id < vocab_size:
+            raise ValueError(f"token id {token_id} is outside this model's unembedding vocab of {vocab_size}")
+    return ids
+
+
+def checked_prompt_embeds(prompt_embeds: torch.Tensor, d_model: int) -> torch.Tensor:
+    """``prompt_embeds`` as a detached ``[n, d_model]`` float tensor, or ``ValueError`` saying why not.
+
+    What every :meth:`InterpModel.generate_steps_from_embeds` runs before it casts, so a wrong shape
+    is named the same way on each backend rather than surfacing as a matmul error from inside a
+    worker. A leading batch dimension of one is accepted and dropped; an empty prompt is refused,
+    since no backend can sample a first token from nothing.
+    """
+    if not isinstance(prompt_embeds, torch.Tensor):
+        raise ValueError(f"prompt_embeds must be a torch.Tensor, got {type(prompt_embeds).__name__}")
+    if prompt_embeds.dim() == 3 and prompt_embeds.shape[0] == 1:
+        prompt_embeds = prompt_embeds[0]
+    if prompt_embeds.dim() != 2 or prompt_embeds.shape[1] != d_model:
+        raise ValueError(
+            f"prompt_embeds must be [n_prompt_tokens, {d_model}] for this model, got {tuple(prompt_embeds.shape)}"
+        )
+    if prompt_embeds.shape[0] == 0:
+        raise ValueError("prompt_embeds has no positions; a generation needs at least one prompt token")
+    if not prompt_embeds.is_floating_point():
+        raise ValueError(f"prompt_embeds must be a float tensor, got {prompt_embeds.dtype}")
+    return prompt_embeds.detach()
+
+
+def checked_rows(rows: Sequence[int] | None, n_prompt_tokens: int) -> list[int] | None:
+    """``capture(rows=...)`` as a list of ints, or ``ValueError`` when one is outside the prompt."""
+    if rows is None:
+        return None
+    out = [int(r) for r in rows]
+    if not out:
+        raise ValueError("rows is empty; pass None to capture every position")
+    off = [r for r in out if not 0 <= r < n_prompt_tokens]
+    if off:
+        raise ValueError(f"rows {off} are outside the {n_prompt_tokens}-token prompt")
+    return out
 
 
 @dataclass
@@ -72,6 +152,20 @@ class Completion:
 
     text: str
     token_ids: list[int] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class EmbedsSample:
+    """One of the ``n`` completions :func:`interp_engine.sample_from_embeds` returns.
+
+    ``token_ids`` excludes the stop token, and ``text`` is those ids decoded with special tokens
+    kept, as :meth:`InterpModel.generate_steps` decodes. ``finish`` is ``"eos"`` when the model
+    stopped itself and ``"length"`` when ``max_tokens`` did.
+    """
+
+    text: str
+    token_ids: list[int]
+    finish: str
 
 
 @runtime_checkable
@@ -96,6 +190,34 @@ class InterpModel(Protocol):
     def d_model(self) -> int:
         """Residual stream width. Note that ``z`` is ``n_heads * head_dim``, which is
         NOT ``d_model`` on every family (Gemma 3), so do not use this to size a ``z``."""
+        ...
+
+    @property
+    def n_heads(self) -> int:
+        """Number of attention query heads, so an ``attn_probs`` capture can be reshaped.
+
+        The whole model's count on every backend, including a tensor-parallel vLLM pod where no
+        single rank holds them all -- the worker gathers the heads before they leave the device.
+        """
+        ...
+
+    @property
+    def n_kv_heads(self) -> int:
+        """Number of key/value heads, which is fewer than ``n_heads`` under GQA or MQA."""
+        ...
+
+    @property
+    def head_dim(self) -> int:
+        """Width of one attention head. Not ``d_model // n_heads`` on every family."""
+        ...
+
+    def is_linear_attention_layer(self, layer: int) -> bool:
+        """Whether ``layer`` computes no softmax attention (state-space, recurrent, conv, MLP-only).
+
+        Such a layer has no probability matrix to return, so ask this before offering attention on
+        a hybrid model rather than reshaping whatever the capture produced. Configuration only, so
+        it is safe before ``warmup()``.
+        """
         ...
 
     @property
@@ -151,6 +273,40 @@ class InterpModel(Protocol):
         """
         ...
 
+    def refuses(self, point: Address | str | Point, layer: int | None = None) -> str | None:
+        """Why this model cannot produce ``point``, or None when it can. No forward.
+
+        The fourth member of the family above, and the per-point one: :attr:`grad_support`,
+        :attr:`hooks_available` and :attr:`residual_basis` each answer one question about the whole
+        model, and this answers the question a caller actually has, which is about one address.
+
+        It returns the **reason** rather than a bare false, because the reasons differ and a caller
+        skipping a point should be able to say which one it hit: absent from this architecture,
+        no module boundary on this backend, not declared by this graph pod. A boolean collapses all
+        of them into "unavailable", which is the log line nobody can act on.
+
+        **Every backend answers by dry-running the resolver its own capture path uses**, so this
+        cannot disagree with what a capture would do. That is the whole point of it being here:
+        the alternative is each caller reassembling the answer from the published point tables, and
+        a copy of a capability table goes stale silently -- the reader sees a maintained list and a
+        refusal that names the wrong component. Ask the model, not the docs.
+
+        Cheap and side-effect-free, so a server may call it per request and at startup to advertise
+        its endpoint set. What it cannot promise is the forward: a checkpoint whose modules are
+        where this says they are can still fail inside the pass, and those refusals stay where they
+        can be seen.
+        """
+        ...
+
+    def serves(self, point: Address | str | Point, layer: int | None = None) -> bool:
+        """Whether this model can produce ``point``. See :meth:`refuses` for why not."""
+        ...
+
+    def describe(self) -> EngineDescription:
+        """What this model can serve, in one record: the backend, the served capture points,
+        whether the residual and the attention pair are readable. No forward."""
+        ...
+
     # --- sampling -----------------------------------------------------------
     @property
     def recommended_sampling(self) -> RecommendedSampling:
@@ -184,6 +340,27 @@ class InterpModel(Protocol):
     """The HF tokenizer (or processor on multimodal archs), for chat templating and
     decoding. Untyped because those two have no common base class."""
 
+    @property
+    def tok(self) -> Tokenize:
+        """The engine's :class:`~interp_engine.tokenize.Tokenize` over that tokenizer: chat rendering
+        with the family's formatter, ``message_partition``, and the BOS rules the backend chose."""
+        ...
+
+    @property
+    def tokenizer_prepends_bos(self) -> bool:
+        """Whether the tokenizer adds BOS on its own, so a caller must not add a second one.
+
+        The fact rather than whatever helper holds it: a backend that tokenizes through its own
+        framework answers this from its tokenizer without building one.
+        """
+        ...
+
+    @property
+    def default_prepend_bos(self) -> bool:
+        """Whether ``to_tokens`` prepends BOS when the caller does not say. Mirrors
+        TransformerLens's per-model default, so a ported script tokenizes the same way."""
+        ...
+
     def to_tokens(self, text: str | list[str], **kwargs: Any) -> torch.Tensor: ...
 
     def to_str_tokens(self, text: str | torch.Tensor, **kwargs: Any) -> list[str]: ...
@@ -213,11 +390,14 @@ class InterpModel(Protocol):
         *,
         steering_spec: Any = None,
         detach: bool = True,
+        rows: Sequence[int] | None = None,
     ) -> dict[Address, torch.Tensor]:
         """Capture ``points`` over one prompt's forward pass.
 
         Returns ``{Address: [n_prompt_tokens, width]}`` on CPU -- one row per prompt
-        token, in order, with no batch dimension on either backend. ``width`` is
+        token, in order, with no batch dimension on either backend. With ``rows``, only those
+        positions come back, in that order (``[len(rows), width]``); on vLLM the worker drops
+        the others before they cross the process boundary. ``width`` is
         :attr:`d_model` for the residual and MLP points and ``n_heads * head_dim`` for
         ``z``. Requests may be ``Address``es, their canonical string forms, or the
         ``(name, layer)`` tuples this used to take; the keys coming back are always
@@ -230,7 +410,7 @@ class InterpModel(Protocol):
         ``expert_weights``, ``expert_indices``) are eager-only, see the module
         docstring. The ``*_post`` pair is the
         sublayer's residual *contribution*, which differs from the raw output only on post-norm
-        architectures (Gemma-2/3/4, OLMo-2/3) and aliases it everywhere else. With ``steering_spec`` (an engine ``SteeringSpec``) the
+        architectures (Gemma-2/3/4, OLMo-2/3) and aliases it everywhere else. With ``steering_spec`` (a ``SteeringSpec``, or a list for several points) the
         activations are captured from the *steered* forward, not a separate one.
 
         ``detach=False`` keeps the autograd graph and returns device tensors instead of CPU ones.
@@ -238,6 +418,19 @@ class InterpModel(Protocol):
         :attr:`grad_support` says gradients cannot flow through the forward -- which is always on
         vLLM, and on eager unless the model was built with ``requires_grad=True``. It never
         silently returns detached tensors instead.
+        """
+        ...
+
+    async def project(
+        self,
+        prompt_token_ids: Sequence[int],
+        directions: Sequence[DirectionSet],
+        *,
+        steering_spec: Any = None,
+    ) -> list[torch.Tensor]:
+        """Read each ``DirectionSet`` over one prompt's forward: per set, ``[n_prompt_tokens, k]``
+        float32 on CPU. A probe is ``k = 1``; an SAE encoder is many, with a bias and a ReLU. On
+        vLLM the worker projects its own rows, so only the values cross the process boundary.
         """
         ...
 
@@ -257,6 +450,32 @@ class InterpModel(Protocol):
         The captured length is one short of prompt plus generated because the final sampled
         token is never fed back through the model -- autoregressive behavior, not a backend
         quirk.         ``completion`` exposes ``.text`` and ``.token_ids``.
+        """
+        ...
+
+    def capture_generation_stream(
+        self,
+        prompt_token_ids: Sequence[int],
+        points: Sequence[Address | str | Point],
+        *,
+        max_tokens: int = 8,
+        temperature: float = 0.0,
+        seed: int | None = None,
+        steering_spec: Any = None,
+    ) -> AsyncIterator[tuple[dict[Address, torch.Tensor], list[int]]]:
+        """:meth:`capture_generation` as a stream: yield ``(new_rows, token_ids)`` as they land.
+
+        ``new_rows`` holds, per address, the rows captured since the previous yield -- the
+        prompt's rows arrive in the first non-empty one -- and ``token_ids`` is every id sampled so
+        far. Concatenating the rows of every yield gives :meth:`capture_generation`'s tensors, and
+        the last ``token_ids`` its completion. A yield may carry ids and no rows, or rows and no
+        new id; a consumer pairs a position with its id itself, and has both only once each has
+        arrived.
+
+        How often it yields is the backend's: vLLM yields as its decode-time capture drains,
+        so a read-out can follow the generation token by token; eager
+        yields once, with everything, because its capture is assembled after the loop. Steering is
+        :meth:`capture_generation`'s.
         """
         ...
 
@@ -314,10 +533,78 @@ class InterpModel(Protocol):
         an implementation may be either an ``async def`` generator or a method returning
         one. Eager streaming yields per-token; use ``interp_engine.generate_stream`` for the
         richer per-step form with logits and logprobs.
+
+        Honors an open :func:`interp_engine.steer` context the way :meth:`generate_text` does.
+        """
+        ...
+
+    def generate_steps(
+        self,
+        prompt_token_ids: Sequence[int],
+        *,
+        max_tokens: int = 64,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
+        stop_at_eos: bool = True,
+        n_logprobs: int = 0,
+        seed: int | None = None,
+    ) -> AsyncIterator[GenStep]:
+        """Yield one :class:`~interp_engine.steer.GenStep` per generated token.
+
+        The per-token twin of :meth:`generate_stream`: a text delta is not a token (one token
+        can decode to nothing until the next arrives) and carries neither the id nor what else
+        was likely. A caller that must know *which* ids were sampled -- to capture over exactly
+        the positions the generation processed, say -- reads them here. ``token_str`` values
+        concatenate to :meth:`generate_text`, and the EOS that stops a generation is the last
+        step, on every backend. ``GenStep.logits`` is eager-only; ``n_logprobs`` is the portable
+        way to ask about the distribution. Honors an open :func:`interp_engine.steer` context.
+        Sampling knobs left ``None`` take the checkpoint's recommendation; see
+        :meth:`sampling_settings`.
+        """
+        ...
+
+    def generate_steps_from_embeds(
+        self,
+        prompt_embeds: torch.Tensor,
+        *,
+        max_tokens: int = 64,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
+        stop_at_eos: bool = True,
+        n_logprobs: int = 0,
+        seed: int | None = None,
+    ) -> AsyncIterator[GenStep]:
+        """:meth:`generate_steps` over a prompt given as embeddings rather than as ids.
+
+        ``prompt_embeds`` is ``[n_prompt_tokens, d_model]``: what the ``embeddings`` point holds
+        for the prompt, so a row is the embedding table's row *as the family's forward emits it*
+        -- on Gemma the ``sqrt(d_model)`` scale is already in it -- and a row that was never a
+        token (an activation spliced in where one would have been) is scaled to sit beside them.
+        Any device and float dtype; each backend casts to its own. The sampled ids are fed back
+        as ids, so from the first generated token on this is :meth:`generate_steps`. A family
+        whose blocks also read the token id (Gemma 3n's and Gemma 4's per-layer embeddings) runs
+        the prompt without that branch, as HF does from ``inputs_embeds``.
+
+        Honors an open :func:`interp_engine.steer` context where a backend can carry one over
+        an ids-less prompt (eager) and refuses it where it cannot (vLLM), by name.
         """
         ...
 
     # --- lens ---------------------------------------------------------------
+    async def unembed_rows(self, token_ids: Sequence[int]) -> torch.Tensor:
+        """``W_U[token_ids]``: the ``[k, d_model]`` residual-space directions the unembed reads.
+
+        The direction a lens steers along to make a token more likely. ``W_U`` is ``lm_head``'s
+        weight, or the tied embedding on a family with no separate head. An id outside the vocab
+        raises ``ValueError`` before any device indexing: an out-of-range gather on CUDA is a
+        device-side assert that poisons the whole context.
+        """
+        ...
+
     async def decode_residuals(self, residuals: torch.Tensor, *, detach: bool = True) -> torch.Tensor:
         """Decode ``[n_rows, d_model]`` residuals to ``[n_rows, vocab]`` logits.
 

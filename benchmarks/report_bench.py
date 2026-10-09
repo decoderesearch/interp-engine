@@ -214,8 +214,9 @@ def _env_section(cells: list[dict[str, Any]]) -> list[str]:
 
 def _models_section(cells: list[dict[str, Any]]) -> list[str]:
     index = cells_by_key(cells)
+    precision = publish.weights(cells)
     lines = [
-        "| model | HuggingFace id | family | params | native dtype | layers | d_model |",
+        "| model | HuggingFace id | family | params | weights | layers | d_model |",
         "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     for model_key in model_order(cells):
@@ -230,7 +231,8 @@ def _models_section(cells: list[dict[str, Any]]) -> list[str]:
         load = cell.get("load", {})
         lines.append(
             f"| `{model_key}` | `{m['hf_id']}` | {m['family']} | {m['params']} | "
-            f"{m.get('native_dtype', '?')} | {load.get('n_layers', '?')} | {load.get('d_model', '?')} |"
+            f"{precision.get(model_key) or m.get('native_dtype', '?')} | {load.get('n_layers', '?')} | "
+            f"{load.get('d_model', '?')} |"
         )
     return lines
 

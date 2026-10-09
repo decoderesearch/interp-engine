@@ -19,6 +19,7 @@ from typing import Any
 import torch
 
 from interp_engine.address import Address, format_address
+from interp_engine.lens_topk import lens_topk
 from interp_engine.residual_basis import reduce_streams
 from interp_engine.vllm_capture._demux import _get_demux, _maybe_unregister, _release_hook
 from interp_engine.vllm_capture._payload import (
@@ -54,11 +55,6 @@ def _lens_topk(
     ``log_z`` is taken before it is applied, so probabilities stay normalised over the whole
     vocab, and each group's final row keeps its true top-1 even where that token is non-word.
     """
-    if top_n <= 0:
-        raise ValueError(f"top_n must be > 0, got {top_n}")
-    if rows_per_group <= 0:
-        raise ValueError(f"rows_per_group must be > 0, got {rows_per_group}")
-
     with torch.no_grad():
         model_any: Any = model
         normed = _worker_final_norm(model)(rows)
@@ -67,45 +63,7 @@ def _lens_topk(
         if softcap is not None and _worker_applied_softcap(model) is None:
             cap = float(softcap)
             logits = cap * torch.tanh(logits / cap)
-
-        # float32 for logsumexp / topk stability; probs are tiny payloads either way.
-        logits_f = logits.float()
-        log_z = logits_f.logsumexp(dim=-1, keepdim=True)
-        ranked = logits_f
-        if mask is not None:
-            # Align to logits vocab: tokenizer.vocab_size can under-count padded
-            # embedding tables (Llama-3: 128000 vs 128256). Extra slots are never
-            # word-like; a longer mask is truncated to the live logits dim.
-            vocab = int(ranked.shape[-1])
-            if mask.dim() != 1:
-                raise ValueError(f"word_mask must be 1-D, got shape {tuple(mask.shape)}")
-            if mask.shape[0] < vocab:
-                mask = torch.nn.functional.pad(mask, (0, vocab - mask.shape[0]), value=False)
-            elif mask.shape[0] > vocab:
-                mask = mask[:vocab]
-            n_rows = int(ranked.shape[0])
-            # Each group's final row keeps its true top-1 even if that token is non-word.
-            # Done with tensor ops rather than a per-group Python loop: the loop's
-            # int()/float() readbacks were two device syncs per group, and at the lens
-            # chunk size (8 groups) that was 16 syncs on a call the read-out path
-            # serialises on. Same rows, same values, no host round trip.
-            finals = torch.arange(rows_per_group - 1, n_rows, rows_per_group, device=ranked.device)
-            keep_idx = ranked[finals].argmax(dim=-1, keepdim=True)
-            keep_val = ranked[finals].gather(-1, keep_idx)
-            # Fill in place -- `log_z` is already materialised, so this spares a second
-            # vocab-sized allocation per call. But `.float()` above is a no-op that returns
-            # `logits` itself when the model already computes in float32, so take ownership
-            # first rather than writing into what `compute_logits` handed us.
-            if ranked is logits:
-                ranked = ranked.clone()
-            ranked.masked_fill_(~mask.unsqueeze(0), torch.finfo(ranked.dtype).min)
-            ranked[finals.unsqueeze(-1), keep_idx] = keep_val
-
-        k = min(top_n, int(ranked.shape[-1]))
-        top_idx = ranked.topk(k, dim=-1).indices
-        top_logits = ranked.gather(-1, top_idx)
-        top_probs = (top_logits - log_z).exp()
-    return top_idx, top_probs
+        return lens_topk(logits, top_n=top_n, mask=mask, rows_per_group=rows_per_group)
 
 
 def worker_lens_readout(
@@ -158,8 +116,17 @@ def worker_lens_readout(
     }
 
 
-def worker_set_lens_jacobians(worker: object, payloads: dict[str, tuple] | None) -> dict[str, int]:
-    """Install (or, with ``None``, drop) the Jacobian-lens matrices on this worker's device.
+def _worker_jacobian_set(worker: object, name: str) -> dict[int, torch.Tensor]:
+    """The J_bar set ``name`` resident on this worker; empty when none was installed."""
+    return (getattr(worker, "_np_lens_jacobians", None) or {}).get(name) or {}
+
+
+def worker_set_lens_jacobians(
+    worker: object, payloads: dict[str, tuple] | None, name: str = "default"
+) -> dict[str, int]:
+    """Install (or, with ``None``, drop) the Jacobian-lens set ``name`` on this worker's device.
+
+    Each set is held apart, so a second lens (another fit) can sit next to the first.
 
     ``payloads`` maps a layer index (as a string, since msgpack keys are not ints) to a
     ``[d_model, d_model]`` ``J_bar`` payload. They are held at the dtype they arrive in --
@@ -175,8 +142,10 @@ def worker_set_lens_jacobians(worker: object, payloads: dict[str, tuple] | None)
 
     Returns ``{"layers": n, "bytes": total}`` for the caller to log against its budget.
     """
+    held: dict[str, dict[int, torch.Tensor]] = getattr(worker, "_np_lens_jacobians", None) or {}
+    worker._np_lens_jacobians = held  # type: ignore[attr-defined]
     if payloads is None:
-        worker._np_lens_jacobians = None  # type: ignore[attr-defined]
+        held.pop(name, None)
         return {"layers": 0, "bytes": 0}
     model = _worker_model(worker)
     device = next(model.parameters()).device
@@ -188,7 +157,7 @@ def worker_set_lens_jacobians(worker: object, payloads: dict[str, tuple] | None)
             raise ValueError(f"J_bar for layer {layer} must be square [d_model, d_model], got {tuple(matrix.shape)}")
         jacobians[int(layer)] = matrix
         total += matrix.numel() * matrix.element_size()
-    worker._np_lens_jacobians = jacobians  # type: ignore[attr-defined]
+    held[name] = jacobians
     return {"layers": len(jacobians), "bytes": total}
 
 
@@ -228,7 +197,7 @@ def worker_lens_capture_readout(
     ``spec`` describes the read-out, as one dict rather than a widening argument list, so a
     newer client and an older worker disagree about a key instead of an arity::
 
-        {"types": [{"layers": [int, ...], "jacobian": bool}, ...],  # one per lens type
+        {"types": [{"layers": [int, ...], "jacobian": bool, "jacobian_set": str}, ...],  # one per lens type
          "top_n": int,
          "softcap": float | None,
          "chunk_positions": int,
@@ -306,7 +275,6 @@ def worker_lens_capture_readout(
 
     model = _worker_model(worker)
     param = next(model.parameters())
-    jacobians: dict[int, torch.Tensor] = getattr(worker, "_np_lens_jacobians", None) or {}
 
     # Memoized because `rows_for` is called once to size the batch and again per chunk per type,
     # and on a hyper-connection trunk it is doing real work -- an `n_streams`-way reduction over
@@ -387,6 +355,7 @@ def worker_lens_capture_readout(
     for spec in specs:
         layers = [int(layer) for layer in spec["layers"]]
         use_jacobian = bool(spec.get("jacobian"))
+        jacobians = _worker_jacobian_set(worker, str(spec.get("jacobian_set", "default")))
         idx_chunks: list[torch.Tensor] = []
         prob_chunks: list[torch.Tensor] = []
         for start in range(skip, n_rows, chunk_positions):
@@ -424,7 +393,7 @@ def worker_lens_capture_readout(
     }
 
 
-def worker_lens_transport(worker: object, payload: tuple, layers: list[int]) -> dict[str, Any]:
+def worker_lens_transport(worker: object, payload: tuple, layers: list[int], name: str = "default") -> dict[str, Any]:
     """Pull ``[k, d_model]`` rows back through each layer's ``J_bar``: ``rows @ J_bar``.
 
     The steering counterpart of the read-out's transport, and the TRANSPOSE of it. Reading out
@@ -442,7 +411,7 @@ def worker_lens_transport(worker: object, payload: tuple, layers: list[int]) -> 
     """
     model = _worker_model(worker)
     device = next(model.parameters()).device
-    jacobians: dict[int, torch.Tensor] = getattr(worker, "_np_lens_jacobians", None) or {}
+    jacobians = _worker_jacobian_set(worker, name)
     rows = decode_tensor_payload(payload).to(device)
     out: list[torch.Tensor] = []
     transported: list[bool] = []

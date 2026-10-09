@@ -28,12 +28,12 @@ model = load_model("Qwen/Qwen3-8B", backend="vllm")
 Taps are baked into CUDA graphs at load, so the points come first.
 
 ```python
-from interp_engine import Address, load_model, run_with_cache
+from interp_engine import Address, capture, load_model
 
 point = Address("resid_post", 10)
 model = load_model("Qwen/Qwen3-8B", backend="vllm-static", static_points=[point])
 
-cache = run_with_cache(model, model.to_tokens("Hello, world"), [point])
+cache = capture(model, model.to_tokens("Hello, world"), [point])
 ```
 
 `static_points="auto"` gives `resid_post` at every layer. `static_writes=` declares the

@@ -51,12 +51,13 @@ def _one_stream(modify, stream: int):
     return _modify
 
 
-def _compose_modifiers(mods: list):
+def _make_steer_modifiers(specs: list[dict], dev, dt):
     """One ``modify`` for every op at one site, applied in order as eager applies a layer's ops.
 
     Each op reads the residual the ops before it wrote, and the delta returned is their sum, so a
     site that holds one write slot still carries all of them.
     """
+    mods = [_make_steer_modifier(s, dev, dt) for s in specs]
     if len(mods) == 1:
         return mods[0]
 
@@ -72,11 +73,6 @@ def _compose_modifiers(mods: list):
     return _modify_all
 
 
-def _make_steer_modifiers(specs: list[dict], dev, dt):
-    """:func:`_compose_modifiers` over ``specs``, which all write one site."""
-    return _compose_modifiers([_make_steer_modifier(s, dev, dt) for s in specs])
-
-
 def _make_steer_modifier(spec: dict, dev, dt):
     """Return ``modify(full_resid) -> delta`` (the tensor to ADD to the residual).
 
@@ -84,7 +80,8 @@ def _make_steer_modifier(spec: dict, dev, dt):
     ``coeff*vector`` (broadcast). ``projection_cap`` -> clamp the residual's projection onto
     ``vector`` into ``[min, max]`` by adding ``(clamp(proj)-proj)*unit_vector``. ``orthogonal`` ->
     rescale the projection onto ``vector`` by ``coeff`` (``h -> (I-P)h + coeff*P h``) by adding
-    ``(coeff-1)*proj*unit_vector``, matching the eager ``OrthogonalProjector``.
+    ``(coeff-1)*proj*unit_vector``, matching the eager ``OrthogonalProjector``. ``norm_scaled_add``,
+    ``ablate`` and ``swap`` are the lens's writes, as ``interp_engine.steer`` computes them.
 
     ``spec["stream"]`` restricts the delta to one residual stream of a hyper-connection trunk; see
     :func:`_one_stream`. Absent or None, every op broadcasts across the stream axis, which is the
@@ -131,6 +128,49 @@ def _make_steer_modifier(spec: dict, dev, dt):
                 return (capped - proj) * unit
 
             return _modify_projection_cap
+
+        # The lens's three writes, in the expressions `interp_engine.steer` gives them
+        # (`norm_scaled_add_delta`, `ablate_delta`, `swap_delta`); `tests/test_steer_math_parity.py`
+        # holds the two sides together.
+        case SteerMethod.NORM_SCALED_ADD:
+            eps = float(spec.get("eps", 1e-12))
+            strength = float(spec["coeff"])
+            max_frac = float(spec.get("max_fraction", 1.0))
+
+            def _modify_norm_scaled_add(full: torch.Tensor) -> torch.Tensor:
+                scale = torch.linalg.vector_norm(full, dim=-1, keepdim=True)
+                injected = (strength * scale) * vec
+                injected_norm = torch.linalg.vector_norm(injected, dim=-1, keepdim=True)
+                max_norm = max_frac * scale
+                clamp = torch.where(
+                    injected_norm > max_norm,
+                    max_norm / injected_norm.clamp_min(eps),
+                    torch.ones_like(injected_norm),
+                )
+                return injected * clamp
+
+            return _modify_norm_scaled_add
+
+        case SteerMethod.ABLATE:
+            unit = vec / vec.norm().clamp_min(float(spec.get("eps", 1e-12)))
+
+            def _modify_ablate(full: torch.Tensor) -> torch.Tensor:
+                proj = (full * unit).sum(dim=-1, keepdim=True)
+                return -(proj * unit)
+
+            return _modify_ablate
+
+        case SteerMethod.SWAP:
+            eps = float(spec.get("eps", 1e-12))
+            source_unit = vec / vec.norm().clamp_min(eps)
+            target = torch.tensor(spec["target"], dtype=torch.float32).to(dev, dt)
+            target_unit = target / target.norm().clamp_min(eps)
+
+            def _modify_swap(full: torch.Tensor) -> torch.Tensor:
+                coefficient = (full * source_unit).sum(dim=-1, keepdim=True)
+                return coefficient * (target_unit - source_unit)
+
+            return _modify_swap
 
 
 def worker_install_steering(worker: object, specs: list[dict]) -> None:

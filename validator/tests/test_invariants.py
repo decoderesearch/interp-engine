@@ -11,7 +11,7 @@ from __future__ import annotations
 import family_coverage as fc
 import pytest
 import torch
-from interp_engine import EagerModel, per_head_value, run_with_cache
+from interp_engine import EagerModel, capture, per_head_value
 from invariants import (
     EXCEPTIONS,
     INPUT_IDS,
@@ -113,7 +113,7 @@ def test_a_residual_multiplier_scales_the_contribution():
     assert model.arch.quirks.residual_multipliers == (0.22, 0.22)
 
     names = ("resid_pre", "attn_out", "attn_out_post", "mlp_out_post", "resid_post")
-    cache = run_with_cache(model, INPUT_IDS, [(name, 0) for name in names])
+    cache = capture(model, INPUT_IDS, [(name, 0) for name in names])
     got = {name: cache.get(name, 0).float() for name in names}
 
     torch.testing.assert_close(got["attn_out_post"], got["attn_out"] * 0.22, rtol=1e-5, atol=1e-6)
@@ -143,7 +143,7 @@ def test_a_sublayer_handed_the_residual_is_not_asked_for_its_own_output(arch: st
     assert mlp_out_module is model.arch.mlp_projection(0, "down"), "mlp_out must skip the residual add"
 
     names = ("resid_pre", "attn_out_post", "mlp_out", "mlp_out_post", "resid_post")
-    cache = run_with_cache(model, INPUT_IDS, [(name, 0) for name in names])
+    cache = capture(model, INPUT_IDS, [(name, 0) for name in names])
     got = {name: cache.get(name, 0).float() for name in names}
     assert (got["mlp_out"] - got["resid_post"]).abs().max() > 1e-3, "mlp_out is still the whole stream"
     rebuilt = got["resid_pre"] + got["attn_out_post"] + got["mlp_out_post"]
@@ -160,7 +160,7 @@ def test_a_value_the_family_rescales_is_rescaled_before_dfa():
     scale = model.arch.value_scale(0)
     assert scale != 1.0, "MiMo-V2's config no longer scales values; this test has nothing to check"
 
-    cache = run_with_cache(model, INPUT_IDS, [("value", 0)])
+    cache = capture(model, INPUT_IDS, [("value", 0)])
     raw = cache.get("value", 0).float()
     per_head = per_head_value(model, cache, 0).float()
     torch.testing.assert_close(per_head.reshape(*raw.shape), raw * scale, rtol=1e-5, atol=1e-6)
@@ -170,7 +170,7 @@ def test_a_wider_value_head_splits_by_its_own_width():
     """MiMo-V2's value head is 128 wide where its q/k head is 64, so `head_dim` mis-splits `value`."""
     model = _built("MiMoV2FlashForCausalLM")
     assert model.arch.value_head_dim_for_layer(0) != model.arch.head_dim_for_layer(0)
-    cache = run_with_cache(model, INPUT_IDS, [("value", 0)])
+    cache = capture(model, INPUT_IDS, [("value", 0)])
     assert per_head_value(model, cache, 0).shape[-1] == model.arch.value_head_dim_for_layer(0)
 
 
@@ -181,6 +181,6 @@ def test_a_head_split_that_does_not_account_for_the_tensor_refuses():
     returns a full-looking tensor holding a mixture of heads.
     """
     model = _built("InklingForCausalLM")
-    cache = run_with_cache(model, INPUT_IDS, [("value", 0)])
+    cache = capture(model, INPUT_IDS, [("value", 0)])
     with pytest.raises(ValueError, match="Cannot split value into heads"):
         per_head_value(model, cache, 0)

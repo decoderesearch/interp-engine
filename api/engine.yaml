@@ -1,0 +1,435 @@
+# The engine's API contract.
+#
+# One source of truth for what a model object exposes: the operations, their parameters and
+# defaults, the records they name, and the cases that pin what they compute. `api/generate.py`
+# renders it into interp_engine/api.py (the EngineAPI Protocol and records), and
+# `api/make_fixtures.py` runs each case on the Python eager engine, the reference, to write
+# expected outputs that every other backend is held to. Edit here, then run
+#
+#   uv run python api/generate.py
+#
+# `tests/test_api_generated.py` fails on a stale copy and on a backend whose signatures differ.
+#
+# The contract covers the engine surface only. A server's wire format is a consumer of it.
+#
+# Types: int, uint64, float, bool, str, tensor, address, token_ids, steering, list[T], map[K, V],
+# stream[T], a record or enum named below, and a trailing `?` for optional. `tensor` is
+# torch.Tensor; `address` is interp_engine.Address; `steering` is a SteeringSpec or a list of
+# them. A steering input in a case is a list of ops, applied in order: {point, method, vector}
+# and the method's own fields, named as on the server's wire (additive: scale, normalize;
+# orthogonal: coeff; projection_cap: min, max).
+#
+# Per operation: `kind` (property | sync | async | stream), `params` (in order), `returns`.
+# Per param: `positional`, `default`, and `python_name` where the parameter name is not the
+# Python spelling. An `external` record is hand-written (`python_module` says where); the
+# generator checks its fields rather than defining it.
+
+version: 1
+
+tolerances:
+  exact: {kind: exact}
+  # Activations, fp32 against fp32: the golden capture tier.
+  capture: {kind: close, rel: 1.0e-2, cos: 0.9999}
+  # Logits over a whole vocabulary: the same tier, since they are one matmul past a capture.
+  logits: {kind: close, rel: 1.0e-2, cos: 0.9999}
+  # Weight rows copied out, with no arithmetic between.
+  weights: {kind: close, rel: 1.0e-5, cos: 0.999999}
+
+records:
+  GenStep:
+    external: true
+    python_module: interp_engine.steer
+    doc: One generated token, and what the backend can say about the distribution behind it.
+    fields:
+      token_id: {type: int}
+      token_str: {type: str}
+
+  SamplingSettings:
+    external: true
+    python_module: interp_engine.sampling
+    doc: What a generation runs with, every knob decided.
+    fields:
+      temperature: {type: float}
+      top_k: {type: "int?"}
+      top_p: {type: "float?"}
+      presence_penalty: {type: float}
+
+  EngineDescription:
+    doc: What this model object can serve, as the object itself answers. No forward.
+    fields:
+      backend:
+        type: str
+        doc: >-
+          The load_model backend name (eager, vllm, vllm-static, vllm-generate).
+      hf_model_id: {type: str}
+      n_layers: {type: int}
+      d_model: {type: int}
+      n_heads: {type: int}
+      n_kv_heads: {type: int}
+      head_dim: {type: int}
+      hooks_available:
+        type: bool
+        doc: Whether forward hooks run, so any served point can be read or written per request.
+      graph_replay:
+        type: bool
+        doc: Whether the forward replays captured graphs, so only static taps are reachable.
+      static_points:
+        type: "list[address]"
+        doc: The read taps a graph engine declared at load. Empty on a hooked engine.
+      static_writes:
+        type: "list[address]"
+        doc: The write taps a graph engine declared at load. Empty on a hooked engine.
+      capture_points:
+        type: "list[str]"
+        doc: >-
+          Canonical point names this model can capture, asked at layer 0 for per-layer points.
+          Empty when nothing is capturable.
+      residual_readable:
+        type: bool
+        doc: Whether resid_post can be read, by a hook, a static tap or native extraction.
+      attention:
+        type: bool
+        doc: Whether the attention pair (attn_probs, attn_scores) is served.
+
+  LensSpec:
+    doc: One lens to read at every position.
+    fields:
+      layers:
+        type: "list[int]"
+        doc: The layers to read, ascending. The last is decoded as the final row of each position.
+      jacobian:
+        type: bool
+        default: false
+        doc: Whether to carry each layer through its J_bar first. A layer with no J_bar is read as it is.
+      jacobian_set:
+        type: str
+        default: default
+        doc: The name of the J_bar set to use, as set_lens_jacobians installed it.
+
+  LensStep:
+    doc: One position's read-out, for every LensSpec of the call in order.
+    fields:
+      position: {type: int}
+      token_id: {type: int}
+      is_generated: {type: bool}
+      top_ids:
+        type: "list[tensor]"
+        doc: Per LensSpec, [n_layers, k] token ids, best first.
+      top_probs:
+        type: "list[tensor]"
+        doc: Per LensSpec, [n_layers, k] float32 probabilities over the full vocabulary.
+  DirectionSet:
+    doc: >-
+      Directions read at one point. A probe is one direction; an SAE encoder is many, with a bias
+      and a nonlinearity.
+    fields:
+      point: {type: address, doc: Where the directions are read.}
+      vectors:
+        type: tensor
+        doc: "[k, width] directions, in the basis of the point's rows."
+      bias:
+        type: "tensor?"
+        default: null
+        doc: "[k], added to the dot products."
+      nonlinearity:
+        type: str
+        default: none
+        doc: none or relu, applied last.
+
+operations:
+  # --- identity and shape --------------------------------------------------------------------
+  hf_model_id:
+    kind: property
+    returns: str
+    doc: The Hugging Face repo id this was loaded from.
+  n_layers:
+    kind: property
+    returns: int
+    doc: Number of decoder layers.
+  d_model:
+    kind: property
+    returns: int
+    doc: Residual stream width.
+  n_heads:
+    kind: property
+    returns: int
+    doc: Number of attention query heads, for the whole model.
+  n_kv_heads:
+    kind: property
+    returns: int
+    doc: Number of key/value heads; fewer than n_heads under GQA or MQA.
+  head_dim:
+    kind: property
+    returns: int
+    doc: Width of one attention head. Not d_model // n_heads on every family.
+  default_prepend_bos:
+    kind: property
+    returns: bool
+    doc: Whether to_tokens prepends BOS when the caller does not say.
+  tokenizer_prepends_bos:
+    kind: property
+    returns: bool
+    doc: Whether the tokenizer adds BOS on its own, so a caller must not add a second one.
+
+  describe:
+    kind: sync
+    returns: EngineDescription
+    doc: >-
+      What this model can serve, in one record: for a server to advertise, and for a caller to
+      check before it asks. Answers from the load configuration; no forward.
+    cases:
+      # The facts every backend must agree on. Which points are served differs by backend.
+      - name: shape
+        inputs: {}
+        compare: exact
+        fields: [hf_model_id, n_layers, d_model, n_heads, n_kv_heads, head_dim, residual_readable]
+
+  # --- refusals ------------------------------------------------------------------------------
+  refuses:
+    kind: sync
+    params:
+      point: {type: address, positional: true}
+      layer: {type: "int?", default: null, positional: true}
+    returns: "str?"
+    doc: Why this model cannot produce the point, or null when it can. No forward.
+    cases:
+      - name: resid_post_mid
+        inputs: {point: "resid_post.{mid}"}
+        compare: exact
+
+  serves:
+    kind: sync
+    params:
+      point: {type: address, positional: true}
+      layer: {type: "int?", default: null, positional: true}
+    returns: bool
+    doc: Whether this model can produce the point.
+    cases:
+      - name: resid_post_mid
+        inputs: {point: "resid_post.{mid}"}
+        compare: exact
+      - name: out_of_range_layer
+        inputs: {point: "resid_post.{n_layers}"}
+        compare: exact
+
+  # --- sampling ------------------------------------------------------------------------------
+  sampling_settings:
+    kind: sync
+    params:
+      temperature: {type: "float?", default: null}
+      top_k: {type: "int?", default: null}
+      top_p: {type: "float?", default: null}
+      presence_penalty: {type: "float?", default: null}
+    returns: SamplingSettings
+    doc: >-
+      What a generation called with these knobs runs with: a knob passed is used, a knob left
+      null takes the checkpoint's recommendation, and a knob neither states is neutral.
+    cases:
+      - name: all_defaults
+        inputs: {}
+        compare: exact
+      - name: greedy
+        inputs: {temperature: 0.0, top_k: 5}
+        compare: exact
+
+  # --- capture -------------------------------------------------------------------------------
+  capture:
+    kind: async
+    params:
+      prompt_token_ids: {type: token_ids, positional: true}
+      points: {type: "list[address]", positional: true}
+      steering: {type: "steering?", default: null, python_name: steering_spec}
+      detach: {type: bool, default: true}
+      rows: {type: "list[int]?", default: null}
+    returns: "map[address, tensor]"
+    doc: >-
+      Capture the points over one prompt's forward pass: [n_prompt_tokens, width] per address,
+      no batch axis. With steering, from the steered forward.
+    cases:
+      - name: residual_and_mlp
+        inputs:
+          prompt_token_ids: {prompt: "The capital of France is"}
+          points: ["resid_pre.0", "resid_post.{mid}", "mlp_out.{mid}", "resid_post.{last}"]
+        compare: capture
+      - name: steered_additive
+        inputs:
+          prompt_token_ids: {prompt: "The capital of France is"}
+          points: ["resid_post.{mid}", "resid_post.{last}"]
+          steering:
+            - {point: "resid_post.1", method: additive, vector: {randn: {shape: ["{d_model}"], seed: 3}}, scale: 2.25}
+            - {point: "resid_post.{mid}", method: additive, vector: {randn: {shape: ["{d_model}"], seed: 4}}, scale: 3.0}
+            - {point: "resid_post.{mid}", method: additive, vector: {randn: {shape: ["{d_model}"], seed: 5}}, scale: -1.5}
+        compare: capture
+      - name: steered_orthogonal
+        inputs:
+          prompt_token_ids: {prompt: "The capital of France is"}
+          points: ["resid_post.{last}"]
+          steering:
+            - {point: "resid_post.{mid}", method: orthogonal, vector: {randn: {shape: ["{d_model}"], seed: 6}}, coeff: 0.25}
+        compare: capture
+      - name: steered_projection_cap
+        inputs:
+          prompt_token_ids: {prompt: "The capital of France is"}
+          points: ["resid_post.{mid}", "resid_post.{last}"]
+          steering:
+            - {point: "resid_post.{mid}", method: projection_cap, vector: {randn: {shape: ["{d_model}"], seed: 7}}, max: -60.0}
+        compare: capture
+      - name: steered_two_points
+        inputs:
+          prompt_token_ids: {prompt: "The capital of France is"}
+          points: ["resid_post.{mid}", "resid_post.{last}"]
+          steering:
+            - {point: "resid_post.1", method: additive, vector: {randn: {shape: ["{d_model}"], seed: 8}}, scale: 2.0}
+            - {point: "mlp_out.{mid}", method: additive, vector: {randn: {shape: ["{d_model}"], seed: 9}}, scale: 40.0, normalize: true}
+        compare: capture
+
+  project:
+    kind: async
+    params:
+      prompt_token_ids: {type: token_ids, positional: true}
+      directions: {type: "list[DirectionSet]", positional: true}
+      steering: {type: "steering?", default: null, python_name: steering_spec}
+    returns: "list[tensor]"
+    doc: >-
+      Read each DirectionSet over one prompt's forward pass: per set, [n_prompt_tokens, k] float32,
+      the rows' dot products with the vectors, plus the bias, through the nonlinearity. Where a
+      worker runs the forward, it projects the rows, so only the values cross.
+    cases:
+      - name: probe_and_encoder
+        inputs:
+          prompt_token_ids: {prompt: "The capital of France is"}
+          directions:
+            - point: "resid_post.{mid}"
+              vectors: {randn: {shape: [1, "{d_model}"], seed: 0}}
+            - point: "resid_post.{last}"
+              vectors: {randn: {shape: [8, "{d_model}"], seed: 1}}
+              bias: {randn: {shape: [8], seed: 2}}
+              nonlinearity: relu
+        compare: capture
+
+  # --- lens ----------------------------------------------------------------------------------
+  unembed_rows:
+    kind: async
+    params:
+      token_ids: {type: token_ids, positional: true}
+    returns: tensor
+    doc: "W_U[token_ids]: the [k, d_model] residual-space directions the unembed reads."
+    cases:
+      - name: three_tokens
+        inputs:
+          token_ids: {tokens: [" Paris", " London", " the"]}
+        compare: weights
+
+  decode_residuals:
+    kind: async
+    params:
+      residuals: {type: tensor, positional: true}
+      detach: {type: bool, default: true}
+    returns: tensor
+    doc: >-
+      Decode [n_rows, d_model] residuals to [n_rows, vocab] logits through the final norm, the
+      unembed and the family's post-unembed arithmetic (softcap included).
+    cases:
+      - name: mid_layer_rows
+        inputs:
+          residuals: {capture: {prompt: "The capital of France is", point: "resid_post.{mid}"}}
+        compare: logits
+
+  set_lens_jacobians:
+    kind: async
+    params:
+      jacobians: {type: "map[int, tensor]?", positional: true}
+      name: {type: str, default: default}
+    returns: int
+    doc: >-
+      Install one [d_model, d_model] J_bar per source layer as the set name, where the read-out
+      runs, for every later generate_with_lens call; null removes that set. Other sets stay.
+      Returns the bytes this set holds, per rank under tensor parallelism.
+    cases:
+      - name: remove
+        inputs: {jacobians: null}
+        compare: exact
+
+  generate_with_lens:
+    kind: stream
+    params:
+      prompt_token_ids: {type: token_ids, positional: true}
+      lenses: {type: "list[LensSpec]", positional: true}
+      point: {type: str, default: resid_post}
+      top_n: {type: int, default: 10}
+      max_tokens: {type: int, default: 0}
+      temperature: {type: float, default: 0.0}
+      seed: {type: "uint64?", default: null}
+      word_mask: {type: "tensor?", default: null}
+      skip_before: {type: int, default: 0}
+      stream_reduce: {type: str, default: "none"}
+      stream_index: {type: "int?", default: null}
+      jacobians: {type: "map[int, tensor]?", default: null}
+      softcap: {type: "float?", default: null}
+      steering: {type: "steering?", default: null, python_name: steering_spec}
+    returns: "stream[LensStep]"
+    doc: >-
+      Read each lens at every prompt position, then generate max_tokens tokens and read each as it
+      lands. One LensStep per position from skip_before on, in order; a stop token ends it after its
+      own step. point names the tap, and stream_reduce/stream_index collapse a stream stack to the
+      d_model vector the lens was fitted on. word_mask [vocab] bool ranks word ids only; the final
+      layer keeps its true top-1. jacobians carries the default set's J_bar for this call; a
+      Jacobian lens otherwise uses the set set_lens_jacobians installed. softcap is applied only where the
+      backend's unembed does not apply one. With steering, or inside a steer() block, every read is
+      of the steered forward.
+    cases:
+      - name: logit_lens_greedy
+        inputs:
+          prompt_token_ids: {prompt: "The capital of France is"}
+          lenses: [{layers: [0, "{mid}", "{last}"]}]
+          top_n: 5
+          max_tokens: 3
+        compare: logits
+        fields: [position, token_id, is_generated, top_probs]
+      - name: two_lenses_skip_prefix
+        inputs:
+          prompt_token_ids: {prompt: "The capital of France is"}
+          lenses:
+            - {layers: [1, "{mid}", "{last}"], jacobian: true}
+            - {layers: ["{mid}", "{last}"]}
+          jacobians:
+            "1": {near_identity: {seed: 0, scale: 0.3}}
+            "{mid}": {near_identity: {seed: 1, scale: 0.3}}
+          top_n: 4
+          max_tokens: 1
+          skip_before: 3
+        compare: logits
+        fields: [position, token_id, is_generated, top_probs]
+      - name: word_mask_final_keeps_top1
+        inputs:
+          prompt_token_ids: {prompt: "The capital of France is"}
+          lenses: [{layers: ["{mid}", "{last}"]}]
+          # Masks " Paris" (7042 on SmolLM2), the final layer's top-1 at the last position.
+          word_mask: {vocab_mask: {every: 3}}
+          top_n: 3
+        compare: logits
+        fields: [position, token_id, top_probs]
+
+  # --- generation ----------------------------------------------------------------------------
+  generate_steps:
+    kind: stream
+    params:
+      prompt_token_ids: {type: token_ids, positional: true}
+      max_tokens: {type: int, default: 64}
+      temperature: {type: "float?", default: null}
+      top_k: {type: "int?", default: null}
+      top_p: {type: "float?", default: null}
+      presence_penalty: {type: "float?", default: null}
+      stop_at_eos: {type: bool, default: true}
+      n_logprobs: {type: int, default: 0}
+      seed: {type: "uint64?", default: null}
+    returns: "stream[GenStep]"
+    doc: One GenStep per generated token. The stop token, when sampled, is the last step.
+    cases:
+      - name: greedy_eight
+        inputs:
+          prompt_token_ids: {prompt: "The capital of France is"}
+          max_tokens: 8
+          temperature: 0.0
+        compare: exact
+        fields: [token_id]

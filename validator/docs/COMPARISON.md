@@ -345,7 +345,14 @@ That record is also what the table's column headings claim: each heading carries
 its cells were captured at, linking to that exact commit (a release tag is resolved to its commit once and
 cached in `comparison/engine_releases.json`). Majority rather than newest, so rerunning one model against a
 new build annotates *that* cell with its own version instead of relabelling the column and implicitly
-restating every other cell. Refreshing a whole column is therefore how the heading moves:
+restating every other cell.
+
+**Which** version depends on whose column it is (`engine_versions.PRIMARY_PACKAGE`). The three
+interp-engine columns all carry interp-engine's, the vLLM ones included: the engine is what is
+under test there, and it pins a floor on the backend, so its version already implies which backends the
+cell could have resolved. The third-party columns carry the foreign library's, because there that library
+*is* the subject. So upgrading vLLM annotates the cells and leaves the heading alone; upgrading the engine
+moves it. Refreshing a whole column is how a third-party heading moves:
 
 ```bash
 MODE=engine ENGINE=sglang VERSION=latest bash comparison/run_all_models.sh

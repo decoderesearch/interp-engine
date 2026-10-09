@@ -14,9 +14,10 @@ The ladder:
   fall to CPU); otherwise CPU.
 
 Explicit overrides always win: ``requested_device``, ``requested_dtype`` (anything other
-than ``auto``), and ``force_backend`` (``"vllm"`` / ``"eager"``). Callers source those
-however they like -- ``apps/inference`` maps them from ``DEVICE``, ``MODEL_DTYPE`` and
-``FORCE_BACKEND`` (set by ``--force-vllm`` / ``--force-eager``).
+than ``auto``), and ``force_backend`` (``"vllm"`` / ``"eager"``). A named backend
+the machine cannot run is refused here, before any weights move, with the fix in the message.
+Callers source the overrides however they like -- ``apps/inference`` maps them from ``DEVICE``,
+``MODEL_DTYPE`` and ``FORCE_BACKEND`` (set by ``--backend``).
 """
 
 from __future__ import annotations
@@ -37,12 +38,21 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class BackendSelection:
-    """Resolved backend choice."""
+    """Resolved backend choice.
 
-    use_vllm: bool
+    ``backend`` is the name :func:`~interp_engine.load_model` takes -- ``"vllm"`` or ``"eager"``
+    -- so a caller passes it straight through instead of rebuilding it from a flag.
+    """
+
+    backend: str
     device: str
     dtype: str
     reason: str
+
+    @property
+    def use_vllm(self) -> bool:
+        """Whether the choice is the vLLM family. Kept for callers that asked a two-way question."""
+        return self.backend == "vllm"
 
 
 def _cuda_available() -> bool:
@@ -130,14 +140,20 @@ def select_backend(
     vllm_available: bool,
     trust_remote_code: bool = True,
 ) -> BackendSelection:
-    """Resolve ``(use_vllm, device, dtype)`` from availability + model config + overrides.
+    """Resolve ``(backend, device, dtype)`` from availability + model config + overrides.
 
     Args:
         hf_model_id: The resolved HF repo id (used for the cheap config probe).
         requested_device: explicit device ("cuda" / "cpu" / "mps"), or None (=> auto).
         requested_dtype: explicit dtype name, or "auto" to take the checkpoint's native.
-        force_backend: ``"vllm"`` / ``"eager"`` to force a backend, or None (=> auto).
+        force_backend: ``"vllm"`` / ``"eager"`` to name the backend, or None (=> auto). A
+            named backend this machine cannot run raises here, before any load, with what is
+            missing and what to run instead.
         vllm_available: whether the vLLM backend imported successfully.
+
+    Raises:
+        RuntimeError: ``force_backend`` names a backend this machine cannot run.
+        ValueError: ``force_backend`` is not a name this function knows.
     """
     device_explicit = requested_device is not None
     # An explicitly requested device that is not CUDA (cpu / mps) implies the
@@ -148,32 +164,46 @@ def select_backend(
     device_forces_eager = device_explicit and not str(requested_device).lower().startswith("cuda")
     dtype_explicit = requested_dtype not in (None, "auto")
     normalized_force = (force_backend or "").strip().lower() or None
+    if normalized_force not in (None, "vllm", "eager"):
+        raise ValueError(
+            f"force_backend={force_backend!r} is not a backend. Choose 'vllm' or 'eager', "
+            "or pass None to let the machine and the model decide."
+        )
     force_vllm = normalized_force == "vllm"
     force_no_vllm = normalized_force == "eager"
 
     cuda = _cuda_available()
     mps = _mps_available()
 
+    if force_vllm and not cuda:
+        raise RuntimeError(
+            f"backend='vllm' was requested for {hf_model_id}, but this machine has no CUDA GPU, and "
+            "vLLM initializes on CUDA only. Use backend='eager' here, or drop the choice."
+        )
+    if force_vllm and not vllm_available:
+        raise RuntimeError(
+            f"backend='vllm' was requested for {hf_model_id}, but vLLM is not installed. Run "
+            "`pip install 'interp-engine[vllm]'`, or use backend='eager'."
+        )
+
     config = _load_config(hf_model_id, trust_remote_code)
     native = _native_dtype(config)
 
     # --- backend ------------------------------------------------------------
     if force_vllm:
-        # Honor the explicit request even without CUDA/vLLM; the loader raises a
-        # clear error if vLLM is unavailable.
-        use_vllm = True
-        backend_reason = "--force-vllm (explicit)"
+        backend = "vllm"
+        backend_reason = "backend='vllm' (explicit)"
     elif force_no_vllm:
-        use_vllm = False
-        backend_reason = "--force-eager (explicit) -> EagerModel"
+        backend = "eager"
+        backend_reason = "backend='eager' (explicit) -> EagerModel"
     elif device_forces_eager:
-        use_vllm = False
+        backend = "eager"
         backend_reason = f"device={requested_device} (explicit non-CUDA) -> EagerModel"
     elif cuda and vllm_available and _vllm_supports_arch(config):
-        use_vllm = True
+        backend = "vllm"
         backend_reason = "CUDA + vLLM-supported arch -> vLLM"
     elif cuda:
-        use_vllm = False
+        backend = "eager"
         why = "vLLM unavailable" if not vllm_available else "arch not vLLM-supported"
         if not vllm_available:
             # The one case where a missing extra is worth saying out loud rather than logging as a
@@ -191,14 +221,14 @@ def select_backend(
             )
         backend_reason = f"CUDA but {why} -> EagerModel on CUDA"
     else:
-        use_vllm = False
+        backend = "eager"
         backend_reason = "no CUDA -> EagerModel"
 
     # --- device -------------------------------------------------------------
     if device_explicit:
         device = requested_device
         device_reason = f"device={requested_device} (explicit)"
-    elif use_vllm or cuda:
+    elif backend == "vllm" or cuda:
         device = "cuda"
         device_reason = "cuda"
     elif mps and (_mps_dtype_safe(native) or (dtype_explicit and requested_dtype == "float16")):
@@ -221,4 +251,4 @@ def select_backend(
         dtype_reason = "auto (native)"
 
     reason = f"{backend_reason}; device={device} [{device_reason}]; dtype={dtype} [{dtype_reason}]"
-    return BackendSelection(use_vllm=use_vllm, device=device, dtype=dtype, reason=reason)
+    return BackendSelection(backend=backend, device=device, dtype=dtype, reason=reason)

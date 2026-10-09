@@ -34,6 +34,12 @@ PROMPT = "The capital of France is"
 #: where the sync shape is a genuinely different type.
 RETURN_DIFFERS = {
     "generate_stream": ("AsyncIterator[str]", "Iterator[str]"),
+    "generate_steps": ("AsyncIterator[GenStep]", "Iterator[GenStep]"),
+    "generate_steps_from_embeds": ("AsyncIterator[GenStep]", "Iterator[GenStep]"),
+    "capture_generation_stream": (
+        "AsyncIterator[tuple[dict[Address, torch.Tensor], list[int]]]",
+        "Iterator[tuple[dict[Address, torch.Tensor], list[int]]]",
+    ),
 }
 
 
@@ -167,6 +173,18 @@ def test_generate_stream_deltas_concatenate_to_generate_text(sync: Any) -> None:
     streamed = "".join(sync.generate_stream(ids, max_tokens=5, temperature=0.0))
 
     assert streamed == sync.generate_text(ids, max_tokens=5, temperature=0.0)
+
+
+def test_generate_steps_carries_the_ids_behind_the_text(sync: Any) -> None:
+    """One step per token, whose texts are the stream's deltas and whose ids decode to them."""
+    ids = sync.to_tokens(PROMPT)[0].tolist()
+
+    steps = list(sync.generate_steps(ids, max_tokens=5, temperature=0.0, n_logprobs=2))
+
+    assert len(steps) == 5
+    assert [s.token_str for s in steps] == list(sync.generate_stream(ids, max_tokens=5, temperature=0.0))
+    assert [sync.model.tokenizer.decode([s.token_id]) for s in steps] == [s.token_str for s in steps]
+    assert all(len(s.logprobs or []) == 2 and s.logprobs[0]["token_id"] == s.token_id for s in steps)
 
 
 def test_breaking_out_of_generate_stream_is_clean(sync: Any) -> None:

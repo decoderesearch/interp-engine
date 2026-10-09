@@ -166,6 +166,7 @@ from interp_engine.vllm_capture.lens import _worker_logits_processor as _worker_
 from interp_engine.vllm_capture.lens import _worker_unembed_weight as _worker_unembed_weight
 from interp_engine.vllm_capture.lens import (
     merge_lm_head_row_payloads,
+    worker_embed_rows,
     worker_install_lens_intervention,
     worker_lens_capture_readout,
     worker_lens_readout,
@@ -181,6 +182,7 @@ from interp_engine.vllm_capture.native import (
     extract_hidden_states_engine_kwargs,
     read_resid_post_from_output,
 )
+from interp_engine.vllm_capture.project import worker_collect_projected
 from interp_engine.vllm_capture.requests import _process_point as _process_point
 from interp_engine.vllm_capture.requests import (
     _refuse_unreachable_resid_mid_steer as _refuse_unreachable_resid_mid_steer,
@@ -192,7 +194,6 @@ from interp_engine.vllm_capture.requests import (
     worker_drain_request,
     worker_register_attn,
     worker_register_capture,
-    worker_register_lens,
     worker_register_steering,
     worker_unregister_steering,
 )
@@ -237,11 +238,13 @@ __all__ = [
     "worker_collect_attn",
     "worker_collect_attn_request",
     "worker_collect_capture",
+    "worker_collect_projected",
     "worker_collect_request",
     "worker_demux_debug",
     "worker_drain_static",
     "worker_drain_request",
     "worker_install_capture",
+    "worker_embed_rows",
     "worker_install_lens_intervention",
     "worker_install_steering",
     "worker_lens_capture_readout",
@@ -252,7 +255,6 @@ __all__ = [
     "worker_register_static_capture",
     "worker_register_static_write",
     "worker_register_capture",
-    "worker_register_lens",
     "worker_register_steering",
     "worker_resolvable_attn",
     "worker_resolvable_points",

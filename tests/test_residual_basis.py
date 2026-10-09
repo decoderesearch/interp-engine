@@ -19,7 +19,7 @@ from interp_engine import (
     eager_residual_basis,
     vllm_residual_basis,
 )
-from interp_engine.capture import run_with_cache
+from interp_engine.capture import capture
 from interp_engine.lens import capture_residuals
 from interp_engine.steer import SteerSpec, steer
 from tests.synthetic_families import eager_shrunk_deepseek_v4
@@ -260,7 +260,7 @@ def test_a_captured_stream_is_exactly_that_slice_of_the_raw_forward(dsv4, dsv4_t
     assert reference.shape[-2] == 4, f"expected a stream axis, got {tuple(reference.shape)}"
 
     for stream in range(4):
-        cache = run_with_cache(dsv4, dsv4_tokens, [Address("resid_post", 0, stream=stream)])
+        cache = capture(dsv4, dsv4_tokens, [Address("resid_post", 0, stream=stream)])
         captured = cache.get("resid_post", 0, stream=stream)
         assert torch.equal(captured, reference[:, :, stream, :])
 
@@ -271,7 +271,7 @@ def test_two_streams_captured_together_do_not_collapse_onto_one_hook(dsv4, dsv4_
     The hook-sharing optimization keys on the resolved target, so this is exactly where two streams
     would quietly become one tensor stored twice.
     """
-    cache = run_with_cache(dsv4, dsv4_tokens, [Address("resid_post", 1, stream=0), Address("resid_post", 1, stream=3)])
+    cache = capture(dsv4, dsv4_tokens, [Address("resid_post", 1, stream=0), Address("resid_post", 1, stream=3)])
     first = cache.get("resid_post", 1, stream=0)
     last = cache.get("resid_post", 1, stream=3)
     assert first.shape == last.shape
@@ -280,7 +280,7 @@ def test_two_streams_captured_together_do_not_collapse_onto_one_hook(dsv4, dsv4_
 
 def test_a_captured_stream_has_the_shape_the_capture_contract_promises(dsv4, dsv4_tokens):
     """`[batch, seq, d_model]`, i.e. the stream axis is gone rather than left as a length-1 stub."""
-    cache = run_with_cache(dsv4, dsv4_tokens, [Address("resid_post", 1, stream=2)])
+    cache = capture(dsv4, dsv4_tokens, [Address("resid_post", 1, stream=2)])
     assert cache.get("resid_post", 1, stream=2).shape == (1, 8, dsv4.d_model)
 
 
@@ -296,7 +296,7 @@ def test_a_stream_coordinate_on_a_point_that_has_no_streams_is_refused(dsv4):
 
 def test_the_sublayer_points_still_work_unqualified_on_a_multi_stream_trunk(dsv4, dsv4_tokens):
     """The verdict must gate the residual points only. `attn_out` was never in question."""
-    cache = run_with_cache(dsv4, dsv4_tokens, [Address("attn_out", 1)])
+    cache = capture(dsv4, dsv4_tokens, [Address("attn_out", 1)])
     assert cache.get("attn_out", 1).shape[-1] == dsv4.d_model
 
 
@@ -316,9 +316,9 @@ def test_steering_one_stream_leaves_the_others_alone(dsv4, dsv4_tokens):
     spec = SteerSpec(vector=torch.ones(d_model), layer=1, coeff=10.0, point="resid_post", stream=1)
 
     requests = [Address("resid_post", 1, stream=s) for s in range(4)]
-    before = {s: run_with_cache(dsv4, dsv4_tokens, requests).get("resid_post", 1, stream=s) for s in range(4)}
+    before = {s: capture(dsv4, dsv4_tokens, requests).get("resid_post", 1, stream=s) for s in range(4)}
     with steer(dsv4, [spec]):
-        after = {s: run_with_cache(dsv4, dsv4_tokens, requests).get("resid_post", 1, stream=s) for s in range(4)}
+        after = {s: capture(dsv4, dsv4_tokens, requests).get("resid_post", 1, stream=s) for s in range(4)}
 
     assert torch.equal(after[1], before[1] + 10.0)
     for untouched in (0, 2, 3):

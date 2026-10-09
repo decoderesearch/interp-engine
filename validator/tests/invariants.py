@@ -226,13 +226,13 @@ def _first_dense_mlp_layer(model: Any) -> int:
 
 def check_dfa(model: Any) -> Result:
     """``probs @ value == z``: the attention points describe one consistent computation."""
-    from interp_engine import per_head_value, run_with_cache
+    from interp_engine import capture, per_head_value
 
     layers = model.arch.softmax_attention_layers()
     if not layers:
         return Result("dfa", "refused", "no softmax-attention layer: nothing computes probabilities")
     layer = layers[0]
-    cache = run_with_cache(model, INPUT_IDS, [("attn_probs", layer), ("value", layer), ("z", layer)])
+    cache = capture(model, INPUT_IDS, [("attn_probs", layer), ("value", layer), ("z", layer)])
     probs = cache.get("attn_probs", layer).float()
     z = cache.get("z", layer).float()
     value = per_head_value(model, cache, layer).float()
@@ -247,10 +247,10 @@ def check_dfa(model: Any) -> Result:
 
 def _apply_gate(model: Any, cache: Any, layer: int, rebuilt: torch.Tensor, z: torch.Tensor) -> torch.Tensor:
     """``z`` is post-gate on a gated-attention family, so the reconstruction has to be gated too."""
-    from interp_engine import attn_out_gate, run_with_cache
+    from interp_engine import attn_out_gate, capture
 
     activation = GATE_ACTIVATIONS.get(model.arch.architecture)
-    gate_cache = run_with_cache(model, INPUT_IDS, [("attn_gate", layer)])
+    gate_cache = capture(model, INPUT_IDS, [("attn_gate", layer)])
     if activation is None:
         # The gate is packed into a double-width `q_proj`, a layout the engine owns end to end.
         gate = attn_out_gate(model, gate_cache, layer)
@@ -265,11 +265,11 @@ def _apply_gate(model: Any, cache: Any, layer: int, rebuilt: torch.Tensor, z: to
 
 def check_residual(model: Any) -> Result:
     """``resid_pre + attn_out_post + mlp_out_post == resid_post``: the two contributions are complete."""
-    from interp_engine import run_with_cache
+    from interp_engine import capture
 
     layer = _first_layer_with_both_sublayers(model)
     names = ("resid_pre", "attn_out_post", "mlp_out_post", "resid_post")
-    cache = run_with_cache(model, INPUT_IDS, [(name, layer) for name in names])
+    cache = capture(model, INPUT_IDS, [(name, layer) for name in names])
     got = {name: cache.get(name, layer).float() for name in names}
     rebuilt = got["resid_pre"] + got["attn_out_post"] + got["mlp_out_post"]
     return _compare("residual", rebuilt, got["resid_post"])
@@ -277,10 +277,10 @@ def check_residual(model: Any) -> Result:
 
 def check_neuron(model: Any) -> Result:
     """``down_proj(mlp_act) == mlp_out``: the neuron basis is the one the MLP actually uses."""
-    from interp_engine import run_with_cache
+    from interp_engine import capture
 
     layer = _first_dense_mlp_layer(model)
-    cache = run_with_cache(model, INPUT_IDS, [("mlp_act", layer), ("mlp_out", layer)])
+    cache = capture(model, INPUT_IDS, [("mlp_act", layer), ("mlp_out", layer)])
     act, mlp_out = cache.get("mlp_act", layer), cache.get("mlp_out", layer)
     rebuilt = model.arch.mlp_projection(layer, "down")(act)
     return _compare("neuron", rebuilt.float(), mlp_out.float())

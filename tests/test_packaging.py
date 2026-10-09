@@ -73,6 +73,11 @@ class TestThePublicSurface:
         duplicates = sorted({n for n in interp_engine.__all__ if interp_engine.__all__.count(n) > 1})
         assert duplicates == [], f"listed more than once in __all__: {duplicates}"
 
+    def test_the_placeholder_model_imports_but_is_not_api(self):
+        assert "MLXModel" not in interp_engine.__all__
+        with pytest.raises(NotImplementedError):
+            interp_engine.MLXModel()
+
     def test_the_autograd_surface_is_exported(self):
         # Phase-4 additions: the verdict object, the refusal, and both probes. A consumer
         # gating on gradient support reaches for these by name.

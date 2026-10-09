@@ -26,7 +26,7 @@ import pytest
 import torch
 from harness import assert_logit_lens_self_consistent
 
-from interp_engine import EagerModel, run_with_cache
+from interp_engine import EagerModel, capture
 
 pytestmark = [
     pytest.mark.gpu,
@@ -64,7 +64,7 @@ def test_gpt_oss_20b_mxfp4_sinks_and_lens():
     ids = assert_logit_lens_self_consistent(model, PROMPT)
 
     layer = model.n_layers // 2
-    cache = run_with_cache(model, ids, [("attn_probs", layer)])
+    cache = capture(model, ids, [("attn_probs", layer)])
     attn = cache.get("attn_probs", layer)  # [1, heads, q, k]
     rowsum = attn.sum(dim=-1)
     assert (attn >= -1e-6).all(), "negative attention weight"
@@ -90,7 +90,7 @@ def test_gpt_oss_20b_mxfp4_refuses_the_derived_routing_rather_than_capturing_not
             model.resolve_point(point, 0)
         # No address, but not a dead end: they are rebuilt from the logits after the pass, and a
         # refusal that did not say so would send a caller off to dequantize 40 GB for nothing.
-        assert "rebuilt from them by run_with_cache" in str(excinfo.value)
+        assert "rebuilt from them by capture" in str(excinfo.value)
     _free()
 
 
@@ -124,7 +124,7 @@ def test_gpt_oss_20b_rebuilt_routing_matches_the_router_it_could_not_read():
     def routing_of(quant) -> tuple[torch.Tensor, ...]:
         model = _load("openai/gpt-oss-20b", quant=quant)
         ids = model.tokenizer(PROMPT, return_tensors="pt")["input_ids"].to(model.device)
-        cache = run_with_cache(model, ids, points)
+        cache = capture(model, ids, points)
         # Off the device before the model goes, or the tensors keep 13/40 GB alive through the next load.
         captured = tuple(cache.get(*point).cpu() for point in points)
         del model, cache
@@ -168,7 +168,7 @@ def test_gpt_oss_20b_mxfp4_still_reads_the_router_logits_off_the_block():
     seen: list[torch.Tensor] = []
     handle = mlp.register_forward_pre_hook(lambda _m, args: seen.append(args[0].detach()))
     try:
-        cache = run_with_cache(model, ids, [("router_logits", layer)])
+        cache = capture(model, ids, [("router_logits", layer)])
     finally:
         handle.remove()
 
@@ -196,7 +196,7 @@ def test_gpt_oss_20b_dequantized_routing_is_read_off_the_router():
     model = _load("openai/gpt-oss-20b", quant=Mxfp4Config(dequantize=True))
     ids = model.tokenizer(PROMPT, return_tensors="pt")["input_ids"].to(model.device)
     points = [("router_logits", 0), ("expert_weights", 0), ("expert_indices", 0)]
-    cache = run_with_cache(model, ids, points)
+    cache = capture(model, ids, points)
 
     n_experts, top_k = 32, 4
     logits, weights, indices = (cache.get(*point).float() for point in points)

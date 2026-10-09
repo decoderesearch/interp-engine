@@ -32,7 +32,7 @@ from typing import Any, NoReturn
 import pytest
 import torch
 
-from interp_engine import EagerModel, decode_residuals, run_with_cache
+from interp_engine import EagerModel, capture, decode_residuals
 
 REQUIRE_PARITY_ENV = "IE_REQUIRE_PARITY"
 REQUIRE_VLLM_ENV = "IE_REQUIRE_VLLM"
@@ -239,7 +239,7 @@ def assert_logit_lens_self_consistent(model: EagerModel, prompt: str) -> torch.T
     """
     ids = model.tokenizer(prompt, add_special_tokens=False, return_tensors="pt")["input_ids"].to(model.device)
     last = model.n_layers - 1
-    cache = run_with_cache(model, ids, [("resid_post", last), ("mlp_in", last)])
+    cache = capture(model, ids, [("resid_post", last), ("mlp_in", last)])
     assert cache.get("resid_post", last).shape[-1] == model.d_model
     assert cache.get("mlp_in", last).shape[-1] == model.d_model
 

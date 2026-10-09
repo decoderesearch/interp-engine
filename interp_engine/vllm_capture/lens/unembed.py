@@ -22,6 +22,7 @@ from interp_engine import facts
 from interp_engine.vllm_capture._payload import decode_tensor_payload, encode_tensor_payload
 from interp_engine.vllm_capture._tree import (
     _walk_trunk,
+    _worker_embeddings,
     _worker_final_norm,
     _worker_model,
     _worker_tp_world_size,
@@ -249,6 +250,22 @@ def worker_lm_head_rows(worker: object, token_ids: list[int]) -> dict:
         "owned": owned,
         "rows": encode_tensor_payload(rows) if rows is not None else None,
     }
+
+
+def worker_embed_rows(worker: object, token_ids: list[int]) -> tuple:
+    """Return the input embeddings of ``token_ids`` ([k, d_model]), as the model's forward sees them.
+
+    The model's own ``embed_input_ids`` is used when present, so a family that scales its
+    embeddings (Gemma's ``normalizer``) returns scaled rows, which is what an embeds prompt must
+    carry. Under tensor parallelism every rank runs this in the same RPC, and the vocab-parallel
+    embedding all-reduces inside, so every rank returns the full rows.
+    """
+    model = _worker_model(worker)
+    embed = getattr(model, "embed_input_ids", None) or _worker_embeddings(model)
+    device = next(model.parameters()).device
+    with torch.inference_mode():
+        rows = embed(torch.tensor([int(t) for t in token_ids], dtype=torch.long, device=device))
+    return encode_tensor_payload(rows)
 
 
 def merge_lm_head_row_payloads(token_ids: list[int], rank_payloads: list[dict]) -> torch.Tensor:

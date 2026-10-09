@@ -20,13 +20,13 @@ from interp_engine import (
     capture_generation,
     generate_stream,
     load_model,
-    run_with_cache,
+    capture,
 )
 
 model = load_model("openai-community/gpt2", backend="eager")  # or backend="vllm"
 tokens = model.to_tokens("The capital of France is")
 
-cache = run_with_cache(model, tokens, ["resid_post.5"])
+cache = capture(model, tokens, ["resid_post.5"])
 completion, gen_cache = capture_generation(model, tokens, ["resid_post.5"], max_tokens=8)
 attn = capture_attention(model, tokens, [5])
 steps = list(generate_stream(model, tokens, max_tokens=8, n_logprobs=5))

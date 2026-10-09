@@ -76,7 +76,7 @@ from interp_engine.vllm_capture.requests import (
     _install_hook,
     _position_mask,
     _refuse_mhc_steer,
-    worker_register_lens,
+    worker_register_steering,
     worker_unregister_steering,
 )
 from interp_engine.vllm_capture.steering import _make_steer_modifier
@@ -842,7 +842,7 @@ def _steering_demux(trunk: nn.Module, steers: dict[Address, object], capture: se
     demux.cap_points["r0"] = set(capture or ())
     demux.captures["r0"] = {}
     demux.current_meta = (["r0"], [TOKENS])
-    demux.steer_mods["r0"] = {site: (fn, (), 0) for site, fn in steers.items()}
+    demux.steer_mods["r0"] = {site: (fn, (), 0, True) for site, fn in steers.items()}
     # One worker for every site, because `mhc_taps` keys its installation on the worker: a fresh one
     # per site would install a wrapper over the previous site's wrapper and take *that* for the
     # original kernel. The real worker is one object per process, which is what this reproduces.
@@ -870,18 +870,20 @@ def _registered_worker(trunk: nn.Module) -> SimpleNamespace:
 
 @contextmanager
 def _lens_registered(trunk: nn.Module, specs: list[dict], capture: set[Address] | None = None):
-    """Register ``specs`` as a jlens intervention through the real worker entry point.
+    """Register ``specs`` -- a lens intervention, as the steering ops it now arrives as -- through the
+    real worker entry point.
 
-    Through :func:`worker_register_lens` rather than by filling the demux in, because what these tests
-    are about IS the registration: which site a spec lands on used to be the layer index alone, and a
-    double that wrote :attr:`_Demux.lens_mods` itself would agree with whatever keying the test chose.
+    Through :func:`worker_register_steering` rather than by filling the demux in, because what these
+    tests are about IS the registration: which site a spec lands on used to be the layer index alone,
+    and a double that wrote :attr:`_Demux.steer_mods` itself would agree with whatever keying the test
+    chose.
 
     Tears the registration down on the way out, which matters more here than the tidiness of it: the
     mHC taps patch module-level kernel names, and a leaked one is picked up by the *next* test's
     installation as if it were the kernel.
     """
     worker = _registered_worker(trunk)
-    worker_register_lens(worker, "r0", specs, True, [], TOKENS)
+    worker_register_steering(worker, "r0", specs, [], TOKENS, True)
     demux = _get_demux(worker)
     if capture:
         demux.cap_points["r0"] = set(capture)
@@ -898,7 +900,7 @@ def _lens_registered(trunk: nn.Module, specs: list[dict], capture: set[Address] 
 
 
 def _lens_steer_spec(layer: int, point: str, direction: torch.Tensor, strength: float) -> dict:
-    return {"layer": layer, "point": point, "op": "steer", "delta": direction.tolist(), "strength": strength}
+    return {"layer": layer, "point": point, "op": "norm_scaled_add", "vector": direction.tolist(), "coeff": strength}
 
 
 def test_a_lens_intervention_lands_on_the_point_its_spec_names():
@@ -914,7 +916,7 @@ def test_a_lens_intervention_lands_on_the_point_its_spec_names():
     direction = torch.zeros(D_MODEL)
     direction[3] = 1.0
     with _lens_registered(trunk, [_lens_steer_spec(0, "mlp_stream_collapse", direction, 0.1)]) as demux:
-        assert set(demux.lens_mods["r0"]) == {Address("mlp_stream_collapse", 0)}
+        assert set(demux.steer_mods["r0"]) == {Address("mlp_stream_collapse", 0)}
         assert set(demux.hooks) == {Address("mlp_stream_collapse", 0)}
 
     # A spec that names no point still means `resid_post`, which is what it has always meant -- and on
@@ -922,7 +924,7 @@ def test_a_lens_intervention_lands_on_the_point_its_spec_names():
     # collapse named rather than installing a hook whose arithmetic adds a d_model tensor to the whole
     # stream stack. The refusal is the *only* thing that changed here: it happens at registration,
     # where the caller sees it, instead of inside a forward on the worker.
-    spec = {"layer": 0, "op": "ablate", "delta": direction.tolist()}
+    spec = {"layer": 0, "op": "ablate", "vector": direction.tolist()}
     default_point = _HyperTrunk(n_layers=1)
     with pytest.raises(ValueError, match="hyper-connections") as raised, _lens_registered(default_point, [spec]):
         pass
@@ -945,7 +947,7 @@ def test_a_lens_ablation_at_a_collapse_removes_the_direction_from_what_the_subla
     direction = torch.randn(D_MODEL)
     unit = direction / direction.norm()
 
-    spec = {"layer": 0, "point": "mlp_stream_collapse", "op": "ablate", "delta": direction.tolist()}
+    spec = {"layer": 0, "point": "mlp_stream_collapse", "op": "ablate", "vector": direction.tolist()}
     with _lens_registered(trunk, [spec]), torch.no_grad():
         trunk(POSITIONS, INPUT_IDS)
 
@@ -986,7 +988,7 @@ def test_a_lens_cannot_be_aimed_at_a_coefficient_either():
     """One gate for both kinds of write, because which points can be written is a fact about the point
     and the model rather than about the arithmetic the caller intends to perform there."""
     trunk = _HyperTrunk(n_layers=1)
-    spec = {"layer": 0, "point": "attn_stream_mix", "op": "ablate", "delta": [1.0] * D_MODEL}
+    spec = {"layer": 0, "point": "attn_stream_mix", "op": "ablate", "vector": [1.0] * D_MODEL}
     with pytest.raises(ValueError, match="not an activation"), _lens_registered(trunk, [spec]):
         pass  # pragma: no cover - the refusal happens on the way in
 
@@ -1178,7 +1180,7 @@ def test_a_stack_steer_changes_only_its_own_rows_of_the_batch(monkeypatch):
     demux = _Demux(None)
     demux.registered.update({"r0", "r1"})
     demux.current_meta = (["r0", "r1"], [steered_rows, spectator_rows])
-    demux.steer_mods["r0"] = {Address("resid_streams", 0): (_bump(0.5), (), 0)}
+    demux.steer_mods["r0"] = {Address("resid_streams", 0): (_bump(0.5), (), 0, True)}
     worker = _worker(trunk)
     handle = _install_hook(worker, demux, Address("resid_streams", 0))
     with torch.no_grad():
@@ -1347,7 +1349,7 @@ def test_a_static_jlens_swap_on_a_stream_stack_leaves_bos_alone_and_writes_every
 
     src = [1.0] + [0.0] * (D_MODEL - 1)
     tgt = [0.0, 1.0] + [0.0] * (D_MODEL - 2)
-    spec = {"op": "swap", "point": "resid_streams", "layer": 0, "delta": src, "tgt": tgt}
+    spec = {"op": "swap", "point": "resid_streams", "layer": 0, "vector": src, "target": tgt}
     scope = {"skip_positions": [0], "prompt_len": TOKENS, "steer_generated": True}
     try:
         worker_install_static(worker)

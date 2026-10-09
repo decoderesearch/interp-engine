@@ -166,14 +166,22 @@ def package_version(module: str) -> dict:
     return info
 
 
-# The one package a column's version *means*: which vLLM, which TransformerLens. Every column also
-# depends on torch and transformers, but a header can carry one number, and the rest of the stack is in
-# the cell's JSON. Both interp-engine columns report interp-engine itself for `eager` and vLLM for `vllm`,
-# since "which vLLM did this agree with" is the question that column answers.
+# The one package a column's version *means*. Every column also depends on torch and transformers,
+# but a header can carry one number and the rest of the stack is in the cell's JSON.
+#
+# **Every interp-engine column reports interp-engine**, including the ones whose work happens inside
+# vLLM. The engine is what is under test in those columns -- its backend code, its taps, its
+# point definitions -- and the backend is a dependency it pins a floor on, so the engine version
+# already implies which backends the cell could have resolved. Carrying the backend's number instead
+# answers a question the column is not asking and makes the three engine columns look like three
+# unrelated projects. The backend version is not lost: it is in the cell's JSON, and a cell whose
+# backend differed from its column says so under its date.
+#
+# The third-party columns keep their own package, because there the foreign library *is* the subject.
 PRIMARY_PACKAGE = {
     "eager": "interp_engine",
-    "vllm": "vllm",
-    "vllm-static": "vllm",
+    "vllm": "interp_engine",
+    "vllm-static": "interp_engine",
     "tlens_v2": "transformer_lens",
     "tlens_v3": "transformer_lens",
     "nnsight": "nnsight",

@@ -16,6 +16,7 @@ UV = uv
 
 .PHONY: help \
 	install test check check-format check-type bench-report \
+	api api-check fixtures \
 	validator-install validator-test validator-check \
 	viz-install viz-dev viz-build viz-check viz-knowledge viz-gpus viz-gpus-check \
 	size size-local size-check \
@@ -40,7 +41,24 @@ check-format: ## Engine: ruff lint + format check
 check-type: ## Engine: pyright
 	$(UV) run pyright
 
-check: check-format check-type ## Engine: lint, format and type checks
+check: check-format check-type api-check ## Engine: lint, format, type and API contract checks
+
+# --------------------------------------------------------------- api contract --
+#
+# api/engine.yaml is the one list of operations every backend must serve. The generator writes the
+# Python Protocol from it; the fixtures are what the eager engine returns for each case, on CPU in
+# fp32.
+
+FIXTURE_MODEL ?= HuggingFaceTB/SmolLM2-135M
+
+api: ## API: regenerate interp_engine/api.py from api/engine.yaml
+	$(UV) run python api/generate.py
+
+api-check: ## API: fail if a generated file is stale
+	$(UV) run python api/generate.py --check
+
+fixtures: ## API: write the expected output of every case for FIXTURE_MODEL
+	$(UV) run python api/make_fixtures.py $(FIXTURE_MODEL)
 
 # The sweep itself needs a GPU and hours; this is only the rendering of cells already on disk, into
 # results-latest.md, the README's throughput tables and the visualizer's card. `make test` fails when

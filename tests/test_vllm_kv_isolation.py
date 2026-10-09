@@ -33,6 +33,7 @@ import torch
 from interp_engine.address import Address
 from interp_engine.residual_basis import ResidualBasis, vllm_residual_basis
 from interp_engine.sampling import RecommendedSampling
+from interp_engine.steer_specs import AddSpec, SteeringSpec
 from interp_engine.vllm_backend import VLLMModel, _assert_points_captured
 from interp_engine.vllm_capture import encode_tensor_payload
 
@@ -71,6 +72,12 @@ class _FakeEngine:
     async def generate(self, prompt: dict, sampling_params: Any, request_id: str):
         self.prompts.append(prompt)
         yield _FakeOutput()
+
+    async def generate_nothing(self, prompt: dict):
+        """A request that ends with no tokens, for callers that decode each step."""
+        self.prompts.append(prompt)
+        return
+        yield
 
     def salts(self) -> list[str | None]:
         return [p.get("cache_salt") for p in self.prompts]
@@ -257,10 +264,7 @@ def test_every_isolated_request_gets_a_salt_no_one_else_has() -> None:
 
 # --- steering, whose failure is a wrong answer rather than a short tensor -----
 
-
-class _Spec:
-    def is_empty(self) -> bool:
-        return False
+_STEER = SteeringSpec.at("resid_post.0", AddSpec(vector=[1.0], scale=1.0))
 
 
 def test_generate_steered_is_isolated_when_it_steers(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -273,7 +277,7 @@ def test_generate_steered_is_isolated_when_it_steers(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr("interp_engine.steer_specs.steering_spec_to_worker_specs", lambda spec: [])
 
     async def scenario(model: Any, engine: _FakeEngine) -> None:
-        await model.generate_steered(PROMPT, steering_spec=_Spec(), sampling_params=None)
+        await model.generate_steered(PROMPT, steering_spec=_STEER, sampling_params=None)
 
     assert _drive(scenario).salts()[0] is not None
 
@@ -345,7 +349,7 @@ def test_a_global_lens_also_opens_a_window() -> None:
     ``clear_steering`` closes it -- which is easy to overlook from the name."""
 
     async def scenario(model: Any, engine: _FakeEngine) -> None:
-        await model.set_lens_intervention([{"layer": 1}], False, [], 0)
+        await model.set_lens_intervention([{"layer": 1, "op": "ablate", "delta": [0.0, 1.0]}], False, [], 0)
         await model.generate_full(PROMPT, max_tokens=4)
         await model.clear_steering()
         await model.generate_full(PROMPT, max_tokens=4)
@@ -353,6 +357,29 @@ def test_a_global_lens_also_opens_a_window() -> None:
     during, after = _drive(scenario).salts()
     assert during is not None
     assert after is None
+
+
+def test_an_embeds_request_takes_the_global_salt() -> None:
+    """Embeds prompts (LoRA reads, NLA) share the cache too, so a window must cover them as well."""
+
+    async def embeds(model: Any, engine: _FakeEngine) -> None:
+        model.enable_prompt_embeds = True
+        model._engine_loop = None
+        engine.model_config = types.SimpleNamespace(dtype=torch.float32)
+        engine.generate = lambda prompt, *a, **k: engine.generate_nothing(prompt)
+        rows = torch.zeros(len(PROMPT), WIDTH)
+        async for _ in model.generate_steps_from_embeds(rows, max_tokens=2):
+            pass
+        await model.set_steering([])
+        async for _ in model.generate_steps_from_embeds(rows, max_tokens=2):
+            pass
+        await model.clear_steering()
+        async for _ in model.generate_steps_from_embeds(rows, max_tokens=2):
+            pass
+
+    before, during, after = _drive(embeds).salts()
+    assert before is None and after is None
+    assert during is not None
 
 
 def test_a_per_request_salt_wins_over_the_global_one() -> None:
@@ -410,3 +437,117 @@ def test_capture_reports_an_empty_result_instead_of_returning_it() -> None:
 
     with pytest.raises(RuntimeError, match="returned nothing"):
         _drive(scenario)
+
+
+# Deprecated shims, kept for one minor release so older callers still run.
+
+_LEGACY_LENS = {
+    "specs": [
+        {"op": "steer", "layer": 3, "delta": [1.0] + [0.0] * (WIDTH - 1), "strength": 0.5, "max_fraction": 0.25},
+        {"op": "ablate", "layer": 3, "delta": [0.0, 1.0] + [0.0] * (WIDTH - 2)},
+        {"op": "swap", "layer": 5, "delta": [0.0, 0.0, 1.0] + [0.0] * (WIDTH - 3), "tgt": [1.0] + [0.0] * (WIDTH - 1)},
+    ],
+    "steer_generated": True,
+    "skip_positions": [0],
+    "prompt_len": len(PROMPT),
+}
+
+
+def test_a_legacy_lens_dict_becomes_the_same_steering() -> None:
+    from interp_engine.steer_specs import AblateSpec, NormScaledAddSpec, SwapSpec
+    from interp_engine.vllm_backend import _legacy_lens_steering
+
+    with pytest.warns(DeprecationWarning, match="lens_intervention"):
+        steering = _legacy_lens_steering(_LEGACY_LENS, None, "capture_generation")
+    assert steering.position_mask == [0] and steering.generated is True
+    (spec,) = steering.specs
+    assert spec.point == "resid_post" and spec.stream is None
+    add, ablate = spec.layers[3].operations
+    assert isinstance(add, NormScaledAddSpec) and add.strength == 0.5 and add.max_fraction == 0.25
+    assert isinstance(ablate, AblateSpec)
+    assert isinstance(spec.layers[5].operations[0], SwapSpec)
+
+
+def test_a_legacy_lens_dict_steers_the_prompt_only_by_default() -> None:
+    from interp_engine.vllm_backend import _legacy_lens_steering
+
+    lens = {"specs": _LEGACY_LENS["specs"][:1]}
+    with pytest.warns(DeprecationWarning):
+        steering = _legacy_lens_steering(lens, None, "capture_generation")
+    assert steering.generated is False and steering.position_mask is None
+
+
+def test_no_legacy_lens_dict_means_no_warning() -> None:
+    import warnings
+
+    from interp_engine.vllm_backend import _legacy_lens_steering
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert _legacy_lens_steering(None, None, "capture_generation") is None
+        assert _legacy_lens_steering({"specs": []}, None, "capture_generation") is None
+
+
+def test_a_legacy_lens_dict_and_a_steering_spec_are_refused_together() -> None:
+    from interp_engine.vllm_backend import _legacy_lens_steering
+
+    with pytest.warns(DeprecationWarning), pytest.raises(ValueError, match="not both"):
+        _legacy_lens_steering(_LEGACY_LENS, _STEER, "capture_generation")
+
+
+async def _drain(stream: Any) -> None:
+    async for _ in stream:
+        pass
+
+
+class _Registered(Exception):
+    """Stops a request once its steering is registered: what is registered is the whole question."""
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda m: m.capture_generation(PROMPT, [POINT], max_tokens=2, lens_intervention=_LEGACY_LENS),
+        lambda m: _drain(m.capture_generation_stream(PROMPT, [POINT], max_tokens=2, lens_intervention=_LEGACY_LENS)),
+        lambda m: _drain(
+            m.lens_capture_readout_stream(
+                PROMPT, [POINT], [{"layers": [3], "jacobian": False}], top_n=1, lens_intervention=_LEGACY_LENS
+            )
+        ),
+    ],
+    ids=["capture_generation", "capture_generation_stream", "lens_capture_readout_stream"],
+)
+def test_a_legacy_lens_dict_reaches_the_request(call: Callable[[Any], Awaitable[Any]]) -> None:
+    seen: list[Any] = []
+
+    async def scenario(model: Any, engine: _FakeEngine) -> None:
+        async def register(rid: str, steering: Any, prompt: Any, *, what: str) -> Any:
+            seen.append(steering)
+            raise _Registered
+
+        model._register_write = register
+        with pytest.warns(DeprecationWarning), pytest.raises(_Registered):
+            await call(model)
+
+    _drive(scenario)
+    (steering,) = seen
+    assert steering.position_mask == [0] and steering.generated is True
+    assert sorted(steering.specs[0].layers) == [3, 5]
+
+
+def test_the_deprecated_generate_from_embeds_still_generates() -> None:
+    outs: list[Any] = []
+
+    async def scenario(model: Any, engine: _FakeEngine) -> None:
+        model.enable_prompt_embeds = True
+        engine.model_config = types.SimpleNamespace(dtype=torch.float32)
+        rows = torch.zeros(len(PROMPT), WIDTH, dtype=torch.float64)
+        with pytest.warns(DeprecationWarning, match="generate_steps_from_embeds"):
+            outs.append(await model.generate_from_embeds(rows, None))
+        with pytest.warns(DeprecationWarning):
+            stream = await model.generate_from_embeds(rows, None, stream=True)
+        outs.extend([out async for out in stream])
+
+    engine = _drive(scenario)
+    assert [o.outputs[0].text for o in outs] == ["hi", "hi"]
+    assert all(p["prompt_embeds"].dtype == torch.float32 for p in engine.prompts)

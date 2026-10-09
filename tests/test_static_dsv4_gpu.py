@@ -4,7 +4,7 @@ CPU tests wrap a fake mHC kernel. This file boots the real checkpoint, runs the 
 self-test, and holds static harvest to cosine ≥ 0.999 against hooked ``resid_streams``.
 
 Two engines cannot share the process. Hooked first, then static. Marked ``xl``: 146 GiB
-weights. Skips when the shard index is not already in the HF cache.
+weights. Skips when they are not in the HF cache, or do not fit on one GPU.
 """
 
 from __future__ import annotations
@@ -41,11 +41,30 @@ def _weights_cached(hf_id: str) -> bool:
     return isinstance(path, str) and os.path.isfile(path)
 
 
+def _weights_fit_one_gpu(hf_id: str) -> bool:
+    """Whether the checkpoint's weights fit on the largest GPU here; both loads use one GPU."""
+    import json
+
+    from huggingface_hub import try_to_load_from_cache
+
+    path = try_to_load_from_cache(hf_id, "model.safetensors.index.json")
+    if not isinstance(path, str) or not torch.cuda.is_available():
+        return False
+    with open(path) as f:
+        weights = int(json.load(f)["metadata"]["total_size"])
+    largest = max(torch.cuda.get_device_properties(i).total_memory for i in range(torch.cuda.device_count()))
+    return weights < largest
+
+
 pytestmark = [
     pytest.mark.gpu,
     pytest.mark.xl,
     pytest.mark.skipif(not torch.cuda.is_available(), reason="the vLLM backend initializes on CUDA"),
     pytest.mark.skipif(not _weights_cached(DSV4), reason=f"{DSV4} weights are not in the HF cache"),
+    pytest.mark.skipif(
+        _weights_cached(DSV4) and not _weights_fit_one_gpu(DSV4),
+        reason=f"{DSV4} weights are larger than the largest GPU here",
+    ),
 ]
 
 

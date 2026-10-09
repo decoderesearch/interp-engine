@@ -747,11 +747,11 @@ name = "fastapi"
 version = "0.136.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "annotated-doc", marker = "sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32'" },
-    { name = "pydantic", marker = "sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32'" },
-    { name = "starlette", marker = "sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32'" },
-    { name = "typing-extensions", marker = "sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32'" },
-    { name = "typing-inspection", marker = "sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "annotated-doc" },
+    { name = "pydantic" },
+    { name = "starlette" },
+    { name = "typing-extensions" },
+    { name = "typing-inspection" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/81/2d/ff8d91d7b564d464629a0fd50a4489c97fcb836ac230bf3a7269232a9b1f/fastapi-0.136.3.tar.gz", hash = "sha256:e487fae93ad408e6f47641ee4dfe389864fd7bec92e547ea8498fc13f43e83ab", size = 396410, upload-time = "2026-05-23T18:53:15.192Z" }
 wheels = [
@@ -1370,6 +1370,7 @@ name = "interp-engine"
 version = "1.12.1"
 source = { editable = "." }
 dependencies = [
+    { name = "accelerate" },
     { name = "einops" },
     { name = "numpy" },
     { name = "torch", version = "2.11.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin' or sys_platform == 'emscripten' or sys_platform == 'win32'" },
@@ -1395,16 +1396,24 @@ quant = [
     { name = "accelerate" },
     { name = "kernels" },
 ]
+server = [
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "uvicorn" },
+]
 vllm = [
     { name = "vllm", marker = "sys_platform == 'linux'" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "accelerate", specifier = ">=1.0" },
     { name = "accelerate", marker = "extra == 'awq'", specifier = ">=1.0" },
     { name = "accelerate", marker = "extra == 'quant'", specifier = ">=1.0" },
     { name = "einops" },
+    { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.115" },
     { name = "gptqmodel", marker = "extra == 'awq'", specifier = ">=5.0" },
+    { name = "httpx", marker = "extra == 'server'", specifier = ">=0.27" },
     { name = "kernels", marker = "extra == 'quant'", specifier = ">=0.15.2,<0.17.0" },
     { name = "numpy", specifier = ">=1.24" },
     { name = "pyright", marker = "extra == 'dev'", specifier = ">=1.1.411,<1.2" },
@@ -1414,9 +1423,10 @@ requires-dist = [
     { name = "torch", specifier = ">=1.10" },
     { name = "transformer-lens", marker = "extra == 'parity'", specifier = ">=3.0,<4" },
     { name = "transformers", specifier = ">=4.57.1" },
+    { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.30" },
     { name = "vllm", marker = "sys_platform == 'linux' and extra == 'vllm'", specifier = "==0.28.0" },
 ]
-provides-extras = ["dev", "vllm", "quant", "awq", "parity"]
+provides-extras = ["dev", "vllm", "quant", "awq", "parity", "server"]
 
 [[package]]
 name = "jaxtyping"
@@ -3825,8 +3835,8 @@ name = "starlette"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "anyio", marker = "sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32'" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "anyio" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/eb/e3/7c1dc7381d9f8ab7d854328ebfa884e62cb3f3d8549ddfd37c7814f42afa/starlette-1.3.1.tar.gz", hash = "sha256:05d0213193f2fbaae60e2ecb593b4add4262ad4e46536b54abe36f11a71724e0", size = 2703240, upload-time = "2026-06-12T09:23:11.602Z" }
 wheels = [
@@ -4314,8 +4324,8 @@ name = "uvicorn"
 version = "0.52.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "click", marker = "sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32'" },
-    { name = "h11", marker = "sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "click" },
+    { name = "h11" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/05/c8/2d307868453a4bca6e64fa3581d122ae0748a0869c53f159339def179c7c/uvicorn-0.52.0.tar.gz", hash = "sha256:ca8876ad6c1983f394157c168b39d52f6dd56dabf5602fa0982751cffc2293ae", size = 97504, upload-time = "2026-07-29T08:45:34.065Z" }
 wheels = [

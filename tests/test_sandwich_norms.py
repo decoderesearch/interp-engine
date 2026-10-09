@@ -33,7 +33,7 @@ import pytest
 import torch
 from harness import GEMMA_IT, GPT2, QWEN_THINKING, ModelSpec, load_model, require_hf_token
 
-from interp_engine import run_with_cache
+from interp_engine import capture
 from interp_engine.capture import AddressLike
 from interp_engine.facts import post_sublayer_norm_attrs, pre_mlp_norm_attr
 
@@ -57,7 +57,7 @@ def _load(spec: ModelSpec):
 
 def _capture(model, points: Sequence[AddressLike], layer: int = 0):
     ids = model.tokenizer(PROMPT, add_special_tokens=False, return_tensors="pt")["input_ids"].to(model.device)
-    return run_with_cache(model, ids, points)
+    return capture(model, ids, points)
 
 
 # --- detection, on fake blocks ----------------------------------------------

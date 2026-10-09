@@ -17,7 +17,7 @@ import pytest
 import torch
 from harness import GEMMA_IT, load_model
 
-from interp_engine import EagerModel, run_with_cache
+from interp_engine import EagerModel, capture
 
 pytestmark = pytest.mark.gated
 
@@ -39,7 +39,7 @@ def test_hook_z_width_is_not_d_model(gqa_model: EagerModel):
 
     ids = gqa_model.tokenizer("The capital of France is", return_tensors="pt")["input_ids"]
     seq = ids.shape[1]
-    cache = run_with_cache(gqa_model, ids, [("z", LAYER), ("attn_out", LAYER)])
+    cache = capture(gqa_model, ids, [("z", LAYER), ("attn_out", LAYER)])
     z = cache.get("z", LAYER)
     assert z.shape == (1, seq, z_width)
 

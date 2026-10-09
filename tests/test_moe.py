@@ -30,7 +30,7 @@ import torch
 from harness import GPT2, load_model
 from synthetic_families import moe_gemma4_on_meta, shrunk_gpt_oss, shrunk_granite_moe
 
-from interp_engine import expert_assignment, facts, moe_routing, run_with_cache
+from interp_engine import capture, expert_assignment, facts, moe_routing
 from interp_engine.facts import (
     ModelFacts,
     is_moe_layer,
@@ -299,7 +299,7 @@ def test_the_routing_points_are_captured_and_reshaped_to_batch_and_position(monk
     """
     model = _sparse_model(monkeypatch)
     ids = model.tokenizer("The capital of France is Paris", return_tensors="pt")["input_ids"]
-    cache = run_with_cache(model, ids, [("router_logits", 0), ("expert_weights", 0), ("expert_indices", 0)])
+    cache = capture(model, ids, [("router_logits", 0), ("expert_weights", 0), ("expert_indices", 0)])
     seq = ids.shape[-1]
     assert cache.get("router_logits", 0).shape == (1, seq, N_EXPERTS)
     assert cache.get("expert_weights", 0).shape == (1, seq, TOP_K)
@@ -324,7 +324,7 @@ def test_a_family_that_returns_its_router_output_backwards_is_read_backwards():
 def test_the_backwards_family_captures_logits_as_wide_as_its_expert_bank():
     model = shrunk_granite_moe()
     ids = torch.arange(7).unsqueeze(0) % 128
-    cache = run_with_cache(model, ids, [("router_logits", 0), ("expert_weights", 0), ("expert_indices", 0)])
+    cache = capture(model, ids, [("router_logits", 0), ("expert_weights", 0), ("expert_indices", 0)])
     seq, experts, top_k = ids.shape[-1], model.config.num_local_experts, model.config.num_experts_per_tok
     assert cache.get("router_logits", 0).shape == (1, seq, experts)
     assert cache.get("expert_weights", 0).shape == (1, seq, top_k)
@@ -346,9 +346,9 @@ def test_an_unregistered_order_is_caught_at_capture_rather_than_served(monkeypat
     monkeypatch.delitem(facts.ROUTER_OUTPUTS, "GraniteMoeForCausalLM")
     ids = torch.arange(7).unsqueeze(0) % 128
     with pytest.raises(ValueError, match="'router_logits' is 2 wide against 8 experts"):
-        run_with_cache(model, ids, [("router_logits", 0)])
+        capture(model, ids, [("router_logits", 0)])
     with pytest.raises(ValueError, match="'expert_indices' is torch.float32"):
-        run_with_cache(model, ids, [("expert_indices", 0)])
+        capture(model, ids, [("expert_indices", 0)])
 
 
 def test_the_weights_are_the_ones_the_router_applied_not_a_recomputed_top_k(monkeypatch):
@@ -359,7 +359,7 @@ def test_the_weights_are_the_ones_the_router_applied_not_a_recomputed_top_k(monk
     """
     model = _sparse_model(monkeypatch)
     ids = model.tokenizer("The capital of France is Paris", return_tensors="pt")["input_ids"]
-    cache = run_with_cache(model, ids, [("router_logits", 0), ("expert_weights", 0), ("expert_indices", 0)])
+    cache = capture(model, ids, [("router_logits", 0), ("expert_weights", 0), ("expert_indices", 0)])
     weights = cache.get("expert_weights", 0)
     torch.testing.assert_close(weights.sum(-1), torch.ones_like(weights[..., 0]), rtol=1e-6, atol=1e-6)
     naive = torch.softmax(cache.get("router_logits", 0), dim=-1).gather(-1, cache.get("expert_indices", 0))
@@ -371,7 +371,7 @@ def test_the_dense_form_scatters_the_weights_back_onto_the_expert_axis(monkeypat
     the router's own column 0 is a different expert per token."""
     model = _sparse_model(monkeypatch)
     ids = model.tokenizer("The capital of France is Paris", return_tensors="pt")["input_ids"]
-    cache = run_with_cache(model, ids, [("expert_weights", 0), ("expert_indices", 0)])
+    cache = capture(model, ids, [("expert_weights", 0), ("expert_indices", 0)])
     dense = expert_assignment(cache, 0, n_experts=N_EXPERTS)
     assert dense.shape == (1, ids.shape[-1], N_EXPERTS)
     assert (dense > 0).sum(-1).unique().tolist() == [TOP_K]
@@ -468,7 +468,7 @@ def test_a_family_with_no_verified_convention_is_not_guessed_at(monkeypatch):
     assert facts.routing_convention(model.arch.architecture) is None
     assert model.derived_routing("expert_weights", 0) is None
     with pytest.raises(ValueError, match="fused MoE kernel"):
-        run_with_cache(model, model.tokenizer("hi", return_tensors="pt")["input_ids"], [("expert_weights", 0)])
+        capture(model, model.tokenizer("hi", return_tensors="pt")["input_ids"], [("expert_weights", 0)])
 
 
 def test_a_block_whose_router_runs_is_read_not_rebuilt(monkeypatch):
@@ -502,7 +502,7 @@ def test_the_two_halves_are_rebuilt_from_the_logits_the_block_routed_on(monkeypa
     model = _fused_gpt_oss(monkeypatch)
     ids = _ids(model)
 
-    cache = run_with_cache(model, ids, [("expert_weights", 0), ("expert_indices", 0), ("router_logits", 0)])
+    cache = capture(model, ids, [("expert_weights", 0), ("expert_indices", 0), ("router_logits", 0)])
 
     top_k, n_experts_here = 2, 8  # `_GPT_OSS_SHRUNK`
     seq = ids.shape[-1]
@@ -527,7 +527,7 @@ def test_the_logits_it_borrowed_are_not_left_in_the_cache(monkeypatch):
     rebuild, and an extra key nobody requested is the kind of surprise that ends up load-bearing."""
     model = _fused_gpt_oss(monkeypatch)
 
-    cache = run_with_cache(model, _ids(model), [("expert_indices", 0)])
+    cache = capture(model, _ids(model), [("expert_indices", 0)])
 
     assert [str(key) for key in cache.tensors] == ["expert_indices.0"]
 
@@ -537,7 +537,7 @@ def test_a_caller_who_wanted_the_logits_too_still_gets_them(monkeypatch):
     drop the request."""
     model = _fused_gpt_oss(monkeypatch)
 
-    cache = run_with_cache(model, _ids(model), [("expert_indices", 0), ("router_logits", 0)])
+    cache = capture(model, _ids(model), [("expert_indices", 0), ("router_logits", 0)])
 
     assert cache.get("router_logits", 0).shape[-1] == 8
     assert cache.get("expert_indices", 0).shape[-1] == 2
@@ -550,7 +550,7 @@ def test_a_config_with_no_top_k_refuses_rather_than_selecting_no_experts(monkeyp
     monkeypatch.setattr(model.config, "num_experts_per_tok", 0)
 
     with pytest.raises(ValueError, match="without the top-k"):
-        run_with_cache(model, _ids(model), [("expert_weights", 0)])
+        capture(model, _ids(model), [("expert_weights", 0)])
 
 
 def test_the_rebuild_is_per_layer_like_every_other_point(monkeypatch):
@@ -558,7 +558,7 @@ def test_the_rebuild_is_per_layer_like_every_other_point(monkeypatch):
     agree on shape and dtype and be wrong about every token."""
     model = _fused_gpt_oss(monkeypatch)
 
-    cache = run_with_cache(model, _ids(model), [("expert_indices", 0), ("expert_indices", 1)])
+    cache = capture(model, _ids(model), [("expert_indices", 0), ("expert_indices", 1)])
 
     assert not torch.equal(cache.get("expert_indices", 0), cache.get("expert_indices", 1))
 

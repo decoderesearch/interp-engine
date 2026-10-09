@@ -16,6 +16,7 @@ from interp_engine.address import (
     parse_address,
     to_address,
 )
+from interp_engine.api import EngineAPI
 from interp_engine.arch import (
     ArchSpec,
     Quirks,
@@ -34,6 +35,7 @@ from interp_engine.autograd_support import (
 from interp_engine.capture import (
     Cache,
     attn_out_gate,
+    capture,
     capture_attention,
     capture_generation,
     expert_assignment,
@@ -87,7 +89,7 @@ from interp_engine.mappers import (
     tlens_normalized_hook,
 )
 from interp_engine.model import EagerModel, HubKernelUnsupported, deepgemm_fallback_kwargs
-from interp_engine.protocol import Completion, InterpModel, Point
+from interp_engine.protocol import Completion, EmbedsSample, InterpModel, Point
 from interp_engine.residual_basis import (
     RESIDUAL_POINTS,
     STREAM_REDUCTIONS,
@@ -118,6 +120,7 @@ from interp_engine.steer import (
     generate_stream,
     projection_cap_delta,
     resolve_masked_positions,
+    sample_from_embeds,
     steer,
     steer_delta,
     steering_spec_to_eager_specs,
@@ -125,15 +128,20 @@ from interp_engine.steer import (
     unit_vector,
 )
 from interp_engine.steer_specs import (
+    AblateSpec,
     AddSpec,
     LayerSteeringSpec,
+    NormScaledAddSpec,
     OrthogonalDecompSpec,
     ProjectionCapSpec,
+    Steering,
     SteeringOp,
     SteeringSpec,
     SteerMethod,
+    SwapSpec,
     steer_method,
     steering_spec_to_worker_specs,
+    steering_specs,
 )
 from interp_engine.sync import SyncModel, sync_model
 from interp_engine.tokenize import (
@@ -177,6 +185,14 @@ try:
 except PackageNotFoundError:  # pragma: no cover -- source checkout, not installed
     __version__ = "0.0.0.dev0"
 
+
+class MLXModel:
+    """Not API. Kept so that older ``isinstance`` checks still import; they are always False."""
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        raise NotImplementedError("MLXModel is not available in interp-engine.")
+
+
 # Grouped by what you reach for, since alphabetical order buries the entry points among the
 # helpers. Anything not listed here is reachable from its own module but is not API: it can
 # change without a major version.
@@ -192,7 +208,10 @@ __all__ = [
     "vllm_installed",
     # The models, and the surface they share.
     "Completion",
+    "EmbedsSample",
     "EagerModel",
+    # The part of that surface every backend shares, generated from api/engine.yaml.
+    "EngineAPI",
     "HubKernelUnsupported",
     "deepgemm_fallback_kwargs",
     "InterpModel",
@@ -228,6 +247,7 @@ __all__ = [
     "Cache",
     "UnmappedHook",
     "attn_out_gate",
+    "capture",
     "capture_attention",
     "capture_generation",
     "expert_assignment",
@@ -261,8 +281,10 @@ __all__ = [
     "vllm_residual_basis",
     # Steering. Every method's arithmetic is one delta function, shared with the vLLM worker.
     "STEER_METHODS",
+    "AblateSpec",
     "AddSpec",
     "LayerSteeringSpec",
+    "NormScaledAddSpec",
     "OrthogonalDecompSpec",
     "OrthogonalProjector",
     "PositionMask",
@@ -271,6 +293,8 @@ __all__ = [
     "SteerMethod",
     "SteerSpec",
     "SteeringOp",
+    "SwapSpec",
+    "Steering",
     "SteeringSpec",
     "projection_cap_delta",
     "resolve_masked_positions",
@@ -279,10 +303,12 @@ __all__ = [
     "steer_method",
     "steering_spec_to_eager_specs",
     "steering_spec_to_worker_specs",
+    "steering_specs",
     "unit_vector",
     # Generation (sync, eager).
     "GenStep",
     "generate_stream",
+    "sample_from_embeds",
     "top_logprobs",
     # Lens read-out.
     "apply_final_logit_softcap",

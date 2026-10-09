@@ -54,16 +54,16 @@ with steer(model, spec):
         print(step.token_str, end="")
 ```
 
-To make `scale` mean "this many times the vector's own norm", normalize and fold the norm in:
+The vector is used as given, so the length added is `scale * ‖vector‖`. With `normalize=True`, the
+vector is made unit length when the op is made, so `scale` is the length added. A zero vector is then
+refused:
 
 ```python
-import torch
-
-from interp_engine import AddSpec, unit_vector
-
-vector = torch.randn(4096)
-op = AddSpec(vector=unit_vector(vector), scale=vector.norm().item() * 2.0)
+op = AddSpec(vector=vector, scale=4.0, normalize=True)
 ```
+
+`NormScaledAddSpec` takes `normalize` too. The other ops use only the direction, so they need no
+`normalize`.
 
 ## Orthogonal decomposition
 
@@ -265,3 +265,29 @@ layers = {10: LayerSteeringSpec(operations=[op])}
 collapse = SteeringSpec(layers=layers, point="attn_stream_collapse")
 one_stream = SteeringSpec(layers=layers, point="resid_streams", stream=2)
 ```
+
+## At several points
+
+A spec names one point. To steer several points, give a list of specs to `steer()` or
+`steering_spec=`. `SteeringSpec.at` makes a spec from an address:
+
+```python
+import torch
+
+from interp_engine import AddSpec, ProjectionCapSpec, SteeringSpec, generate_stream, load_model, steer
+
+model = load_model("Qwen/Qwen3-8B")
+specs = [
+    SteeringSpec.at("resid_post.10", AddSpec(vector=torch.randn(model.d_model), scale=4.0)),
+    SteeringSpec.at("mlp_out.12", ProjectionCapSpec(vector=torch.randn(model.d_model), max=2.0)),
+]
+
+tokens = model.to_tokens("The capital of France is")
+with steer(model, specs):
+    for step in generate_stream(model, tokens, max_tokens=32, temperature=0.0):
+        print(step.token_str, end="")
+```
+
+The ops apply in list order. Two ops at the same site compose: each reads what the one before it
+wrote. Each op checks its vector when it is made. It refuses inf or nan, and it refuses a zero vector
+if the op uses only the direction or normalizes it.

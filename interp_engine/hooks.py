@@ -54,7 +54,7 @@ def flat_per_head(tensor: torch.Tensor, *, heads: int) -> tuple[torch.Tensor, to
     The module `value` resolves to is a *norm* wherever the family has one, and a norm over `head_dim`
     has to be given the per-head view: Gemma-4 runs `v_norm` on `v_proj(h).view(..., n_kv, head_dim)`
     and vLLM runs the same norm on `v.unflatten(-1, (n_kv, head_dim))`. So the point arrives per head
-    on one family and flat on the next, while `Width.HEADS` and `run_with_cache` both promise one
+    on one family and flat on the next, while `Width.HEADS` and `capture` both promise one
     rank -- and TransformerLens' `hook_v` is the per-head spelling of this point, which is a
     distinction the mapping table would lose if ours moved family to family.
 

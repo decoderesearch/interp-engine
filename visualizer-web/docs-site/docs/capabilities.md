@@ -65,14 +65,14 @@ Nothing degrades silently. Unsupported work raises `CapabilityUnsupported`, nami
 capability, why this backend cannot serve it, and what to call instead.
 
 ```python
-from interp_engine import CAPABILITIES, CapabilityUnsupported, load_model, run_with_cache
+from interp_engine import CAPABILITIES, CapabilityUnsupported, capture, load_model
 
 for name, capability in CAPABILITIES.items():
     print(name, capability.why, capability.instead)
 
 model = load_model("Qwen/Qwen3-8B", backend="vllm")
 try:
-    run_with_cache(model, model.to_tokens("Hi"), ["mlp_act.5"])
+    capture(model, model.to_tokens("Hi"), ["mlp_act.5"])
 except CapabilityUnsupported as exc:
     print(exc)
 ```

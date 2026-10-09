@@ -16,8 +16,10 @@ engine's own failure, which the table has to name rather than hide behind ``ref`
 
 from __future__ import annotations
 
+import ast
 import json
 import os
+import pathlib
 import subprocess
 import sys
 import types
@@ -88,6 +90,7 @@ from comparison.spec import (  # noqa: E402
     descendants,
     dump_key,
     engine_gap,
+    engine_label,
     layers_for,
     layers_for_point,
     points_for_streams,
@@ -243,6 +246,45 @@ def test_the_tight_tier_is_unchanged_because_its_atol_already_refuses_a_scale_er
     m = _metrics(tiny, tiny * 4.0)
     assert m["rel_diff"] > 0.5
     assert _status("raw_hf", m) == "PASS"
+
+
+def test_every_registered_engine_is_registered_everywhere():
+    """A column is one name in five tables, and nothing else checks that they agree.
+
+    Each omission fails somewhere different and none of them fails here: no adapter module is a
+    KeyError at capture time, and a missing version row degrades quietly to a cell that records no
+    stack -- which is the worse of the two, because the run looks complete. So the registries are
+    compared to `ALL_ENGINES` directly.
+    """
+    from comparison.engine_versions import ENGINE_PACKAGES, PRIMARY_PACKAGE
+    from comparison.run_engine import _ENGINE_MODULE
+
+    for engine in ALL_ENGINES:
+        assert engine in _ENGINE_MODULE, f"{engine} has no adapter module"
+        assert engine in ENGINE_PACKAGES, f"{engine} records no version stack"
+        assert engine in PRIMARY_PACKAGE, f"{engine} has no primary package for its column header"
+        assert PRIMARY_PACKAGE[engine] in ENGINE_PACKAGES[engine], (
+            f"{engine}'s primary package is not among the ones it records"
+        )
+    assert set(_ENGINE_MODULE) <= set(ALL_ENGINES), "an adapter exists for a name run_engine will not take"
+
+
+def test_every_engine_adapter_module_exists_and_exposes_capture():
+    """Imported by path rather than executed, so this costs no model and no backend.
+
+    `run_engine` resolves the module lazily at capture time, which is right -- importing every
+    adapter would need every backend installed -- and is also why a typo in the path survives until
+    a sweep reaches that column.
+    """
+    import importlib.util
+
+    from comparison.run_engine import _ENGINE_MODULE
+
+    for engine, module in _ENGINE_MODULE.items():
+        spec = importlib.util.find_spec(module)
+        assert spec is not None, f"{engine} names a module that does not exist: {module}"
+        source = pathlib.Path(spec.origin).read_text()
+        assert "def capture(" in source, f"{module} exposes no capture()"
 
 
 def test_a_waiver_about_direction_does_not_excuse_a_magnitude_error():
@@ -1096,6 +1138,33 @@ def test_a_partial_capture_records_which_points_are_missing(stub_capture, tmp_pa
     )
 
 
+def test_every_adapter_accepts_what_run_one_passes():
+    """`run_one` calls each adapter's `capture` with one keyword set; an adapter missing one of those
+    parameters fails every cell in its column with a `TypeError`, after the weights have loaded.
+
+    Read off the source rather than the adapters' imports: every adapter imports its backend lazily,
+    so the modules load here, and the call site is parsed so the keyword set is not restated by hand.
+    """
+    import importlib
+    import inspect
+
+    source = pathlib.Path(run_engine.__file__).read_text(encoding="utf-8")
+    calls = [
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "capture"
+    ]
+    assert len(calls) == 1, "expected the one `module.capture(...)` call in run_one"
+    passed = {kw.arg for kw in calls[0].keywords}
+    assert "num_gpus" in passed
+
+    for engine, module_name in run_engine._ENGINE_MODULE.items():
+        params = inspect.signature(importlib.import_module(module_name).capture).parameters
+        if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
+            continue
+        assert passed <= set(params), f"{engine}: capture() lacks {sorted(passed - set(params))}"
+
+
 # --- a cell is a claim about a version, so it has to say which one -----------
 #
 # Every engine-bug write-up needs "which build was this?", and the gemma-2 softcap one needed the
@@ -1428,7 +1497,10 @@ def test_a_column_with_no_recorded_version_is_just_the_engine_name(tmp_path):
     readme.write_text(f"{START}\n{END}\n")
     update_readme(str(readme), {"models": {}}, str(results_dir), write_details=False)
 
-    assert "| model | interp-engine eager | interp-engine vllm | interp-engine vllm-static |" in readme.read_text()
+    # Built from `REPORTED_ENGINES` rather than spelled out, so this test is about the *version*
+    # being absent from a header and stops failing whenever the column order is rearranged.
+    header = "| model | " + " | ".join(engine_label(e) for e in REPORTED_ENGINES) + " |"
+    assert header in readme.read_text()
     assert column_release("sglang", {"org/a-model": {"sglang": {"versions": {}}}}) == {}
 
 

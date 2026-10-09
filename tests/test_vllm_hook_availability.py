@@ -30,6 +30,7 @@ from typing import Any
 import pytest
 
 from interp_engine.address import Address
+from interp_engine.steer_specs import AddSpec, SteeringSpec
 from interp_engine.vllm_backend import VLLMModel
 
 PROMPT = [1, 2, 3, 4]
@@ -164,7 +165,7 @@ class TestEveryHookDependentEntryPointRefuses:
     def test_steered_generation_refuses(self):
         # generate_steered is gated on the request rather than the instance, because the same method
         # serves plain generation.
-        spec = _Spec(empty=False)
+        spec = _spec(empty=False)
         with pytest.raises(RuntimeError, match="replays CUDA graphs"):
             _run(_model(enforce_eager=False).generate_steered(PROMPT, _Sampling(), steering_spec=spec))
 
@@ -184,7 +185,7 @@ class TestWhatMustKeepWorking:
         """
         model = _model(enforce_eager=False)
         with pytest.raises(AssertionError, match="reached the engine"):
-            _run(model.generate_steered(PROMPT, _Sampling(), steering_spec=_Spec(empty=True)))
+            _run(model.generate_steered(PROMPT, _Sampling(), steering_spec=_spec(empty=True)))
 
     def test_clearing_steering_is_not_gated(self):
         """Teardown must be callable unconditionally, or a ``finally`` block becomes the error."""
@@ -268,14 +269,9 @@ class TestStaticTapsSplitTheGate:
             VLLMModel.configure_static(model, POINTS)
 
 
-class _Spec:
-    """The two things ``generate_steered`` asks a steering spec."""
-
-    def __init__(self, *, empty: bool) -> None:
-        self._empty = empty
-
-    def is_empty(self) -> bool:
-        return self._empty
+def _spec(*, empty: bool) -> SteeringSpec:
+    """A steering spec with one op, or none."""
+    return SteeringSpec() if empty else SteeringSpec.at("resid_post.0", AddSpec(vector=[1.0], scale=1.0))
 
 
 class _Sampling:

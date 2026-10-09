@@ -8,9 +8,9 @@
  * clipboard: `NotebookButton` writes it, and the template's last cell is where it goes.
  *
  * Three templates. Two of them differ only in the install — `interp-engine[vllm]`,
- * which is a multi-gigabyte CUDA wheel, against plain `interp-engine`, which is not —
- * and `vllm async` maps to the vLLM one, since it is a method on a vLLM model and needs
- * the same extra as the free function does. `vllm static` gets its own rather than
+ * which is a multi-gigabyte CUDA wheel, against plain `interp-engine`, which is not.
+ * A tab's two forms share one template, since the awaited method needs the same
+ * extra as the free function does. `vllm static` gets its own rather than
  * sharing the vLLM template because what a reader needs before pasting is different
  * there and not smaller: its taps are fixed at load, so the snippet names the point
  * twice and a second point means reloading, and it wants more of the card than the
@@ -35,10 +35,9 @@ const COLAB_GITHUB = "https://colab.research.google.com/github";
 const TEMPLATE_DIR = "decoderesearch/interp-engine/blob/main/notebooks";
 
 const TEMPLATE: Record<Variant, string> = {
-  vllm: "interp_engine_vllm.ipynb",
-  "vllm-async": "interp_engine_vllm.ipynb",
-  "vllm-static": "interp_engine_vllm_static.ipynb",
   eager: "interp_engine_eager.ipynb",
+  vllm: "interp_engine_vllm.ipynb",
+  "vllm-static": "interp_engine_vllm_static.ipynb",
 };
 
 /** The Colab URL for the template that installs what `variant` needs. */

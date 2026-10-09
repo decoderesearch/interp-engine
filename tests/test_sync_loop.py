@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import threading
 from collections.abc import AsyncIterator, Iterator
+from contextvars import ContextVar
 
 import pytest
 
@@ -86,6 +87,40 @@ def test_breaking_out_of_iterate_closes_the_generator(runner: LoopRunner) -> Non
         if item == 2:
             break
     assert closed == ["finally ran"]
+
+
+_SEEN: ContextVar[str | None] = ContextVar("test_sync_loop_seen", default=None)
+
+
+async def _read_var() -> str | None:
+    await asyncio.sleep(0)
+    return _SEEN.get()
+
+
+async def _read_var_each_step(n: int) -> AsyncIterator[str | None]:
+    for _ in range(n):
+        await asyncio.sleep(0)
+        yield _SEEN.get()
+
+
+def test_run_sees_the_callers_context_variables(runner: LoopRunner) -> None:
+    """A ``ContextVar`` set by the caller is what the coroutine reads on the loop thread. This is
+    how an open ``steer()`` block reaches a served backend's method through the sync facade."""
+    assert runner.run(_read_var()) is None
+    token = _SEEN.set("inside")
+    try:
+        assert runner.run(_read_var()) == "inside"
+    finally:
+        _SEEN.reset(token)
+    assert runner.run(_read_var()) is None, "and the copy does not outlive the call"
+
+
+def test_iterate_sees_the_callers_context_on_every_step(runner: LoopRunner) -> None:
+    token = _SEEN.set("inside")
+    try:
+        assert list(runner.iterate(_read_var_each_step(3))) == ["inside"] * 3
+    finally:
+        _SEEN.reset(token)
 
 
 def test_close_is_idempotent_and_needs_no_start() -> None:

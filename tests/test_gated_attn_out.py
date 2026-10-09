@@ -32,7 +32,7 @@ import pytest
 import torch
 from harness import GPT2, QWEN_THINKING, ModelSpec, load_model, require_hf_token
 
-from interp_engine import attn_out_gate, run_with_cache
+from interp_engine import attn_out_gate, capture
 from interp_engine.facts import has_gated_attn_out
 
 PROMPT = "The capital of France is Paris."
@@ -115,7 +115,7 @@ def test_the_gate_is_exactly_what_reconciles_probs_at_value_with_z():
     layer = _softmax_layer(model)
     ids = model.tokenizer(PROMPT, add_special_tokens=False, return_tensors="pt")["input_ids"].to(model.device)
     points = [("z", layer), ("value", layer), ("attn_probs", layer), ("attn_gate", layer)]
-    cache = run_with_cache(model, ids, points)
+    cache = capture(model, ids, points)
 
     z = cache.get("z", layer)
     probs = cache.get("attn_probs", layer)
@@ -138,7 +138,7 @@ def test_the_gate_is_a_per_head_second_half_not_a_flat_one():
     model = _load(GATED)
     layer = _softmax_layer(model)
     ids = model.tokenizer(PROMPT, add_special_tokens=False, return_tensors="pt")["input_ids"].to(model.device)
-    cache = run_with_cache(model, ids, [("attn_gate", layer)])
+    cache = capture(model, ids, [("attn_gate", layer)])
     raw = cache.get("attn_gate", layer)
 
     correct = attn_out_gate(model, cache, layer)
@@ -150,7 +150,7 @@ def test_the_gate_is_a_per_head_second_half_not_a_flat_one():
 def test_the_gate_is_a_probability_per_element():
     model = _load(GATED)
     layer = _softmax_layer(model)
-    cache = run_with_cache(
+    cache = capture(
         model,
         model.tokenizer(PROMPT, add_special_tokens=False, return_tensors="pt")["input_ids"].to(model.device),
         [("attn_gate", layer)],
@@ -172,6 +172,6 @@ def test_an_ungated_model_refuses_to_produce_a_gate():
 
 def test_reading_a_gate_off_an_ungated_model_refuses_too():
     model = _load(GPT2)
-    cache = run_with_cache(model, torch.tensor([[1, 2, 3]]), [("z", 0)])
+    cache = capture(model, torch.tensor([[1, 2, 3]]), [("z", 0)])
     with pytest.raises(ValueError, match="does not gate"):
         attn_out_gate(model, cache, 0)

@@ -22,10 +22,10 @@ body:
       label: Code that reproduces it
       render: python
       placeholder: |
-        from interp_engine import Address, load_model, run_with_cache
+        from interp_engine import Address, capture, load_model
 
         model = load_model("Qwen/Qwen3-8B")
-        cache = run_with_cache(model, model.to_tokens("Hello, world"), [Address("resid_post", 10)])
+        cache = capture(model, model.to_tokens("Hello, world"), [Address("resid_post", 10)])
     validations:
       required: true
 

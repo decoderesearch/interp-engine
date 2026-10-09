@@ -65,13 +65,13 @@ Two methods, and the difference matters.
 token. This is what pooling activations per turn needs:
 
 ```python
-from interp_engine import load_model, run_with_cache
+from interp_engine import capture, load_model
 
 model = load_model("google/gemma-2-2b-it", backend="eager")
 messages = [{"role": "user", "content": "Hi"}, {"role": "assistant", "content": "Hello"}]
 
 token_ids, spans = model.tok.message_partition(messages)
-cache = run_with_cache(model, model.tok.to_tokens(token_ids), ["resid_post.10"])
+cache = capture(model, model.tok.to_tokens(token_ids), ["resid_post.10"])
 acts = cache.get("resid_post", 10)[0]
 per_turn = [acts[start:end].mean(0) for start, end in spans]
 ```

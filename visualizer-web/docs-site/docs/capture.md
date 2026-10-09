@@ -6,42 +6,43 @@ sidebar_position: 5
 
 # Capture
 
-`run_with_cache` is the same call on both backends. Switching backend is the `backend=`
-argument and nothing else.
+`capture` is the same call on both backends. Switching backend is the `backend=`
+argument and nothing else. `run_with_cache` is an alias of `capture`, with the same
+signature and the same `Cache`, for code that came from TransformerLens.
 
 ## One point
 
 ```python
-from interp_engine import Address, load_model, run_with_cache
+from interp_engine import Address, capture, load_model
 
 model = load_model("Qwen/Qwen3-8B")
 point = Address("resid_post", 10)
 
-cache = run_with_cache(model, model.to_tokens("The capital of France is"), [point])
+cache = capture(model, model.to_tokens("The capital of France is"), [point])
 cache[point]  # [batch, pos, d_model]
 ```
 
 ## Several points
 
 ```python
-from interp_engine import load_model, run_with_cache
+from interp_engine import capture, load_model
 
 model = load_model("Qwen/Qwen3-8B")
 tokens = model.to_tokens("The capital of France is")
 
-cache = run_with_cache(model, tokens, ["resid_post.10", "mlp_out.10", "attn_out.10"])
+cache = capture(model, tokens, ["resid_post.10", "mlp_out.10", "attn_out.10"])
 cache.get("mlp_out", 10)
 ```
 
 ## Every layer
 
 ```python
-from interp_engine import Address, load_model, run_with_cache
+from interp_engine import Address, capture, load_model
 
 model = load_model("Qwen/Qwen3-8B")
 points = [Address("resid_post", layer) for layer in range(model.n_layers)]
 
-cache = run_with_cache(model, model.to_tokens("Hello"), points)
+cache = capture(model, model.to_tokens("Hello"), points)
 ```
 
 ## Naming a point
@@ -81,12 +82,12 @@ One row short of the total: the final sampled token is never fed back through th
 Eager only. vLLM takes one prompt per call, at its true length.
 
 ```python
-from interp_engine import load_model, run_with_cache
+from interp_engine import capture, load_model
 
 model = load_model("google/gemma-2-2b-it", backend="eager")
 tokens = model.tok.to_tokens(["Paris is in", "Berlin is in"])
 
-cache = run_with_cache(model, tokens, ["resid_post.10"])
+cache = capture(model, tokens, ["resid_post.10"])
 cache.get("resid_post", 10)  # [2, pos, d_model]
 ```
 
@@ -96,10 +97,10 @@ cache.get("resid_post", 10)  # [2, pos, d_model]
 inside a fused kernel vLLM never unfolds.
 
 ```python
-from interp_engine import expert_assignment, load_model, run_with_cache
+from interp_engine import capture, expert_assignment, load_model
 
 model = load_model("Qwen/Qwen3-30B-A3B", backend="eager")
-cache = run_with_cache(
+cache = capture(
     model,
     model.to_tokens("Hello"),
     ["router_logits.10", "expert_weights.10", "expert_indices.10"],
@@ -112,10 +113,10 @@ dense = expert_assignment(cache, 10, n_experts=128)  # [batch, pos, n_experts]
 `n_heads` times the size of `z`, so it is a helper rather than a point.
 
 ```python
-from interp_engine import head_contributions, load_model, run_with_cache
+from interp_engine import capture, head_contributions, load_model
 
 model = load_model("google/gemma-2-2b-it", backend="eager")
-cache = run_with_cache(model, model.to_tokens("Hello"), ["z.10"])
+cache = capture(model, model.to_tokens("Hello"), ["z.10"])
 head_contributions(model, cache, 10)  # [batch, pos, n_heads, d_model]
 ```
 
@@ -124,9 +125,9 @@ head_contributions(model, cache, 10)  # [batch, pos, n_heads, d_model]
 Eager only, and the model has to be loaded for it.
 
 ```python
-from interp_engine import load_model, run_with_cache
+from interp_engine import capture, load_model
 
 model = load_model("google/gemma-2-2b-it", backend="eager", requires_grad=True)
-cache = run_with_cache(model, model.to_tokens("Hello"), ["resid_post.10"], detach=False)
+cache = capture(model, model.to_tokens("Hello"), ["resid_post.10"], detach=False)
 cache.get("resid_post", 10).sum().backward()
 ```

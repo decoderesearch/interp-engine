@@ -20,12 +20,12 @@ pip install interp-engine          # eager backend only
 ## Read one activation
 
 ```python
-from interp_engine import Address, load_model, run_with_cache
+from interp_engine import Address, capture, load_model
 
 model = load_model("Qwen/Qwen3-8B")
 point = Address("resid_post", 10)
 
-cache = run_with_cache(model, model.to_tokens("Hello, world"), [point])
+cache = capture(model, model.to_tokens("Hello, world"), [point])
 cache[point]  # [batch, pos, d_model]
 ```
 

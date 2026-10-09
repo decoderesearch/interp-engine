@@ -164,3 +164,27 @@ def test_a_published_row_is_never_half_a_row(cells: list[dict]) -> None:
             assert all(per_variant[variant][regime] is not None for regime, _, _ in publish.REGIMES)
         static = [per_variant["vllm-static"][regime] for regime, _, _ in publish.REGIMES]
         assert all(f is None for f in static) or all(f is not None for f in static)
+
+
+def _quantized(cell: dict, key: str) -> dict:
+    """The same cell on a 4-bit checkpoint."""
+    return {
+        **cell,
+        "model": {**cell["model"], "key": key},
+        "load": {**cell["load"], "quantization": "affine 4-bit, group 64"},
+    }
+
+
+def test_each_row_names_what_its_weights_ran_in(cells: list[dict]) -> None:
+    """The conditions line holds one dtype; a 4-bit row under a line that says bf16 is mislabeled."""
+    labels = publish.weights([*cells, _quantized(cells[0], "some-model-4bit")])
+    assert labels["some-model-4bit"] == "4-bit"
+    assert labels["deepseek-v4-flash-0731"] == "fp8", "stated by its spec: its cells record bfloat16 compute"
+    assert labels["gemma-2-2b"] == "bf16"
+    assert "bf16" not in str(publish.conditions(cells))
+
+
+def test_a_row_whose_cells_ran_different_weights_is_refused(cells: list[dict]) -> None:
+    gemma = next(c for c in cells if c["model"]["key"] == "gemma-2-2b")
+    with pytest.raises(SystemExit, match="gemma-2-2b's weights"):
+        publish.weights([*cells, _quantized(gemma, "gemma-2-2b")])

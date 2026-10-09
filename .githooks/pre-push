@@ -95,10 +95,11 @@ if have uv; then
   # The samples site is in the path list because engine-tests.yml excludes `**/*.md` and never
   # sees it, so a push that edits only that page is checked here or nowhere. The other direction
   # -- a point added to points.py while the docs stay put -- is covered by `\.py$` and by CI.
-  if touches '\.py$|^docs/|^benchmarks/|^README\.md$|^pyproject\.toml$|^uv\.lock$|^visualizer-web/data/|^visualizer-web/docs-site/docs/'; then
-    gate "engine: packaging, published tables, vocabulary boundary, doc fences, point tables" . \
+  if touches '\.py$|^api/|^docs/|^benchmarks/|^README\.md$|^pyproject\.toml$|^uv\.lock$|^visualizer-web/data/|^visualizer-web/docs-site/docs/'; then
+    gate "engine: packaging, API contract, published tables, vocabulary boundary, doc fences, point tables" . \
       uv run --quiet pytest -q --no-header \
       tests/test_packaging.py \
+      tests/test_api_generated.py \
       tests/test_published_benchmarks.py \
       tests/test_vocabulary_boundary.py \
       tests/test_doc_code_fences.py \

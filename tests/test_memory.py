@@ -472,6 +472,29 @@ def test_quantizing_at_load_costs_a_fixed_charge_inside_the_pool():
     assert refused.term("quant_on_load") is None
 
 
+def test_a_drafter_on_vllm_comes_out_of_the_cache_inside_the_pool():
+    """vLLM loads the drafter with the model, before it sizes the cache: the pool is the same, the cache
+    is smaller by exactly the drafter's share of it, and TP shards it with the target."""
+    model = facts()
+    spec = mem.WorkloadSpec(backend="vllm", dtype="bfloat16", max_model_len=8192)
+    plain = mem.estimate(model, A40, spec)
+    drafted = mem.estimate(model, A40, mem.WorkloadSpec(**{**vars(spec), "drafter_bytes": 2 * GIB}))
+    term = drafted.term("drafter")
+    assert term is not None and term.side == "pool" and term.bytes == 2 * GIB
+    assert plain.term("drafter") is None
+    per_token = plain.term("kv_cache_floor").bytes / 8192
+    assert plain.kv_capacity_tokens - drafted.kv_capacity_tokens == pytest.approx(2 * GIB / per_token, abs=1)
+    sharded = mem.estimate(model, A40, mem.WorkloadSpec(**{**vars(spec), "drafter_bytes": 2 * GIB, "num_gpus": 2}))
+    assert sharded.term("drafter").bytes == GIB
+
+
+def test_a_drafter_where_none_runs_is_warned_about_and_not_priced():
+    spec = mem.WorkloadSpec(backend="eager", dtype="bfloat16", seq_len=1024, drafter_bytes=GIB)
+    est = mem.estimate(facts(), A40, spec)
+    assert est.term("drafter") is None
+    assert any("runs no speculative drafter" in warning for warning in est.warnings)
+
+
 def test_the_snippet_arguments_for_precision_are_in_the_spec():
     """What the sizer prints has to be what it priced: both knobs ride on the spec."""
     spec = mem.WorkloadSpec(backend="vllm", dtype="bfloat16", quantization="fp8", kv_cache_dtype="fp8")

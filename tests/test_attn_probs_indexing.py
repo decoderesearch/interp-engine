@@ -17,7 +17,7 @@ import pytest
 import torch
 from harness import GPT2, QWEN_THINKING, load_model, parity_required
 
-from interp_engine import run_with_cache
+from interp_engine import capture
 
 PROMPT = "cat dog cat dog cat"
 
@@ -52,7 +52,7 @@ def test_hybrid_layers_map_to_their_own_attention():
     model = load_model(QWEN_THINKING, device="cpu", attn_implementation="eager", required=parity_required())
     raw = _raw_attentions(model)
     layers = model.arch.softmax_attention_layers()
-    cache = run_with_cache(model, _ids(model), [("attn_probs", layer) for layer in layers])
+    cache = capture(model, _ids(model), [("attn_probs", layer) for layer in layers])
     for position, layer in enumerate(layers):
         captured = cache.get("attn_probs", layer)
         assert torch.equal(captured, raw[position]), f"layer {layer} returned the wrong attention"
@@ -68,7 +68,7 @@ def test_linear_attention_layers_refuse_rather_than_substitute(layer: int):
     model = load_model(QWEN_THINKING, device="cpu", attn_implementation="eager", required=parity_required())
     assert model.arch.is_linear_attention_layer(layer)
     with pytest.raises(ValueError, match="linear-attention layer"):
-        run_with_cache(model, _ids(model), [("attn_probs", layer)])
+        capture(model, _ids(model), [("attn_probs", layer)])
 
 
 def test_an_impossible_layer_is_refused_without_running_the_forward():
@@ -84,7 +84,7 @@ def test_an_impossible_layer_is_refused_without_running_the_forward():
     handle = model.arch.decoder_layers[0].register_forward_hook(lambda *_: fired.append(True))
     try:
         with pytest.raises(ValueError, match="linear-attention layer"):
-            run_with_cache(model, _ids(model), [("attn_probs", linear)])
+            capture(model, _ids(model), [("attn_probs", linear)])
     finally:
         handle.remove()
     assert not fired, "the forward ran before the request was refused"
@@ -97,5 +97,5 @@ def test_plain_trunk_is_still_indexed_by_layer():
     assert len(raw) == model.n_layers
     for layer in range(model.n_layers):
         assert model.arch.attn_probs_index(layer) == layer
-        captured = run_with_cache(model, _ids(model), [("attn_probs", layer)]).get("attn_probs", layer)
+        captured = capture(model, _ids(model), [("attn_probs", layer)]).get("attn_probs", layer)
         assert torch.equal(captured, raw[layer])

@@ -7,6 +7,7 @@ If you are a human reading this: [USAGE.md](USAGE.md) is the friendlier introduc
 [PORTING.md](PORTING.md) covers hook-name translation in more depth.
 
 - [Version stamp](#version-stamp)
+- [`capture` and `run_with_cache`](#capture-and-run_with_cache)
 - [What changed in 1.3](#what-changed-in-13)
 - [What changed in 1.1](#what-changed-in-11)
 - [Pick a tier first](#pick-a-tier-first)
@@ -35,6 +36,18 @@ a minor version when keeping it would mean one of the two backends could not be 
 1.1.0 and 1.3.0 both did exactly that — see [What changed in 1.3](#what-changed-in-13) and
 [What changed in 1.1](#what-changed-in-11) — and pinning `interp-engine~=1.3` is the way to not be
 surprised by the next one.
+
+## `capture` and `run_with_cache`
+
+The sync single-forward capture is `capture(model, tokens, points)`. `run_with_cache` is an alias
+with the same signature and the same `Cache`, kept for code and habits that came from
+TransformerLens; nothing is deprecated and nothing raises. New code should say `capture`.
+
+Two other things share the word. `await model.capture(...)` is the async *method* on the protocol:
+one prompt, a plain dict keyed by `Address`, no batch axis. `interp_engine.capture` is the
+*submodule* that holds `Cache` and the capture helpers; `from interp_engine.capture import Cache`
+works as before, but after `import interp_engine` the attribute `interp_engine.capture` is the
+function.
 
 ## What changed in 1.3
 
@@ -86,7 +99,7 @@ edits and gains one capability.
 | `OrthogonalProjector(...).get_P()` / `.get_orthogonal_complement()` | `.delta(acts)` / `.project(acts)` | The projection matrix was `d_model × d_model` materialized per call; the same arithmetic is one dot product. |
 | `run_with_cache(model, ..., **forward_kwargs)` | *(gone)* | Passthrough kwargs were unreachable on vLLM, so a call using them silently meant something different per backend. |
 
-What is new, rather than moved: `run_with_cache`, `capture_generation`, `capture_attention`,
+What is new, rather than moved: `capture` (then still spelled `run_with_cache`), `capture_generation`, `capture_attention`,
 `generate_stream`, `capture_residuals`, `layer_logits` and `steer` all take either backend now, and
 `sync_model(model)` gives you the whole protocol without `await`. `ProjectionCapSpec` works on eager
 (it used to raise `NotImplementedError`), so all three steering specs run on both backends.
@@ -145,8 +158,8 @@ Keyed on the pattern you find in the source you are porting.
 | `LLM(model=id)` + you own that engine | `worker_extension_cls=WORKER_EXTENSION_CLS` | Tier 1. Merge `capture_engine_kwargs()`. |
 | `LLM(model=id)` + you do not care how | `load_model(id)` | Tier 2. |
 | `HookedTransformer.from_pretrained(id)` | `EagerModel.from_pretrained(id)` | Then translate hook names — next row. |
-| `model.run_with_cache(...)["blocks.7.attn.hook_z"]` | `run_with_cache(model, tokens, [tlens_hook_to_point("blocks.7.attn.hook_z", model)])` | **Pass the model.** See the warning below. |
-| nnsight `with model.trace(...)` / `mlps_output[7]` | `nnsight_accessor_to_point("mlps_output[7]")` | Then `run_with_cache` or `await model.capture(...)`. |
+| `model.run_with_cache(...)["blocks.7.attn.hook_z"]` | `capture(model, tokens, [tlens_hook_to_point("blocks.7.attn.hook_z", model)])` | **Pass the model.** See the warning below. |
+| nnsight `with model.trace(...)` / `mlps_output[7]` | `nnsight_accessor_to_point("mlps_output[7]")` | Then `capture(model, ...)` or `await model.capture(...)`. |
 | `model.unembed(model.ln_final(x))` | `await model.decode_residuals(x)` | The method normalizes softcapping across backends; the sync free function does not. |
 | a hand-rolled `for _ in range(n): model(...)` decode loop | `generate_stream(model, tokens)` | Yields a `GenStep` per token with logprobs, and logits on eager (rule 12). |
 | `asyncio.run(model.capture(...))` in a script, once per call | `sync = sync_model(model)`, then `sync.capture(...)` | One background loop for the model's lifetime, instead of a new one per call — which on vLLM would abandon the engine's tasks. |
@@ -205,7 +218,7 @@ an obvious one.
 
 1. **Every model *method* is `async`,** including on eager where the work underneath is synchronous.
    `model.capture(...)` without `await` gives you a coroutine, not activations. The sync free
-   functions (`run_with_cache`, `capture_generation`, `capture_attention`, `generate_stream`,
+   functions (`capture`, `capture_generation`, `capture_attention`, `generate_stream`,
    `steer`, `layer_logits`) take either backend, and `sync_model(model)` mirrors the whole protocol
    for the times you want a method. Neither can be called from inside a running event loop — they
    refuse, naming the `await` to use instead, rather than deadlocking. The mirror image also
@@ -239,9 +252,9 @@ an obvious one.
 7. **`await model.shutdown()` before loading a second model in the same process on vLLM.** Its KV
    cache lives in a child process that dropping a Python reference does not reap. Idempotent, so
    there is no cost to calling it always.
-8. **`capture()` returns a plain dict keyed by `Address`, not by string.** You may ask with a string
+8. **`await model.capture()` returns a plain dict keyed by `Address`, not by string.** You may ask with a string
    or a `(name, layer)` tuple, but on the way back out use `to_address("resid_post.10")` as the key.
-   (`run_with_cache`'s `Cache` is the exception and accepts either.)
+   (The free function `capture(model, ...)` returns a `Cache`, which accepts either.)
 9. **Do not apply `final_logit_softcapping` after `await model.decode_residuals(...)`.** The method
    applies the model's configured value so the two backends are comparable. The sync free function
    `interp_engine.decode_residuals` is the raw one and takes `softcap` explicitly.
@@ -289,9 +302,9 @@ mistake you made.
 
 ## When you are not sure, ask the model
 
-Capabilities are queryable, cheap, and answerable **before** `warmup()` — they read configuration
-rather than running a forward. Gate on these rather than on backend name or model id, because that is
-what keeps one code path working across both backends:
+Capabilities are queryable and cheap: they read configuration rather than running a forward, and the
+model-wide ones below are answerable **before** `warmup()`. Gate on these rather than on backend name
+or model id, because that is what keeps one code path working across both backends:
 
 ```python
 from interp_engine import load_model
@@ -303,6 +316,28 @@ model.residual_basis.n_streams       # how many residual streams this trunk carr
 model.residual_basis.lens_valid      # is a logit-lens read-out meaningful here?
 model.n_layers, model.d_model        # remember z is n_heads * head_dim, not d_model
 ```
+
+For one point rather than the whole model, ask `refuses()`. It returns the reason as a string, or
+`None` when the point is servable, so a caller filtering a list gets to say which gap it hit rather
+than logging "unavailable":
+
+```python
+for point in ("resid_post", "router_logits", "q_norm_out"):
+    why = model.refuses(point, 12)
+    print(point, "ok" if why is None else f"skipped: {why}")
+```
+
+**Do not rebuild this from the point tables in these docs.** `SUPPORTED_POINTS.md` and
+`ENGINE_HOOK_MAPPINGS.md` say what a *point* is, per backend; `refuses()` also knows what this
+*checkpoint* carries and how this instance was built, which no table can. A serving pod that derived
+its advertised set from a table instead shipped a 400 for attention-output SAEs that blamed the
+paged-attention kernel, and a second one that narrowed by tensor-parallel shard width refused points
+the worker gathers. Both read as maintained lists right up until they were wrong.
+
+The one caveat is the order on vLLM: the architecture half of the answer lives in the worker
+process, so it arrives at `warmup()`. Before that, vLLM's `refuses()` answers from the point table
+and how the engine was built, which can say yes to a point the checkpoint has no module for. Warm up
+before advertising. Eager holds its own module tree and needs no warmup.
 
 For a coarse "which surface do I have", `isinstance(model, InterpModel)` works —
 but note it checks method *presence* only, not signatures:

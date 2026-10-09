@@ -451,7 +451,8 @@ def _row_for(
 
 def _table_header(columns: dict[str, dict]) -> list[str]:
     """Heading row + separator. Each engine's heading carries the version its column was captured at,
-    linking to that exact commit — the table claims agreement with *a* vLLM, not with vLLM in general."""
+    linking to that exact commit — the table claims agreement at *a* build, not in general. Which package
+    that version is, and why every interp-engine column reports the engine, is in `PRIMARY_PACKAGE`."""
     headings = []
     for engine in REPORTED_ENGINES:
         release = columns.get(engine) or {}
@@ -520,8 +521,10 @@ _FOOTNOTE = (
     "relative and absolute diff, the versions (and commits) of the stack that produced it, the commands "
     "to reproduce that one cell, and any tolerance waiver that applied (`spec.TOLERANCE_WAIVERS` — for "
     "checkpoints whose own bf16 arithmetic explains a difference, which is measured before it is waived). "
-    "A column's heading carries the version most of its cells ran at; a cell captured against a different "
-    "one says so under its date. `unsupported` means that engine's loader declines the checkpoint (the "
+    "A column's heading carries the version most of its cells ran at — interp-engine's for every "
+    "interp-engine column, the vLLM ones included, since the engine is what those columns test; "
+    "the backend version is in the cell. A cell captured against a different version says so under its "
+    "date. `unsupported` means that engine's loader declines the checkpoint (the "
     "reasons are in [docs/COMPARISON.md](docs/COMPARISON.md)), `no ref` that it captured cleanly but "
     f"`{REFERENCE}` did not, so there is nothing to score it against until that one cell is rerun, and "
     "`—` that the pair has never run. "
