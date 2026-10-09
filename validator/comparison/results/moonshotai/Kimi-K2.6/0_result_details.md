@@ -9,14 +9,14 @@ Generated from the `<engine>.json` files beside this one, which hold the same nu
 | engine | verdict | capture | dtype | version | agreed | differs | failed | not compared |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | [interp-engine eager](eager.json) *(reference)* | ref* | ok | bfloat16 | v1.8.0 | — | — | — | — |
-| [interp-engine vllm](vllm.json) | ✅ | ok | bfloat16 | v0.29.0 | 35 | 0 | 0 | 7 |
-| [interp-engine vllm-static](vllm-static.json) | ✅ | ok | bfloat16 | v0.29.0 | 33 | 0 | 0 | 7 |
+| [interp-engine vllm](vllm.json) | ✅ | ok | bfloat16 | v1.8.0 | 35 | 0 | 0 | 7 |
+| [interp-engine vllm-static](vllm-static.json) | ✅ | ok | bfloat16 | v1.8.0 | 33 | 0 | 0 | 7 |
 
 ### Point by point
 
 ✅ agrees · ⚠️ differs in value · ❌ structurally wrong, or the engine did not deliver it · 🐞 differs because the reference is wrong here, with an issue filed against it (`ref🐞` marks the reference's own column) · `ref` the reference produced this point (nothing scores it — it *is* the baseline) · `n/a` this engine declines the point · `no ref` the reference declined it · `—` no comparison here — the point is not asked of this engine, or it is listed under *Not compared* · † a waiver carried the pass (listed below)
 
-| point<br>layer | interp-engine eager<br>[v1.8.0](eager.json) | interp-engine vllm<br>[v0.29.0](vllm.json) | interp-engine vllm-static<br>[v0.29.0](vllm-static.json) |
+| point<br>layer | interp-engine eager<br>[v1.8.0](eager.json) | interp-engine vllm<br>[v1.8.0](vllm.json) | interp-engine vllm-static<br>[v1.8.0](vllm-static.json) |
 | --- | --- | --- | --- |
 | `resid_post`<br>layer 0 | ref | ✅ | ✅ |
 | `resid_post`<br>layer 30 | ref | ✅ | ✅ |

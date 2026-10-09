@@ -488,7 +488,7 @@ def tlens_normalized_hook(hook_name: str) -> Address | None:
 
         address = tlens_normalized_hook("blocks.19.ln2.hook_normalized")
         if address is not None:
-            cache = run_with_cache(model, tokens, [address])
+            cache = capture(model, tokens, [address])
             normalized = pre_gain_normalized(cache[address], eps)
 
     Returns None for every other hook name, including a post-sublayer norm's ``hook_normalized``, so

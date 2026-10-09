@@ -229,6 +229,94 @@ def test_generation_capture_covers_the_prompt_and_the_generated_tokens(loop, vll
     assert rows == len(tokens) + 4 - 1, "expected prompt + generated - 1 rows"
 
 
+def test_the_two_backends_generate_the_same_greedy_text(loop, vllm_model, tokens: list[int]) -> None:
+    """One prompt, one greedy continuation, whichever backend decoded it -- special tokens included,
+    which is where the two used to differ: eager decodes every id and vLLM's detokenizer dropped them.
+    The eager model is built and dropped here, as ``eager_captures`` does, so the card holds one copy."""
+    from interp_engine import load_model
+
+    from_vllm = loop.run_until_complete(vllm_model.generate_text(tokens, max_tokens=8, temperature=0.0))
+    eager = load_model(MODEL, backend="eager", dtype="float32", device="cuda")
+    from_eager = loop.run_until_complete(eager.generate_text(tokens, max_tokens=8, temperature=0.0))
+    del eager
+    torch.cuda.empty_cache()
+    assert from_vllm == from_eager
+
+
+def test_a_steer_block_around_generation_steers_the_request(loop, vllm_model, tokens: list[int]) -> None:
+    """``with steer(model, spec)`` reaches ``generate_text`` and ``generate_stream`` here, as the
+    protocol says it does on every backend. Nothing is installed on the engine: the text after the
+    block is the plain text again, and so is a concurrent request from outside it."""
+    from interp_engine import AddSpec, LayerSteeringSpec, SteeringSpec, steer
+
+    vector = torch.randn(vllm_model.d_model, generator=torch.Generator().manual_seed(0))
+    spec = SteeringSpec(layers={6: LayerSteeringSpec(operations=[AddSpec(vector=vector, scale=40.0)])})
+
+    async def stream() -> str:
+        return "".join([d async for d in vllm_model.generate_stream(tokens, max_tokens=6, temperature=0.0)])
+
+    plain = loop.run_until_complete(vllm_model.generate_text(tokens, max_tokens=6, temperature=0.0))
+    with steer(vllm_model, spec):
+        steered = loop.run_until_complete(vllm_model.generate_text(tokens, max_tokens=6, temperature=0.0))
+        streamed = loop.run_until_complete(stream())
+    after = loop.run_until_complete(vllm_model.generate_text(tokens, max_tokens=6, temperature=0.0))
+    assert steered != plain
+    assert streamed == steered
+    assert after == plain
+
+
+@pytest.mark.parametrize("generated", [True, False])
+def test_a_scoped_block_around_a_generation_capture_lands_where_eager_lands_it(
+    loop, vllm_model, tokens: list[int], generated: bool
+) -> None:
+    """``steer(..., position_mask=[0], generated=...)`` around ``capture_generation`` is honoured
+    here: the masked prompt row is unwritten, the other prompt rows are written, and the generated
+    rows are written exactly when ``generated`` says so. The rows are compared to eager's under the
+    same block, which is the lens's intervention on both backends -- a norm-scaled add, an ablation
+    and a swap, one per layer. The stream and the fused read-out register through the same call.
+    """
+    from interp_engine import AblateSpec, LayerSteeringSpec, NormScaledAddSpec, SteeringSpec, SwapSpec, load_model
+
+    gen = torch.Generator().manual_seed(1)
+    d = vllm_model.d_model
+    vector, other = torch.randn(d, generator=gen), torch.randn(d, generator=gen)
+    spec = SteeringSpec(
+        layers={
+            3: LayerSteeringSpec(operations=[NormScaledAddSpec(vector=vector, strength=4.0, max_fraction=1.0)]),
+            6: LayerSteeringSpec(operations=[AblateSpec(vector=vector)]),
+            9: LayerSteeringSpec(operations=[SwapSpec(vector=vector, target=other)]),
+        }
+    )
+    points = [Address("resid_post", layer) for layer in (3, 6, 9)]
+
+    def rows(model) -> tuple[list[int], dict[Address, torch.Tensor]]:
+        from interp_engine import steer
+
+        with steer(model, spec, prompt_token_ids=tokens, position_mask=[0], generated=generated):
+            completion, caps = loop.run_until_complete(
+                model.capture_generation(tokens, points, max_tokens=4, temperature=0.0)
+            )
+        return [int(t) for t in completion.token_ids], {a: t.float().cpu() for a, t in caps.items()}
+
+    plain = {a: t.float().cpu() for a, t in loop.run_until_complete(vllm_model.capture(tokens, points)).items()}
+    vllm_ids, from_vllm = rows(vllm_model)
+    eager = load_model(MODEL, backend="eager", dtype="float32", device="cuda")
+    eager_ids, from_eager = rows(eager)
+    del eager
+    torch.cuda.empty_cache()
+
+    assert vllm_ids == eager_ids
+    for a in points:
+        got, want = from_vllm[a], from_eager[a]
+        assert got.shape == want.shape
+        rel = (got - want).norm(dim=-1) / want.norm(dim=-1).clamp_min(1e-6)
+        assert rel.max() < 2e-2, f"{a}: per-row relative error {rel.tolist()}"
+    # The scope, read off vLLM's rows alone: BOS unwritten, the rest of the prompt written.
+    first = from_vllm[points[0]]
+    torch.testing.assert_close(first[0], plain[points[0]][0], atol=1e-3, rtol=1e-3)
+    assert not torch.allclose(first[1 : len(tokens)], plain[points[0]][1:], atol=1e-3, rtol=1e-3)
+
+
 @pytest.mark.parametrize("max_tokens", [3, 5])
 def test_the_streams_report_every_sampled_id_however_far_the_engine_ran_ahead(
     loop, vllm_model, tokens: list[int], max_tokens: int
@@ -420,3 +508,38 @@ def test_attention_recompute_round_trips_its_own_payload_keys(loop, vllm_model, 
         assert probs.shape[-2:] == (len(tokens), len(tokens)), f"layer {layer}: {probs.shape}"
         rows = probs.sum(-1)
         assert torch.allclose(rows, torch.ones_like(rows), atol=1e-3), "attention rows must be a distribution"
+
+
+def test_the_verdict_matches_a_live_capture(loop, vllm_model, tokens: list[int]) -> None:
+    """``refuses()`` against a real engine: the live half of ``tests/test_point_capability.py``.
+
+    The client half of the verdict cannot see the module tree, so on its own it promised gpt2's
+    QK-norm and its router, and the caller found out from a worker exception. That is why
+    ``_probe_resolvable`` exists, and an agreement against a real checkpoint is the only thing that
+    catches its absence -- the weight-free tests pass either way, because what was missing was
+    knowledge no client-side table holds. The fixture is warmed, which is the documented order:
+    before warmup the verdict answers the two questions a client can answer alone.
+    """
+    from interp_engine.points import Scope, known_names, point_spec
+
+    disagreed: list[str] = []
+    for name in sorted(known_names()):
+        spec = point_spec(name, vllm_model.residual_basis.n_streams)
+        if spec is None:
+            continue
+        address = Address(name, 0) if spec.scope is Scope.LAYER else Address(name)
+        reason = vllm_model.refuses(address)
+        try:
+            if name in ("attn_probs", "attn_scores"):
+                loop.run_until_complete(vllm_model.capture_attention(tokens, [0]))
+            else:
+                loop.run_until_complete(vllm_model.capture(tokens, [address]))
+        except Exception as exc:  # noqa: BLE001 - any failure is a "cannot serve"
+            captured, failure = False, str(exc)
+        else:
+            captured, failure = True, ""
+        if captured and reason is not None:
+            disagreed.append(f"{address}: refused but captured -- {reason}")
+        elif not captured and reason is None:
+            disagreed.append(f"{address}: promised but raised -- {failure}")
+    assert not disagreed, "refuses() and the vLLM capture path disagree:\n" + "\n".join(disagreed)

@@ -1,0 +1,8 @@
+name: CodeQL config
+
+# The default query suite, less the rules below.
+query-filters:
+  # The server sends an exception's type and message (not its traceback) to the client on
+  # purpose: the engine's refusals explain the cause in that text.
+  - exclude:
+      id: py/stack-trace-exposure

@@ -14,7 +14,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from interp_engine import Address, run_with_cache
+from interp_engine import Address, capture
 from interp_engine.capture import Cache
 
 LAYER = 3
@@ -22,7 +22,7 @@ LAYER = 3
 
 @pytest.fixture(scope="module")
 def cache(gpt2):
-    return run_with_cache(gpt2, gpt2.to_tokens("The quick brown fox"), [Address("resid_post", LAYER)])
+    return capture(gpt2, gpt2.to_tokens("The quick brown fox"), [Address("resid_post", LAYER)])
 
 
 # --- one tensor, three ways to ask for it -------------------------------------
@@ -35,7 +35,7 @@ def test_the_three_request_shapes_reach_the_same_tensor(gpt2) -> None:
     string survives because it is what a URL, a log line and the vLLM wire carry.
     """
     tokens = gpt2.to_tokens("The quick brown fox")
-    cache = run_with_cache(gpt2, tokens, [("resid_post", LAYER), "mlp_out.1", Address("z", 0)])
+    cache = capture(gpt2, tokens, [("resid_post", LAYER), "mlp_out.1", Address("z", 0)])
 
     assert torch.equal(cache[Address("resid_post", LAYER)], cache["resid_post.3"])
     assert torch.equal(cache[("resid_post", LAYER)], cache.get("resid_post", LAYER))
@@ -46,7 +46,7 @@ def test_the_three_request_shapes_reach_the_same_tensor(gpt2) -> None:
 
 def test_a_global_point_is_still_named_by_a_bare_string(gpt2) -> None:
     """``cache["embeddings"]`` has to keep working: a bare name IS a complete address."""
-    cache = run_with_cache(gpt2, gpt2.to_tokens("hi"), ["embeddings"])
+    cache = capture(gpt2, gpt2.to_tokens("hi"), ["embeddings"])
     assert torch.equal(cache["embeddings"], cache.get("embeddings"))
     assert cache["embeddings"] is cache[Address("embeddings")]
 
@@ -60,7 +60,7 @@ def test_a_request_carries_every_coordinate_rather_than_the_first_two(gpt2) -> N
     stream, so asking for a second one has to fail rather than quietly return the only one.
     """
     with pytest.raises(ValueError, match="single residual stream"):
-        run_with_cache(gpt2, gpt2.to_tokens("hi"), [Address("resid_post", LAYER, 2)])
+        capture(gpt2, gpt2.to_tokens("hi"), [Address("resid_post", LAYER, 2)])
 
 
 # --- what a miss says ---------------------------------------------------------
@@ -123,7 +123,7 @@ def test_a_module_that_fires_twice_raises_instead_of_keeping_the_last_call(gpt2)
     handle = block.register_forward_hook(_run_it_again)
     try:
         with pytest.raises(ValueError, match="fired twice in one forward pass") as excinfo:
-            run_with_cache(gpt2, tokens, [Address("resid_post", LAYER)])
+            capture(gpt2, tokens, [Address("resid_post", LAYER)])
     finally:
         handle.remove()
 
@@ -137,7 +137,7 @@ def test_one_module_serving_several_addresses_is_not_a_double_fire(gpt2) -> None
     post-sublayer norms, and capture deliberately registers one hook and fans it out to both keys.
     That is one fire serving two addresses, not one address fired twice.
     """
-    cache = run_with_cache(gpt2, gpt2.to_tokens("hi"), [Address("mlp_out", 0), Address("mlp_out_post", 0)])
+    cache = capture(gpt2, gpt2.to_tokens("hi"), [Address("mlp_out", 0), Address("mlp_out_post", 0)])
     assert torch.equal(cache.get("mlp_out", 0), cache.get("mlp_out_post", 0))
 
 
@@ -146,7 +146,7 @@ def test_one_module_serving_several_addresses_is_not_a_double_fire(gpt2) -> None
 
 def test_the_cache_is_keyed_by_address_whatever_shape_was_requested(gpt2) -> None:
     """Otherwise a lookup would depend on the spelling the request happened to use."""
-    cache = run_with_cache(gpt2, gpt2.to_tokens("hi"), [("resid_post", 0), "mlp_out.0"])
+    cache = capture(gpt2, gpt2.to_tokens("hi"), [("resid_post", 0), "mlp_out.0"])
     assert set(cache.tensors) == {Address("resid_post", 0), Address("mlp_out", 0)}
     assert all(isinstance(key, Address) for key in cache.tensors)
 

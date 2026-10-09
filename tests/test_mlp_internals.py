@@ -31,7 +31,7 @@ import torch
 from harness import GEMMA_IT, GPT2, QWEN_THINKING, ModelSpec, load_model, require_hf_token
 from synthetic_families import shrunk_glm4, shrunk_opt, shrunk_phi3
 
-from interp_engine import run_with_cache
+from interp_engine import capture
 from interp_engine.capture import AddressLike
 from interp_engine.facts import is_gated_mlp, mlp_fused_gate_up_attr, mlp_pre_act_attr
 
@@ -49,7 +49,7 @@ def _load(spec: ModelSpec):
 
 def _capture(model, points: Sequence[AddressLike]):
     ids = model.tokenizer(PROMPT, add_special_tokens=False, return_tensors="pt")["input_ids"].to(model.device)
-    return run_with_cache(model, ids, points)
+    return capture(model, ids, points)
 
 
 # --- structural detection, on stand-ins --------------------------------------
@@ -192,7 +192,7 @@ def test_a_fused_gate_up_is_sliced_into_its_two_branches(build):
     """
     model = build()
     ids = torch.arange(7).unsqueeze(0) % 128
-    cache = run_with_cache(model, ids, [("mlp_pre", 1), ("mlp_pre_linear", 1), ("mlp_act", 1)])
+    cache = capture(model, ids, [("mlp_pre", 1), ("mlp_pre_linear", 1), ("mlp_act", 1)])
     pre, linear, act = (cache.get(name, 1) for name in ("mlp_pre", "mlp_pre_linear", "mlp_act"))
 
     d_mlp = model.config.intermediate_size
@@ -228,7 +228,7 @@ def test_a_block_that_flattens_its_tokens_still_yields_a_batched_capture():
     model = shrunk_opt()
     ids = torch.arange(9).unsqueeze(0) % 128
     points: list[AddressLike] = [("mlp_act", 0), ("mlp_out", 0), ("attn_out", 0), ("resid_post", 0)]
-    cache = run_with_cache(model, ids, points)
+    cache = capture(model, ids, points)
     seq, d_model, d_mlp = ids.shape[-1], model.config.hidden_size, model.config.ffn_dim
     assert cache.get("mlp_act", 0).shape == (1, seq, d_mlp)
     assert cache.get("mlp_out", 0).shape == (1, seq, d_model)
@@ -244,7 +244,7 @@ def test_the_restored_axis_is_the_token_axis_and_not_a_transpose():
     """
     model = shrunk_opt()
     ids = torch.arange(9).unsqueeze(0) % 128
-    cache = run_with_cache(model, ids, [("mlp_act", 0), ("mlp_out", 0)])
+    cache = capture(model, ids, [("mlp_act", 0), ("mlp_out", 0)])
     fc2 = model.arch.decoder_layers[0].fc2
     torch.testing.assert_close(fc2(cache.get("mlp_act", 0)), cache.get("mlp_out", 0), rtol=1e-5, atol=1e-5)
 

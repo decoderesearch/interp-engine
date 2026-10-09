@@ -6,7 +6,7 @@ every modern family -- `self.self_attn(hidden_states=..., position_embeddings=..
 reading `args[0]` observes nothing there. gpt2 passes it positionally, which is why this went
 unnoticed: the CPU parity model is the one family the naive version works on.
 
-The read side of that failure is loud (`run_with_cache` raises "Captured nothing"). The write side
+The read side of that failure is loud (`capture` raises "Captured nothing"). The write side
 was not: a steer on `attn_in` returned the call unchanged and the run completed, reporting success
 having steered nothing. That asymmetry is why `write` raises here rather than skipping, and why
 these tests assert on the steered *output* rather than on the hook being installed.
@@ -77,7 +77,7 @@ def test_an_input_read_sees_the_hidden_state_however_it_was_passed(block_cls: ty
 def test_a_read_skips_a_call_that_carries_no_tensor():
     """Not every module that resolves to a point necessarily runs with one, and a read that cannot
     find a tensor must observe nothing rather than guess at a non-activation argument. The caller
-    that needed it is the one positioned to complain: `run_with_cache` raises "Captured nothing"."""
+    that needed it is the one positioned to complain: `capture` raises "Captured nothing"."""
     module = nn.Identity()
     seen: list[torch.Tensor] = []
     with HookManager() as hm:

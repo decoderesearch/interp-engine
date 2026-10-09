@@ -142,21 +142,26 @@ def test_a_layer_that_was_not_scored_is_its_own_row_rather_than_absorbed_into_a_
 def test_the_matrix_header_is_the_readme_column_with_the_version_linked_to_the_json():
     """Same `spec.engine_label` the README uses, so the two tables name the engines identically -- and
     the version is on the page rather than only in the row above it, since a glyph is a claim about a
-    build. The link is local: the JSON beside this file is what a reader wants next, not vLLM's commit."""
+    build. The link is local: the JSON beside this file is what a reader wants next, not vLLM's commit.
+
+    Both columns carry the *engine's* version, the vLLM one included, and the vLLM version it ran
+    against is in the cell rather than the heading -- see `engine_versions.PRIMARY_PACKAGE`.
+    """
     page = _page(
         {
             "eager": _record("eager", {}, versions={"interp_engine": {"version": "1.0.1"}}),
             "vllm": _record(
                 "vllm",
                 {"resid_post.0": _cell("resid_post", 0, "PASS", cos=1.0)},
-                versions={"vllm": {"version": "0.26.0"}},
+                versions={"interp_engine": {"version": "1.0.1"}, "vllm": {"version": "0.26.0"}},
             ),
         }
     )
 
     header = _row(page, "Point by point", "| point<br>layer |")
     assert "interp-engine eager<br>[v1.0.1](eager.json)" in header
-    assert "interp-engine vllm<br>[v0.26.0](vllm.json)" in header
+    assert "interp-engine vllm<br>[v1.0.1](vllm.json)" in header
+    assert "v0.26.0" not in header, "the backend's version belongs in the cell, not the heading"
 
 
 def test_an_engine_that_recorded_no_version_still_links_its_json():

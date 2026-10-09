@@ -1,6 +1,7 @@
 """Capture: run the raw model and collect activations at canonical hook points.
 
-Replaces both TransformerLens ``run_with_cache`` and nnsight ``model.trace()/save()``.
+:func:`capture` replaces both TransformerLens ``run_with_cache`` and nnsight
+``model.trace()/save()``; ``run_with_cache`` stays as an alias of it.
 
 Design invariants (protect future probing/monitoring apps):
 
@@ -27,13 +28,18 @@ import torch
 from interp_engine import facts, moe_routing
 from interp_engine.address import Address, to_address
 from interp_engine.attn_scores import capture_attn_scores
-from interp_engine.dispatch import TokensLike, as_batched_tokens, as_token_ids, refuse
+from interp_engine.dispatch import (
+    TokensLike,
+    as_batched_tokens,
+    as_token_ids,
+    refuse,
+)
 from interp_engine.facts import text_config
 from interp_engine.hooks import HookManager, flat_per_head
 from interp_engine.model import EagerModel
 from interp_engine.points import token_flattened
 from interp_engine.protocol import InterpModel
-from interp_engine.steer import active_steering
+from interp_engine.steer import SteerMask, active_steering
 from interp_engine.sync import sync_model
 
 # What callers may pass as a capture request: an `Address`, its canonical string form, or the
@@ -156,7 +162,7 @@ def _normalize_points(points: Sequence[AddressLike]) -> list[Address]:
     return [to_address(p) for p in points]
 
 
-def run_with_cache(
+def capture(
     model: InterpModel,
     tokens: TokensLike,
     points: Sequence[AddressLike],
@@ -169,7 +175,7 @@ def run_with_cache(
 
     Works on either backend, from synchronous code. The :class:`Cache` has the same shape
     whichever one it came from -- ``[batch, seq, width]`` per point -- so the same reading code
-    runs on both; :func:`_run_with_cache_via_protocol` documents what vLLM cannot carry.
+    runs on both; :func:`_capture_via_protocol` documents what vLLM cannot carry.
 
     ``tokens`` may be the ``[batch, seq]`` tensor ``model.to_tokens`` returns, a bare ``[seq]``
     tensor, or a list of ids.
@@ -177,26 +183,45 @@ def run_with_cache(
     ``attention_mask`` marks a padded batch's real tokens with 1. With a mask and no
     ``position_ids``, each row counts its positions from 0 at its first real token, as HF
     ``generate`` does (see :func:`position_ids_from_mask`). So a left-padded row gives the values
-    it gives unpadded, on both backends. Values at masked positions have no meaning; do not read them.
+    it gives unpadded, on every backend. Values at masked positions have no meaning; do not read them.
 
     ``detach=True`` (the default, for activation endpoints) stores detached clones. Pass
     ``detach=False`` to keep the autograd graph (the lens does this on residuals); it raises
     on vLLM, and on eager unless the model was built with ``requires_grad=True``.
+
+    Not to be confused with :meth:`InterpModel.capture`, the async method this wraps on the
+    non-eager arm: that one takes a single prompt and returns a plain dict without a batch axis.
     """
     if not isinstance(model, EagerModel):
-        return _run_with_cache_via_protocol(
+        return _capture_via_protocol(
             model, tokens, points, detach=detach, attention_mask=attention_mask, position_ids=position_ids
         )
-    return _run_with_cache_eager(
+    return _capture_eager(
         model, tokens, points, detach=detach, attention_mask=attention_mask, position_ids=position_ids
     )
+
+
+def run_with_cache(
+    model: InterpModel,
+    tokens: TokensLike,
+    points: Sequence[AddressLike],
+    *,
+    detach: bool = True,
+    attention_mask: torch.Tensor | None = None,
+    position_ids: torch.Tensor | None = None,
+) -> Cache:
+    """Alias of :func:`capture`, under the name TransformerLens users know.
+
+    Same signature, same :class:`Cache`; kept so existing callers need no change.
+    """
+    return capture(model, tokens, points, detach=detach, attention_mask=attention_mask, position_ids=position_ids)
 
 
 def position_ids_from_mask(attention_mask: torch.Tensor) -> torch.Tensor:
     """The position ids HF ``generate`` builds from a ``[batch, seq]`` attention mask.
 
     Each row counts from 0 at its first unmasked token, so a left-padded row gets the positions it
-    has unpadded. Masked positions get 0. :func:`run_with_cache` uses this when given a mask alone.
+    has unpadded. Masked positions get 0. :func:`capture` uses this when given a mask alone.
     """
     mask = attention_mask.long()
     return (mask.cumsum(-1) - 1).masked_fill(mask == 0, 0)
@@ -255,7 +280,7 @@ def _forward_position_ids(
     return position_ids_from_mask(mask)
 
 
-def _run_with_cache_via_protocol(
+def _capture_via_protocol(
     model: InterpModel,
     tokens: TokensLike,
     points: Sequence[AddressLike],
@@ -278,9 +303,6 @@ def _run_with_cache_via_protocol(
     is no HF output object to hand back. Everything reading ``cache.tensors`` is unaffected,
     which is nearly every caller.
     """
-    steering = active_steering(model)
-    if steering is not None and steering.position_mask is not None:
-        raise refuse(model, "steer(..., position_mask=...) around a capture", capability="masked_steer_positions")
     input_ids = as_batched_tokens(tokens).cpu()
     keep = torch.ones_like(input_ids, dtype=torch.bool)
     if attention_mask is not None:
@@ -299,18 +321,29 @@ def _run_with_cache_via_protocol(
             or given.shape[0] not in (1, want.shape[0])
             or not torch.equal(given.expand_as(want)[keep], want[keep])
         ):
-            raise refuse(model, "run_with_cache(position_ids=...)", capability="position_ids")
+            raise refuse(model, "capture(position_ids=...)", capability="position_ids")
+    # A masked column before a kept one moves that row's later tokens to lower indices, so a listed
+    # steering position would name another token. A preset resolves against each row's own tokens.
+    steering = active_steering(model)
+    steer_mask = None if steering is None else steering.position_mask
+    shifted = bool((keep[:, 1:] & ~keep[:, :-1]).any())
+    if shifted and steer_mask is not None and not isinstance(steer_mask, SteerMask):
+        raise refuse(
+            model, "steer(..., position_mask=[...]) around a padded capture", capability="padded_steer_positions"
+        )
     rows = [input_ids[b][keep[b]].tolist() for b in range(input_ids.shape[0])]
     for b, row in enumerate(rows):
         if not row:
-            raise ValueError(f"run_with_cache: row {b} has no unmasked token, so it has nothing to run.")
+            raise ValueError(f"capture: row {b} has no unmasked token, so it has nothing to run.")
     addresses = _normalize_points(points)
-    spec = None if steering is None else steering.spec
 
+    # An open `steer()` block reaches the method itself: the loop runs this in the caller's context,
+    # and each row's task inherits it, so the backend reads the block -- position mask and
+    # `generated` included.
     async def _every_row() -> list[dict[Address, torch.Tensor]]:
-        return await asyncio.gather(*(model.capture(row, addresses, steering_spec=spec, detach=detach) for row in rows))
+        return await asyncio.gather(*(model.capture(row, addresses, detach=detach) for row in rows))
 
-    captured = sync_model(model).runner.run(_every_row(), what="run_with_cache()")
+    captured = sync_model(model).runner.run(_every_row(), what="capture()")
     if len(rows) == 1 and bool(keep.all()):
         # Restore the batch axis the eager path keeps, so `cache[point][0]` means the same thing on
         # both backends. A view, so this costs nothing.
@@ -334,7 +367,7 @@ def _pad_rows(address: Address, rows: list[torch.Tensor], keep: torch.Tensor) ->
     return out
 
 
-def _run_with_cache_eager(
+def _capture_eager(
     model: EagerModel,
     tokens: TokensLike,
     points: Sequence[AddressLike],
@@ -343,7 +376,7 @@ def _run_with_cache_eager(
     attention_mask: torch.Tensor | None = None,
     position_ids: torch.Tensor | None = None,
 ) -> Cache:
-    """Capture in-process off the live module tree. See :func:`run_with_cache`."""
+    """Capture in-process off the live module tree. See :func:`capture`."""
     # Placed here rather than by each caller: these ids go straight into `hf_model`, so a list or a
     # host tensor -- both documented inputs -- fails on every accelerator otherwise, through either
     # entry point that shares this body. A tensor already on the device is unmoved.
@@ -574,21 +607,14 @@ def capture_generation(
 
     Steering applies if this is called inside :func:`interp_engine.steer.steer`, on either backend.
 
-    Unlike :func:`run_with_cache`, this goes through the facade on eager too. The generation
+    Unlike :func:`capture`, this goes through the facade on eager too. The generation
     dominates, so the thread hop is noise, and the alternative was a second copy of the
     generate-then-recapture sequencing that would have to stay in step with the method.
     """
     ids = as_token_ids(tokens, model=model, what="capture_generation")
-    steering = active_steering(model)
-    if steering is not None and steering.position_mask is not None and not isinstance(model, EagerModel):
-        raise refuse(model, "steer(..., position_mask=...) around a capture", capability="masked_steer_positions")
+    # As in `_capture_via_protocol`: the block reaches the method through the facade.
     completion, captured = sync_model(model).capture_generation(
-        ids,
-        _normalize_points(points),
-        max_tokens=max_tokens,
-        temperature=temperature,
-        seed=seed,
-        steering_spec=None if steering is None else steering.spec,
+        ids, _normalize_points(points), max_tokens=max_tokens, temperature=temperature, seed=seed
     )
     return completion, Cache(tensors={a: t.unsqueeze(0) for a, t in captured.items()}, output=None)
 
@@ -623,7 +649,7 @@ def capture_attention_eager(
     instead of keeping a second copy of the ``value`` reshape in step with it.
     """
     wanted = [int(x) for x in layers]
-    cache = _run_with_cache_eager(
+    cache = _capture_eager(
         model,
         tokens,
         [Address(name, layer) for layer in wanted for name in ("attn_scores", "attn_probs", "value")],
@@ -651,31 +677,18 @@ def split_fused_qkv(model: EagerModel, fused: torch.Tensor) -> dict[str, torch.T
     k and one v after each group of queries. See :class:`interp_engine.facts.QKVLayout`.
     """
     layout = model.arch.quirks.qkv_layout
-    lead = fused.shape[:-1]
-    if layout is facts.QKVLayout.CONTIGUOUS_THIRDS:
-        # k/v are narrower than q under GQA, so the widths are not simply thirds.
-        d_q = model.n_heads * model.head_dim
-        d_kv = model.n_kv_heads * model.head_dim
-        q, k, v = torch.split(fused, [d_q, d_kv, d_kv], dim=-1)
-        return {"q": q, "k": k, "v": v}
-    if layout is facts.QKVLayout.PER_HEAD_INTERLEAVED:
-        # ``(..., n_heads, 3 * head_dim)`` then split the trailing axis, which is exactly what
-        # the HF module does internally. Flatten each part back so every layout returns the same
-        # ``[..., n * head_dim]`` shape to the caller.
-        per_head = fused.view(*lead, model.n_heads, 3 * model.head_dim)
-        q, k, v = per_head.chunk(3, dim=-1)
-        return {name: t.reshape(*lead, -1) for name, t in (("q", q), ("k", k), ("v", v))}
-    if layout is facts.QKVLayout.PER_KV_GROUP_INTERLEAVED:
-        # ``(..., n_kv_heads, q_per_kv + 2, head_dim)``: the group's queries, then its single k row,
-        # then its single v row. Slicing the second axis is the only way to reach them -- a thirds or
-        # per-head split of the flat width lands mid-group.
-        groups, per_group = model.n_kv_heads, model.n_heads // model.n_kv_heads
-        grouped = fused.view(*lead, groups, per_group + 2, model.head_dim)
-        parts = {"q": grouped[..., :-2, :], "k": grouped[..., -2:-1, :], "v": grouped[..., -1:, :]}
-        return {name: t.reshape(*lead, -1) for name, t in parts.items()}
-    raise ValueError(
-        f"{model.arch.architecture} has standalone q/k/v projections ({layout}); there is no fused matrix to split."
-    )
+    try:
+        return facts.split_qkv_slab(
+            fused,
+            layout=layout,
+            n_heads=model.n_heads,
+            n_kv_heads=model.n_kv_heads,
+            head_dim=model.head_dim,
+        )
+    except ValueError as exc:
+        raise ValueError(
+            f"{model.arch.architecture} has standalone q/k/v projections ({layout}); there is no fused matrix to split."
+        ) from exc
 
 
 def per_head_value(model: EagerModel, cache: Cache, layer: int) -> torch.Tensor:

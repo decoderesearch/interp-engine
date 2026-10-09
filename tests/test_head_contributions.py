@@ -25,7 +25,7 @@ import pytest
 import torch
 from harness import GEMMA_IT, GPT2, ModelSpec, load_model, require_hf_token
 
-from interp_engine import head_contributions, run_with_cache
+from interp_engine import capture, head_contributions
 
 PROMPT = "The capital of France is Paris."
 
@@ -40,7 +40,7 @@ def _load(spec: ModelSpec):
 
 def _capture(model, layer: int):
     ids = model.tokenizer(PROMPT, add_special_tokens=False, return_tensors="pt")["input_ids"].to(model.device)
-    return run_with_cache(model, ids, [("z", layer), ("attn_out", layer)])
+    return capture(model, ids, [("z", layer), ("attn_out", layer)])
 
 
 @pytest.mark.parametrize("spec", [FP32, GQA], ids=["conv1d_with_bias", "linear_gqa"])
@@ -102,6 +102,6 @@ def test_a_transposed_projection_would_not_pass():
 def test_it_needs_z_and_says_so():
     model = _load(FP32)
     ids = model.tokenizer(PROMPT, return_tensors="pt")["input_ids"]
-    cache = run_with_cache(model, ids, [("attn_out", 0)])
+    cache = capture(model, ids, [("attn_out", 0)])
     with pytest.raises(KeyError):
         head_contributions(model, cache, 0)

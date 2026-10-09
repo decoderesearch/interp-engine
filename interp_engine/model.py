@@ -17,7 +17,8 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import AsyncIterator
+import re
+from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import AbstractContextManager, nullcontext
 from typing import TYPE_CHECKING, Any
 
@@ -35,14 +36,27 @@ if TYPE_CHECKING:
     # both versions. Anything that needs the class at runtime must add a version fork instead.
     from transformers import PreTrainedConfig
 
+    from interp_engine.steer import GenStep
+
 from interp_engine import facts, moe_routing
 from interp_engine.address import Address, to_address
+from interp_engine.api import DirectionSet, EngineDescription, LensSpec, LensStep
 from interp_engine.arch import ArchSpec, resolve_arch
 from interp_engine.autograd_support import GradSupport, eager_grad_support
 from interp_engine.chat_formatters import resolve_chat_formatter
+from interp_engine.describe import describe_model
+from interp_engine.directions import project_by_capture
 from interp_engine.facts import factored_projection, text_config
 from interp_engine.points import PointSpec, Scope, known_names, point_spec, points_for
-from interp_engine.protocol import Completion
+from interp_engine.protocol import (
+    REFUSAL_ERRORS,
+    Completion,
+    Point,
+    checked_prompt_embeds,
+    checked_rows,
+    checked_vocab_ids,
+    layer_out_of_range,
+)
 from interp_engine.residual_basis import ResidualBasis, eager_residual_basis
 from interp_engine.sampling import RecommendedSampling, SamplingSettings, read_recommended_sampling, resolve_sampling
 from interp_engine.tokenize import Tokenize
@@ -372,7 +386,47 @@ def _from_pretrained(cls: Any, hf_model_id: str, load_kwargs: dict[str, Any]) ->
     """
     hf_model, info = cls.from_pretrained(hf_model_id, output_loading_info=True, **load_kwargs)
     setattr(hf_model, MISSING_KEYS_ATTR, frozenset(info.get("missing_keys", ()) or ()))
+    _refuse_unused_quant_tensors(hf_model_id, hf_model, info.get("unexpected_keys", ()) or ())
     return hf_model
+
+
+#: Tensor names that only a quantized module reads. One left unused means its module was loaded
+#: as a plain layer, from the packed or scaled values: a model that runs and is wrong.
+_QUANT_TENSORS = frozenset(
+    {
+        "weight_scale_inv",
+        "weight_scale",
+        "weight_scale_2",
+        "weight_global_scale",
+        "weight_packed",
+        "weight_zero_point",
+        "input_scale",
+        "input_global_scale",
+        "qweight",
+        "qzeros",
+        "scales",
+        "g_idx",
+    }
+)
+
+
+def _refuse_unused_quant_tensors(hf_model_id: str, hf_model: nn.Module, unexpected: Any) -> None:
+    """Refuse a load that left a quantization tensor unused on a module the model has.
+
+    A key for a module the model does not build (an ``mtp`` head, a dropped tower) is not a sign of
+    this, so only keys that resolve to a module are counted.
+    """
+    modules = dict(hf_model.named_modules())
+    unused = sorted(
+        key for key in unexpected if key.rpartition(".")[2] in _QUANT_TENSORS and key.rpartition(".")[0] in modules
+    )
+    if unused:
+        shown = ", ".join(unused[:4]) + (f", and {len(unused) - 4} more" if len(unused) > 4 else "")
+        raise ValueError(
+            f"{hf_model_id}: transformers loaded {len(unused)} quantized tensor(s) as unused ({shown}), "
+            "so those modules hold packed or unscaled values as plain weights. The skip list or the "
+            "scheme did not match this model's module names."
+        )
 
 
 def _load_hf_model(hf_model_id: str, load_kwargs: dict[str, Any], *, trust_remote_code: bool) -> nn.Module:
@@ -385,7 +439,17 @@ def _load_hf_model(hf_model_id: str, load_kwargs: dict[str, Any], *, trust_remot
     auto class). We load the whole checkpoint and only ever drive its text stack — ``resolve_arch``
     resolves the decoder trunk under ``model.language_model`` and the top-level ``lm_head``, so the
     vision/audio towers are never hooked or run (text-only forward passes ignore them).
+
+    A composite checkpoint that ships quantized goes straight to that class. Its scheme sits on the
+    outer config, and ``AutoModelForCausalLM`` narrows to the text config, which drops it: the
+    weights then load as stored with no quantizer, scales ignored. Qwen/Qwen3.6-27B-FP8 loaded that
+    way gave mid-layer residual norms of ~4e14 against ~85 for the bf16 checkpoint.
     """
+    if "quantization_config" not in load_kwargs and _scheme_only_on_outer_config(
+        hf_model_id, trust_remote_code=trust_remote_code
+    ):
+        logger.info("%s ships quantized under a composite config; loading its own class", hf_model_id)
+        return _load_composite(hf_model_id, load_kwargs, trust_remote_code=trust_remote_code)
     try:
         return _from_pretrained(AutoModelForCausalLM, hf_model_id, load_kwargs)
     except AttributeError as err:
@@ -419,8 +483,96 @@ def _load_hf_model(hf_model_id: str, load_kwargs: dict[str, Any], *, trust_remot
         ):
             raise
         logger.info("AutoModelForCausalLM can't map %s; trying multimodal text-stack load", hf_model_id)
+    return _load_composite(hf_model_id, load_kwargs, trust_remote_code=trust_remote_code)
 
+
+def _fp8_quantizer_fails(cfg: Any) -> bool:
+    """transformers 5.11 to 5.16 fail every fine-grained FP8 load of a model with a tensor-parallel plan."""
+    from packaging.version import Version
+
+    has_tp_plan = any(getattr(c, "base_model_tp_plan", None) for c in (cfg, cfg.get_text_config()))
+    return has_tp_plan and Version("5.11") <= Version(transformers.__version__) < Version("5.17")
+
+
+def _refuse_unreadable_scheme(hf_model_id: str, *, trust_remote_code: bool) -> None:
+    """Refuse a checkpoint whose quantization transformers has no loader for, before a weight loads.
+
+    transformers warns and skips such a scheme, then reads the stored values as plain weights: a
+    load error where the packed shapes differ, and a model of garbage where they happen to match.
+    """
+    try:
+        cfg = AutoConfig.from_pretrained(hf_model_id, trust_remote_code=trust_remote_code)
+    except Exception:  # noqa: BLE001 - an unreadable config is the load's problem to report
+        return
+    scheme = getattr(cfg, "quantization_config", None) or getattr(cfg.get_text_config(), "quantization_config", None)
+    method = scheme.get("quant_method") if isinstance(scheme, dict) else getattr(scheme, "quant_method", None)
+    if method is None:
+        return
+    method = str(getattr(method, "value", method))
+    from transformers.quantizers.auto import AUTO_QUANTIZER_MAPPING
+
+    if method == "fp8" and _fp8_quantizer_fails(cfg):
+        raise ValueError(
+            f"{hf_model_id} is a fine-grained FP8 checkpoint, which transformers "
+            f"{transformers.__version__} cannot load for a model with a tensor-parallel plan: its FP8 "
+            "quantizer fails in update_tp_plan. Use transformers>=5.17, or a vLLM backend."
+        )
+    if method in AUTO_QUANTIZER_MAPPING or method.startswith("bitsandbytes"):
+        return
+    raise ValueError(
+        f"{hf_model_id} is quantized with {method!r}, which transformers {transformers.__version__} has no "
+        "loader for, so backend='eager' cannot run it: transformers would skip the scheme and read the "
+        "packed values as weights. A vLLM backend may read it."
+    )
+
+
+def _scheme_only_on_outer_config(hf_model_id: str, *, trust_remote_code: bool) -> bool:
+    """Whether the checkpoint's quantization is stated on a composite config and not its text config."""
+    try:
+        cfg = AutoConfig.from_pretrained(hf_model_id, trust_remote_code=trust_remote_code)
+    except Exception:  # noqa: BLE001 - an unreadable config is the load's problem to report
+        return False
+    text = cfg.get_text_config()
+    return (
+        text is not cfg
+        and getattr(cfg, "quantization_config", None) is not None
+        and getattr(text, "quantization_config", None) is None
+    )
+
+
+def _segment_skips(cfg: Any) -> bool:
+    """Make a skip list match whole dotted segments of the composite's module names.
+
+    transformers reads each name as an unanchored regex prefix, or as a suffix. So Qwen3.6-FP8's
+    ``layers.N.mlp.gate`` also skips ``layers.N.mlp.gate_proj``, and AWQ's ``visual`` (a substring
+    for vLLM) skips nothing. A name written for the text model, ``model.layers.N``, is also given
+    its composite path, ``model.language_model.layers.N``. A name with regex syntax is kept as is.
+    """
+    qc = getattr(cfg, "quantization_config", None)
+    if not isinstance(qc, dict):
+        return False
+    names = qc.get("modules_to_not_convert")
+    if not names:
+        return False
+    segments: list[str] = []
+    for name in names:
+        plain = name.rstrip(".")
+        if re.search(r"[\\*+?()\[\]{}|^$]", plain):
+            segments.append(name)
+            continue
+        paths = [plain]
+        if plain.startswith("model.layers."):
+            paths.append("model.language_model." + plain[len("model.") :])
+        segments += [r"(.*\.)?" + re.escape(path) + r"(\..*)?$" for path in paths]
+    qc["modules_to_not_convert"] = segments
+    return True
+
+
+def _load_composite(hf_model_id: str, load_kwargs: dict[str, Any], *, trust_remote_code: bool) -> nn.Module:
+    """Load a multimodal checkpoint by the class its config names, then by the multimodal auto classes."""
     cfg = AutoConfig.from_pretrained(hf_model_id, trust_remote_code=trust_remote_code)
+    if "config" not in load_kwargs and _segment_skips(cfg):
+        load_kwargs = {**load_kwargs, "config": cfg}
     last_err: Exception | None = None
     # Primary: the concrete architecture class named in the config (e.g. Qwen3_5ForConditionalGeneration).
     for arch_name in getattr(cfg, "architectures", None) or []:
@@ -438,7 +590,8 @@ def _load_hf_model(hf_model_id: str, load_kwargs: dict[str, Any], *, trust_remot
                 return _from_pretrained(auto_cls, hf_model_id, load_kwargs)
             except Exception as e:  # noqa: BLE001
                 last_err = _release_failed_attempt(e)
-    raise RuntimeError(f"Could not load {hf_model_id!r} as a causal LM or a multimodal text stack") from last_err
+    cause = f": {type(last_err).__name__}: {last_err}" if last_err is not None else ""
+    raise RuntimeError(f"Could not load {hf_model_id!r} as a causal LM or a multimodal text stack{cause}") from last_err
 
 
 STR_TO_DTYPE: dict[str, torch.dtype] = {
@@ -463,7 +616,7 @@ def _require_hookable(module: nn.Module, name: str, layer: int | None, architect
 
     A container -- an ``nn.ModuleList``, an ``nn.ModuleDict`` -- accepts ``register_forward_hook``
     and simply never calls it, because it has no ``forward``. So resolving to one produced a hook
-    that silently did nothing: ``run_with_cache`` did eventually notice ("Captured nothing at ...")
+    that silently did nothing: ``capture`` did eventually notice ("Captured nothing at ...")
     but anything that only *resolves* saw a success, which is how the coverage audit recorded a pass
     for LongcatFlash's attention points while they were bound to the ``ModuleList`` holding the two
     real attentions.
@@ -505,6 +658,7 @@ class EagerModel:
         self._requires_grad = requires_grad
         # Lazily computed in `grad_support`, never here: a verdict must not be part of loading.
         self._grad_support: GradSupport | None = None
+        self._lens_jacobians: dict[str, dict[int, torch.Tensor]] = {}
         self._recommended_sampling: RecommendedSampling | None = None
         torch_dtype = _normalize_dtype(dtype)
         model_kwargs = dict(model_kwargs or {})
@@ -521,6 +675,8 @@ class EagerModel:
             trust_remote = resolve_trust_remote_code(hf_model_id, trust_remote_code)
 
         if hf_model is None:
+            if quantization_config is None:
+                _refuse_unreadable_scheme(hf_model_id, trust_remote_code=trust_remote)
             load_kwargs: dict[str, Any] = {
                 "dtype": torch_dtype,
                 "trust_remote_code": trust_remote,
@@ -622,6 +778,10 @@ class EagerModel:
         return self.tok.to_string(tokens)
 
     @property
+    def tokenizer_prepends_bos(self) -> bool:
+        return self.tok.tokenizer_prepends_bos
+
+    @property
     def default_prepend_bos(self) -> bool:
         return self._default_prepend_bos
 
@@ -692,6 +852,10 @@ class EagerModel:
     @property
     def n_heads(self) -> int:
         return self.arch.n_heads
+
+    def is_linear_attention_layer(self, layer: int) -> bool:
+        """Whether ``layer`` computes no softmax attention. See the protocol."""
+        return self.arch.is_linear_attention_layer(layer)
 
     @property
     def n_kv_heads(self) -> int:
@@ -927,7 +1091,7 @@ class EagerModel:
         return module, side
 
     def derived_routing(self, name: str, layer: int | None) -> str | None:
-        """The convention ``run_with_cache`` can rebuild ``name`` with, or None if it must be read.
+        """The convention ``capture`` can rebuild ``name`` with, or None if it must be read.
 
         Not None only where all three hold: the point is one of the two halves of the top-k, this
         layer's block routes *inline* so no module boundary carries them, and this family's convention
@@ -942,6 +1106,45 @@ class EagerModel:
         if self.arch.inline_routing_logits(layer) is None:
             return None
         return facts.routing_convention(self.arch.architecture)
+
+    def refuses(self, point: Address | str | Point, layer: int | None = None) -> str | None:
+        """Why this checkpoint cannot produce ``point``, or None when it can. See the protocol.
+
+        This backend holds the module tree, so a refusal here is almost always about the
+        *architecture* rather than about eager: a dense model has no router, an ungated MLP has no
+        gate branch, QK-norm exists on Qwen3 and not on llama. The two exceptions are the attention
+        pair, which needs the model to have been loaded with eager attention, and a stream
+        coordinate on a trunk that has no streams.
+
+        Answered by dry-running :meth:`resolve_point`, which is what a capture calls, so the two
+        cannot drift. The derived MoE halves are checked first: their whole nature is that no module
+        carries them, so resolving them would refuse a point ``capture`` serves.
+        """
+        address = to_address(point if layer is None else (point, layer))  # pyright: ignore[reportArgumentType]
+        if bad_layer := layer_out_of_range(address, self.n_layers):
+            return bad_layer
+        if address.name in ("attn_probs", "attn_scores"):
+            if self.eager_attention:
+                return None
+            return (
+                f"the attention pair is rebuilt from the real softmax, so it needs "
+                f"attn_implementation='eager'; this model was loaded with {self.attn_implementation!r}"
+            )
+        if self.derived_routing(address.name, address.layer) is not None:
+            return None
+        try:
+            self.resolve_point(address.name, address.layer, stream=address.stream)
+        except REFUSAL_ERRORS as exc:
+            return str(exc)
+        return None
+
+    def serves(self, point: Address | str | Point, layer: int | None = None) -> bool:
+        """Whether this checkpoint can produce ``point``. See :meth:`refuses` for why not."""
+        return self.refuses(point, layer) is None
+
+    def describe(self) -> EngineDescription:
+        """What this model can serve, in one record. See :mod:`interp_engine.describe`."""
+        return describe_model(self, "eager")
 
     def _resolve_point(self, name: str, layer: int | None = None) -> tuple[nn.Module, str]:
         """The resolution itself. Wrapped by :meth:`resolve_point`, which validates the result."""
@@ -1086,7 +1289,7 @@ class EagerModel:
             if name == "mlp_act":
                 return self.arch.mlp_projection(layer, "down"), "input"
             # A dense MLP that keeps the two branches in one projection has no module output per
-            # branch, so the address is the fused projection and `capture.run_with_cache` takes the
+            # branch, so the address is the fused projection and `capture()` takes the
             # half this point names -- the same shape as `value` off a fused QKV, and for the same
             # reason: the tensor is read, and the split is the one the block's own forward does.
             if (fused := self.arch.fused_gate_up(layer)) is not None:
@@ -1109,7 +1312,7 @@ class EagerModel:
             # being lost with the other two. Which is not the same as recomputing them: the tensor is
             # the one the kernel routed on, bit-identical to the router's own linear on gpt-oss's MXFP4
             # path. Only `router_logits` -- see `Arch.inline_routing_logits`. The other two are rebuilt
-            # from it by `run_with_cache` where this family's convention is a verified one
+            # from it by `capture` where this family's convention is a verified one
             # (`derived_routing` below), which is a capture-path concern and has no address to return.
             if name == "router_logits" and (inline := self.arch.inline_routing_logits(layer)) is not None:
                 return inline
@@ -1188,7 +1391,7 @@ class EagerModel:
             # Declared, but no module boundary carries it -- the capture path special-cases these.
             raise ValueError(
                 f"Canonical point {name!r} is not resolvable to a module: {spec.note or 'no module holds it'}. "
-                "Request it through run_with_cache, which owns its capture path."
+                "Request it through capture(), which owns that path."
             )
         close = sorted(n for n in known_names() if n.startswith(name[:4]) or name.startswith(n[:4]))
         raise ValueError(
@@ -1240,6 +1443,7 @@ class EagerModel:
         *,
         steering_spec: Any = None,
         detach: bool = True,
+        rows: Any = None,
     ) -> dict[Address, torch.Tensor]:
         """Capture ``points`` over one prompt. See :meth:`interp_engine.protocol.InterpModel.capture`.
 
@@ -1247,17 +1451,33 @@ class EagerModel:
         with ``requires_grad=True`` -- see :attr:`grad_support`. Results stay on the model's
         device in that case, since moving them to CPU is a graph node nobody asked for.
         """
-        from interp_engine.capture import run_with_cache
+        from interp_engine.capture import capture
+        from interp_engine.steer import forward_from
 
         if not detach:
             self.grad_support.require_through_forward()
         addresses = [to_address(p) for p in points]
-        input_ids = torch.tensor([[int(t) for t in prompt_token_ids]], device=self.device)
-        with self._maybe_steer(steering_spec, input_ids):
-            cache = run_with_cache(self, input_ids, addresses, detach=detach)
+        ids = [int(t) for t in prompt_token_ids]
+        picked = checked_rows(rows, len(ids))
+        input_ids = torch.tensor([ids], device=self.device)
+        # One forward over the whole prompt: its first row is position 0, whatever a `steer()`
+        # block's hooks counted before this call.
+        with self._maybe_steer(steering_spec, input_ids), forward_from(0):
+            cache = capture(self, input_ids, addresses, detach=detach)
+        out = {a: cache[a][0] if picked is None else cache[a][0][picked] for a in addresses}
         if not detach:
-            return {a: cache[a][0] for a in addresses}
-        return {a: cache[a][0].cpu() for a in addresses}
+            return out
+        return {a: t.cpu() for a, t in out.items()}
+
+    async def project(
+        self,
+        prompt_token_ids: Sequence[int],
+        directions: Sequence[DirectionSet],
+        *,
+        steering_spec: Any = None,
+    ) -> list[torch.Tensor]:
+        """Per set, ``[n_prompt, k]`` float32: one capture of every set's point, then the projection."""
+        return await project_by_capture(self, prompt_token_ids, directions, steering_spec)
 
     async def capture_generation(
         self,
@@ -1278,17 +1498,45 @@ class EagerModel:
         while costing one extra prefill instead of per-step bookkeeping. It is also the
         reference the vLLM decode-time capture is validated against
         (``scripts/vllm_capture_generation_check.py``).
+
+        The recapture runs inside the same steering context as the generation, over the prompt
+        the context was opened with, so an open ``steer()`` block's position mask or
+        ``generated=False`` lands on the same rows in both forwards.
         """
         prompt_ids = [int(t) for t in prompt_token_ids]
         with self._maybe_steer(steering_spec, torch.tensor([prompt_ids])):
             completion = self._generate_completion(prompt_ids, max_tokens, temperature, seed)
-
-        # The last sampled token is never fed back through the model, so it has no
-        # activations; dropping it here is what makes the captured length match vLLM's.
-        gen_ids = list(completion.token_ids)
-        processed = prompt_ids + gen_ids[: max(len(gen_ids) - 1, 0)]
-        caps = await self.capture(processed, points, steering_spec=steering_spec)
+            # The last sampled token is never fed back through the model, so it has no
+            # activations; dropping it here is what makes the captured length match vLLM's.
+            gen_ids = list(completion.token_ids)
+            processed = prompt_ids + gen_ids[: max(len(gen_ids) - 1, 0)]
+            caps = await self.capture(processed, points)
         return completion, caps
+
+    async def capture_generation_stream(
+        self,
+        prompt_token_ids: Any,
+        points: Any,
+        *,
+        max_tokens: int = 8,
+        temperature: float = 0.0,
+        seed: int | None = None,
+        steering_spec: Any = None,
+    ):
+        """One yield with everything. See :meth:`interp_engine.protocol.InterpModel.capture_generation_stream`.
+
+        The capture here is a recapture after the loop (see :meth:`capture_generation`), so there
+        is nothing to hand over before the generation ends.
+        """
+        completion, caps = await self.capture_generation(
+            prompt_token_ids,
+            points,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            seed=seed,
+            steering_spec=steering_spec,
+        )
+        yield caps, [int(t) for t in completion.token_ids]
 
     async def capture_attention(self, prompt_token_ids: Any, layers: Any) -> dict[int, dict[str, torch.Tensor]]:
         """Attention scores, probs and per-head values. See
@@ -1383,6 +1631,152 @@ class EagerModel:
             seed=seed,
         ):
             yield step.token_str
+
+    async def generate_steps(
+        self,
+        prompt_token_ids: Any,
+        *,
+        max_tokens: int = 64,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
+        stop_at_eos: bool = True,
+        n_logprobs: int = 0,
+        seed: int | None = None,
+        steering_spec: Any = None,
+        position_mask: Any = None,
+    ) -> AsyncIterator[GenStep]:
+        """One ``GenStep`` per token, with the full logits. See the protocol.
+
+        The in-process loop the free ``interp_engine.generate_stream`` runs; an open ``steer()``
+        block's hooks are already on the modules, so nothing is read from it here. ``steering_spec``
+        and ``position_mask`` are for a caller crossing a thread, where the block is not visible.
+        """
+        from interp_engine.steer import generate_stream, steer
+
+        ids = torch.tensor([[int(t) for t in prompt_token_ids]], device=self.device)
+        ctx = (
+            steer(self, steering_spec, prompt_token_ids=ids, position_mask=position_mask)
+            if steering_spec
+            else nullcontext()
+        )
+        with ctx:
+            for step in generate_stream(
+                self,
+                ids,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_k=top_k,
+                top_p=top_p,
+                presence_penalty=presence_penalty,
+                stop_at_eos=stop_at_eos,
+                n_logprobs=n_logprobs,
+                seed=seed,
+            ):
+                yield step
+
+    async def generate_steps_from_embeds(
+        self,
+        prompt_embeds: torch.Tensor,
+        *,
+        max_tokens: int = 64,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
+        stop_at_eos: bool = True,
+        n_logprobs: int = 0,
+        seed: int | None = None,
+    ) -> AsyncIterator[GenStep]:
+        """The same loop as :meth:`generate_steps`, entered through ``inputs_embeds``. See the protocol.
+
+        HF's ``embed_tokens`` is skipped for the first forward and nothing else changes, so what
+        the modules -- and an open ``steer()`` block's hooks on them -- see from the first block on
+        is exactly what they would see for the ids these rows came from.
+        """
+        from interp_engine.steer import eager_steps
+
+        embeds = checked_prompt_embeds(prompt_embeds, self.d_model).to(self.device, self.dtype)
+        for step in eager_steps(
+            self,
+            {"inputs_embeds": embeds[None]},
+            max_tokens=max_tokens,
+            sampling=self.sampling_settings(
+                temperature=temperature, top_k=top_k, top_p=top_p, presence_penalty=presence_penalty
+            ),
+            stop_at_eos=stop_at_eos,
+            n_logprobs=n_logprobs,
+            seed=seed,
+        ):
+            yield step
+
+    async def set_lens_jacobians(self, jacobians: Mapping[int, torch.Tensor] | None, *, name: str = "default") -> int:
+        """Hold ``J_bar`` per layer for :meth:`generate_with_lens`, where each tensor already is. See the protocol."""
+        from interp_engine.lens_stream import install_jacobian_set
+
+        return install_jacobian_set(self._lens_jacobians, jacobians, name)
+
+    async def generate_with_lens(
+        self,
+        prompt_token_ids: Sequence[int],
+        lenses: Sequence[LensSpec],
+        *,
+        point: str = "resid_post",
+        top_n: int = 10,
+        max_tokens: int = 0,
+        temperature: float = 0.0,
+        seed: int | None = None,
+        word_mask: torch.Tensor | None = None,
+        skip_before: int = 0,
+        stream_reduce: str = "none",
+        stream_index: int | None = None,
+        jacobians: Mapping[int, torch.Tensor] | None = None,
+        softcap: float | None = None,
+        steering_spec: Any = None,
+    ) -> AsyncIterator[LensStep]:
+        """The lens at every position, streamed token by token. See the protocol.
+
+        A KV-cached loop in this process, since :meth:`capture_generation_stream` yields only once
+        here. ``softcap`` is ignored: :meth:`decode_residuals` applies the model's own.
+        """
+        from interp_engine import lens_stream
+
+        del softcap
+        held = lens_stream.call_jacobian_sets(self._lens_jacobians, jacobians)
+        layers = lens_stream.prepare(
+            self,
+            lenses,
+            top_n=top_n,
+            point=point,
+            stream_reduce=stream_reduce,
+            stream_index=stream_index,
+            jacobian_sets=[name for name, js in held.items() if js],
+        )
+        source = lens_stream.eager_rows(
+            self,
+            prompt_token_ids,
+            layers,
+            point=point,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            seed=seed,
+            skip_before=min(max(int(skip_before), 0), len(prompt_token_ids)),
+            stream_reduce=stream_reduce,
+            stream_index=stream_index,
+            steering_spec=steering_spec,
+        )
+        topk = lens_stream.decode_topk(self, top_n=top_n, word_mask=word_mask)
+        async for step in lens_stream.read_out(
+            source, lenses, prompt_len=len(prompt_token_ids), jacobians=held, topk=topk
+        ):
+            yield step
+
+    async def unembed_rows(self, token_ids: Sequence[int]) -> torch.Tensor:
+        """``W_U[token_ids]`` off the real ``lm_head`` weight, on the model's device. See the protocol."""
+        weight: torch.Tensor = self.arch.lm_head.weight  # pyright: ignore[reportAssignmentType]
+        ids = checked_vocab_ids(token_ids, int(weight.shape[0]))
+        return weight[ids].detach()
 
     async def decode_residuals(self, residuals: torch.Tensor, *, detach: bool = True) -> torch.Tensor:
         """Decode residuals to logits with this model's own post-unembed arithmetic. See the protocol.

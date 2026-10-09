@@ -516,6 +516,73 @@ def split_fused_gate_up(fused: Any, layout: GateUpLayout | str) -> dict[str, Any
     raise ValueError(f"Unknown fused gate/up layout {layout!r}; known: {[m.value for m in GateUpLayout]}")
 
 
+#: Architecture *prefixes* whose HF embedding module folds a scale into its own output --
+#: ``Gemma3TextScaledWordEmbedding`` and its siblings multiply by ``sqrt(hidden_size)`` inside
+#: ``forward``.
+#:
+#: Load-bearing for any backend that reaches the ``embeddings`` point without HF's module. Eager
+#: hooks that module and gets whatever is inside it for free, so the canonical tensor includes this
+#: scale; a backend reading its own embedding table has to include it too or hand back something
+#: ``sqrt(d_model)`` times too small, at cosine 1.0 and so invisible to every angular check.
+#:
+#: Granite's ``embedding_multiplier`` and gpt2's learned ``wpe`` are deliberately absent: HF applies
+#: both in the *model* forward, outside the module, so eager's ``embeddings`` excludes them and a
+#: backend that includes them disagrees the other way. Measured both directions --
+#: Granite at exactly 12x, gpt2 at cosine 0.53 -- which is what makes this a table of what HF puts
+#: where rather than a guess at what an embedding "should" be.
+EMBED_SCALE_IN_MODULE_PREFIXES: tuple[str, ...] = ("Gemma",)
+
+
+def embedding_scale_is_in_the_module(architecture: str | None) -> bool:
+    """Whether HF's embedding module for ``architecture`` applies its own output scale."""
+    return (architecture or "").startswith(EMBED_SCALE_IN_MODULE_PREFIXES)
+
+
+def split_qkv_slab(
+    fused: Any,
+    *,
+    layout: QKVLayout | str,
+    n_heads: int,
+    n_kv_heads: int,
+    head_dim: int,
+) -> dict[str, Any]:
+    """Split a fused qkv output into ``q``/``k``/``v`` under one of :class:`QKVLayout`'s packings.
+
+    Takes the layout and the three head counts rather than a model: ``capture.split_fused_qkv``
+    passes an ``EagerModel``'s numbers. Last-axis and reshape work only.
+
+    Raises on :attr:`QKVLayout.SEPARATE`, which means there is nothing fused to split -- as does an
+    unknown layout, because the packings in use are mutually incompatible and the wrong one returns
+    a correctly shaped, plausibly scaled, meaningless tensor rather than failing.
+    """
+    lead = tuple(fused.shape[:-1])
+    if layout == QKVLayout.CONTIGUOUS_THIRDS:
+        # k/v are narrower than q under GQA, so the widths are not simply thirds.
+        d_q, d_kv = n_heads * head_dim, n_kv_heads * head_dim
+        return {
+            "q": fused[..., :d_q],
+            "k": fused[..., d_q : d_q + d_kv],
+            "v": fused[..., d_q + d_kv : d_q + 2 * d_kv],
+        }
+    if layout == QKVLayout.PER_HEAD_INTERLEAVED:
+        # ``(..., n_heads, 3 * head_dim)`` then split the trailing axis, which is exactly what the
+        # HF module does internally. Each part is flattened back so every layout returns the same
+        # ``[..., n * head_dim]`` shape to the caller.
+        per_head = fused.reshape(*lead, n_heads, 3 * head_dim)
+        return {
+            name: per_head[..., i * head_dim : (i + 1) * head_dim].reshape(*lead, -1)
+            for i, name in enumerate(("q", "k", "v"))
+        }
+    if layout == QKVLayout.PER_KV_GROUP_INTERLEAVED:
+        # ``(..., n_kv_heads, q_per_kv + 2, head_dim)``: the group's queries, then its single k row,
+        # then its single v row. Slicing the second axis is the only way to reach them -- a thirds
+        # or per-head split of the flat width lands mid-group.
+        grouped = fused.reshape(*lead, n_kv_heads, n_heads // n_kv_heads + 2, head_dim)
+        parts = {"q": grouped[..., :-2, :], "k": grouped[..., -2:-1, :], "v": grouped[..., -1:, :]}
+        return {name: part.reshape(*lead, -1) for name, part in parts.items()}
+    raise ValueError(f"no fused qkv matrix to split under layout {layout!r}")
+
+
 def mlp_fused_gate_up_attr(mlp: Any) -> str | None:
     """Attribute name of a fused gate+up projection, or ``None`` when the two are separate.
 

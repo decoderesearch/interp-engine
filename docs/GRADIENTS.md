@@ -26,7 +26,7 @@ gradient *of the model* is eager-only.
 
 ```python
 model = EagerModel("openai-community/gpt2", requires_grad=True)  # default is False
-cache = run_with_cache(model, input_ids, [("resid_post", 5)], detach=False)
+cache = capture(model, input_ids, [("resid_post", 5)], detach=False)
 cache.get("resid_post", 5).sum().backward()
 model.arch.embed.weight.grad  # populated: the graph reached the embedding
 ```

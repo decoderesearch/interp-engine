@@ -41,7 +41,7 @@ family. The full matrix, with per-point cosines and the command to reproduce any
 | `Gemma2ForCausalLM` | `google/gemma-2-27b` | nnsight, tlens_v2, tlens_v3, vllm, vllm-static |
 | `Gemma3ForCausalLM` | `google/gemma-3-1b-it` | nnsight, tlens_v2, tlens_v3, vllm, vllm-static |
 | `Gemma3ForConditionalGeneration` | `google/gemma-3-27b-it` | nnsight, tlens_v2, tlens_v3, vllm, vllm-static |
-| `Gemma4ForConditionalGeneration` | `google/gemma-4-26B-A4B-it`<br>`google/gemma-4-31B` | nnsight, tlens_v3 |
+| `Gemma4ForConditionalGeneration` | `google/gemma-4-26B-A4B-it`<br>`google/gemma-4-31B`<br>`google/gemma-4-E2B` | nnsight, tlens_v3 |
 | `Gemma4UnifiedForConditionalGeneration` | `google/gemma-4-12B-it` | nnsight, tlens_v3 |
 | `Glm4ForCausalLM` | `zai-org/GLM-4-9B-0414` | nnsight, tlens_v3, vllm, vllm-static |
 | `GptOssForCausalLM` | `openai/gpt-oss-20b` | nnsight, tlens_v2, tlens_v3, vllm, vllm-static |
@@ -62,7 +62,7 @@ family. The full matrix, with per-point cosines and the command to reproduce any
 | `Qwen3ForCausalLM` | `Qwen/Qwen3-32B` | nnsight, tlens_v3, vllm, vllm-static |
 | `Qwen3MoeForCausalLM` | `Qwen/Qwen3-30B-A3B` | nnsight, tlens_v3, vllm, vllm-static |
 | `Qwen3NextForCausalLM` | `Qwen/Qwen3-Next-80B-A3B-Instruct` | nnsight, tlens_v3, vllm, vllm-static |
-| `Qwen3_5ForConditionalGeneration` | `Qwen/Qwen3.8-27B` | nnsight, tlens_v3, vllm, vllm-static |
+| `Qwen3_5ForConditionalGeneration` | `Qwen/Qwen3.5-0.8B`<br>`Qwen/Qwen3.8-27B` | nnsight, tlens_v3, vllm, vllm-static |
 | `Qwen3_5MoeForConditionalGeneration` | `Qwen/Qwen3.6-35B-A3B` | nnsight, tlens_v3, vllm, vllm-static |
 | `SmolLM3ForCausalLM` | `HuggingFaceTB/SmolLM3-3B` | nnsight, tlens_v3, vllm, vllm-static |
 | `Starcoder2ForCausalLM` | `bigcode/starcoder2-3b` | nnsight, tlens_v3, vllm, vllm-static |

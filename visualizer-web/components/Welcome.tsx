@@ -54,7 +54,7 @@ import { cn } from "@/lib/utils";
  */
 const READING = `model = load_model("meta-llama/Llama-3.1-8B")
 point = Address("resid_post", 12)
-cache = run_with_cache(model, model.to_tokens("Hello, world"), [point])
+cache = capture(model, model.to_tokens("Hello, world"), [point])
 cache[point]  # [batch, pos, ...]`;
 
 const STEERING = `model = load_model("Qwen/Qwen3-8B")

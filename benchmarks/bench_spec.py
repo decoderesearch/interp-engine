@@ -27,6 +27,9 @@ class ModelSpec:
     precision and does not resolve to the same thing on both backends: eager honors a float32
     checkpoint while vLLM's "auto" downcasts it to bfloat16, which would make that model's row a
     precision comparison rather than a backend one."""
+    weights: str = ""
+    """What the checkpoint's weights stay in when that is not ``dtype`` and its cells do not record
+    it, for the README's weights column. Empty: the cell's quantization, else its dtype."""
     min_gpu_gib: float = 0.0
     """The smallest card this row fits on, in GiB of total VRAM. A sweep that was not given an
     explicit ``--models`` drops the rows the card cannot hold and says which (:func:`default_models`).
@@ -123,6 +126,7 @@ MODELS: tuple[ModelSpec, ...] = (
         "deepseek-ai/DeepSeek-V4-Flash-0731",
         "DeepseekV4",
         "291B (14B active)",
+        weights="fp8",
         min_gpu_gib=170.0,
         # `resid_post` does not exist on this trunk: the block carries `hc_mult` (4) parallel residual
         # streams, and the engine refuses the name rather than silently returning stream 0. `mlp_out`

@@ -1859,6 +1859,10 @@ class WorkloadSpec:
     #: specific answer to "how much buffer".
     static_points: tuple[str, ...] = ()
     enforce_eager: bool | None = None
+    #: A speculative drafter's weights, as its checkpoint stores them; 0 for none. Its own field
+    #: rather than a reservation, because vLLM loads it before it sizes the pool, so it comes out
+    #: of the KV cache -- see :func:`drafter_bytes`.
+    drafter_bytes: int = 0
     #: Eager-only: the shape of the forward being priced.
     batch_size: int = 1
     seq_len: int = 0
@@ -1975,6 +1979,21 @@ class WorkloadSpec:
             gpu_memory_utilization=self.gpu_memory_utilization or 0.9,
             dtype=self.dtype or "auto",
         )
+
+
+#: Backends that run a speculative drafter: vLLM's `speculative_config`. Eager has none.
+SPECULATIVE_BACKENDS = VLLM_BACKENDS
+
+
+def drafter_bytes(stored: int, backend: str, num_gpus: int = 1) -> int:
+    """Per-card bytes a drafter of ``stored`` bytes takes on ``backend``; 0 where none runs.
+
+    vLLM shards a draft model over the same ranks as the target. A draft model's own KV cache is
+    not priced.
+    """
+    if not stored or backend not in SPECULATIVE_BACKENDS:
+        return 0
+    return stored // max(int(num_gpus), 1)
 
 
 # ----------------------------------------------------------------------- estimates
@@ -2286,6 +2305,12 @@ def estimate(
             "weight bytes are unknown, so every figure below is only the non-weight terms; "
             "pass hf_model_id or a config to model_memory_facts()"
         )
+    drafter = drafter_bytes(spec.drafter_bytes, spec.backend, tp)
+    if spec.drafter_bytes and not drafter:
+        warnings.append(
+            f"backend={spec.backend!r} runs no speculative drafter, so its "
+            f"{spec.drafter_bytes / GIB:.1f} GiB are not priced"
+        )
     if refused:
         warnings.append(f"quantization={spec.quantization!r} is refused on backend={spec.backend!r}: {refused}")
     elif spec.quantization and facts.weights.is_quantized:
@@ -2477,6 +2502,16 @@ def estimate(
             + f" [{facts.weights.source}]",
         )
     )
+    if drafter:
+        terms.append(
+            MemoryTerm(
+                "drafter",
+                drafter,
+                "pool",
+                "speculative drafter's weights, loaded before vLLM sizes its cache"
+                + (f", sharded over TP={tp}" if tp > 1 else ""),
+            )
+        )
 
     sites = spec.resolved_static_sites(facts)
     elements = spec.static_elements(facts)
@@ -2522,7 +2557,7 @@ def estimate(
 
     pool_available = int(spec.gpu_memory_utilization * gpu.total_bytes)
     outside_needed = overshoot + frag + reserved_outside
-    pool_needed = context + quant_charge + reserved_inside + per_card_weights + buffers + graphs + kv_floor
+    pool_needed = context + quant_charge + reserved_inside + per_card_weights + drafter + buffers + graphs + kv_floor
 
     # Both constraints have to hold, and they fail differently -- see the module docstring.
     pool_headroom = pool_available - pool_needed
@@ -2542,7 +2577,9 @@ def estimate(
         and not refused
     )
 
-    kv_room = max(pool_available - context - quant_charge - reserved_inside - per_card_weights - buffers - graphs, 0)
+    kv_room = max(
+        pool_available - context - quant_charge - reserved_inside - per_card_weights - drafter - buffers - graphs, 0
+    )
     per_token = (
         kv_bytes_for_context(facts, spec.max_model_len, kv_dtype=spec.kv_cache_dtype, model_dtype=spec.dtype) / shards
     )
@@ -2779,6 +2816,10 @@ CAPTURE_SIZES = (16384, 8192, 4096, 2048, 1024)
 #: runs. The same model at 8k fits that card with room to spare.
 CONTEXT_LADDER = (131072, 65536, 32768, 16384, 8192, 4096, 2048)
 
+#: Prompt lengths the eager search steps through: the ladder above and two short rungs.
+#: A 1k prompt is an ordinary capture; a 1k ``max_model_len`` is not a server, so vLLM stops at 2k.
+PROMPT_LADDER = (*CONTEXT_LADDER, 1024, 512)
+
 
 def fit(
     facts: ModelMemoryFacts,
@@ -2800,6 +2841,7 @@ def fit(
     n_capture_points: int = 0,
     requires_grad: bool = False,
     attn_implementation: str = "",
+    drafter_bytes: int = 0,
 ) -> tuple[WorkloadSpec, MemoryEstimate] | None:
     """The largest configuration of this shape that fits, or None when none does.
 
@@ -2842,7 +2884,7 @@ def fit(
         # question, and the caller finds out at run time.
         pinned = seq_len or max_model_len
         advertised = facts.max_position_embeddings or 4096
-        prompts = [pinned] if pinned else [advertised, *[n for n in CONTEXT_LADDER if n < advertised]]
+        prompts = [pinned] if pinned else [advertised, *[n for n in PROMPT_LADDER if n < advertised]]
 
         for prompt in prompts:
             # `sdpa` rather than the engine's `eager` default: the quadratic attention matrix is the
@@ -2859,6 +2901,7 @@ def fit(
                 requires_grad=requires_grad,
                 attn_implementation=attn_implementation or "sdpa",
                 max_model_len=max_model_len,
+                drafter_bytes=drafter_bytes,
             )
             est = estimate(facts, gpu, spec, res)
             if est.fits:
@@ -2906,6 +2949,7 @@ def fit(
                 num_gpus=num_gpus,
                 static_sites=static_sites,
                 static_points=tuple(static_points),
+                drafter_bytes=drafter_bytes,
             )
             est = estimate(facts, gpu, spec, res)
             if est.fits and est.concurrent_sequences >= min_kv_sequences:

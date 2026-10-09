@@ -36,7 +36,7 @@ Whether something is supported is the question you will be asked most, and it is
 
 - Prefer copying a snippet from \`docs/USAGE.md\` and adapting the arguments over composing one from scratch. Those snippets are parsed and checked against the public API by the test suite, so they are known to be correct; yours is not.
 - A caller switches backend by changing \`backend=\` at \`load_model\` and nothing else. There is no \`vllm=\` argument anywhere.
-- The sync free functions and the async methods are different call shapes with different return types — \`run_with_cache\` gives a \`Cache\` with a batch axis, \`await model.capture(...)\` gives a plain dict keyed by \`Address\` without one. Do not mix them in one snippet.
+- The sync free functions and the async methods are different call shapes with different return types — the free function \`capture(model, ...)\` gives a \`Cache\` with a batch axis, \`await model.capture(...)\` gives a plain dict keyed by \`Address\` without one. Do not mix them in one snippet.
 - Keep snippets to the shortest thing that runs. Do not add error handling, argparse, or a \`__main__\` block that was not asked for.
 - Python, in a fenced block tagged \`python\`.
 

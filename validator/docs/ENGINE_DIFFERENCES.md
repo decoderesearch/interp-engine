@@ -108,7 +108,7 @@ Its limits are the ones eager PyTorch has:
 - **No serving throughput.** No continuous batching, no paged attention. That is what the vLLM backend is
   for, and the two share the canonical point names so the switch is a backend choice, not a rewrite.
 - **`attn_probs` needs eager attention.** SDPA and FlashAttention never materialize the probability
-  matrix; `run_with_cache` raises rather than returning something else. `attn_scores`, the pre-softmax
+  matrix; `capture` raises rather than returning something else. `attn_scores`, the pre-softmax
   tensor, needs it for a second reason: it is not a module boundary at all, so it is reached by registering
   a wrapping attention implementation for the duration of the capture (`attn_scores.py`), which the fused
   kernels would not dispatch to. The wrapper delegates to the checkpoint's own eager function, so the

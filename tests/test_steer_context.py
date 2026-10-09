@@ -6,7 +6,7 @@ steered by somebody else's block, so the recording rules are the correctness arg
 implementation detail:
 
 - keyed on the model, so a block opened for one does not leak onto another;
-- composed when nested, matching eager, where two hook sets both fire;
+- composed when nested, matching eager, where two hook sets both fire: the inner specs follow the outer;
 - gone at the end of the block, including when the body raises.
 
 Driven against a stub rather than a real engine: what is under test is `steer()`'s bookkeeping, and a
@@ -46,7 +46,7 @@ def test_a_block_records_its_spec_for_the_duration() -> None:
     with steer(model, spec):
         open_now = active_steering(model)
         assert open_now is not None
-        assert list(open_now.spec.layers) == [3]
+        assert [list(s.layers) for s in open_now.specs] == [[3]]
     assert active_steering(model) is None
 
 
@@ -71,7 +71,7 @@ def test_nesting_composes_rather_than_replacing() -> None:
     with steer(model, _spec(3)), steer(model, _spec(7)):
         merged = active_steering(model)
         assert merged is not None
-        assert sorted(merged.spec.layers) == [3, 7]
+        assert [list(s.layers) for s in merged.specs] == [[3], [7]]
     assert active_steering(model) is None
 
 
@@ -80,7 +80,7 @@ def test_nesting_on_one_layer_keeps_both_operations() -> None:
     with steer(model, _spec(3, scale=1.0)), steer(model, _spec(3, scale=2.0)):
         merged = active_steering(model)
         assert merged is not None
-        assert [op.scale for op in merged.spec.layers[3].operations] == [1.0, 2.0]
+        assert [op.scale for s in merged.specs for op in s.layers[3].operations] == [1.0, 2.0]
 
 
 def test_the_outer_spec_is_not_mutated_by_a_nested_block() -> None:
@@ -98,7 +98,7 @@ def test_leaving_the_inner_block_restores_the_outer_spec() -> None:
             pass
         still_open = active_steering(model)
         assert still_open is not None
-        assert list(still_open.spec.layers) == [3]
+        assert [list(s.layers) for s in still_open.specs] == [[3]]
 
 
 def test_two_different_position_masks_are_refused_rather_than_picked_between() -> None:
@@ -170,4 +170,31 @@ def test_the_eager_only_spec_form_is_refused_before_anything_is_recorded() -> No
         steer(model, specs),  # pyright: ignore[reportArgumentType]
     ):
         pass
+    assert active_steering(model) is None
+
+
+def test_nesting_keeps_the_point_each_block_was_opened_at() -> None:
+    model = NotEager()
+    z = SteeringSpec(layers=_spec(1).layers, point="z", stream=None)
+    with steer(model, z), steer(model, SteeringSpec(layers=_spec(2).layers, point="z")):
+        recorded = active_steering(model)
+    assert recorded is not None
+    assert [(s.point, list(s.layers)) for s in recorded.specs] == [("z", [1]), ("z", [2])]
+
+
+def test_nesting_two_points_keeps_both_in_order() -> None:
+    model = NotEager()
+    with steer(model, SteeringSpec(layers=_spec(1).layers, point="z")), steer(model, _spec(2)):
+        recorded = active_steering(model)
+    assert recorded is not None
+    assert [(s.point, list(s.layers)) for s in recorded.specs] == [("z", [1]), ("resid_post", [2])]
+
+
+def test_one_block_takes_a_list_of_specs_at_several_points() -> None:
+    model = NotEager()
+    specs = [SteeringSpec(layers=_spec(1).layers, point="z"), _spec(2)]
+    with steer(model, specs):
+        recorded = active_steering(model)
+        assert recorded is not None
+        assert recorded.specs == tuple(specs)
     assert active_steering(model) is None

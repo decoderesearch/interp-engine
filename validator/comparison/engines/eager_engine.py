@@ -35,7 +35,7 @@ def _resolvable(model, point: str, layer: int | None, announced: set[str]) -> bo
     # for a reason that is not about it.
     if spec is not None and not spec.module_resolved and point not in points.hyper_connection_names():
         # A point no module boundary carries, so `resolve_point` refuses it by design rather than
-        # because this checkpoint lacks it -- `attn_scores` is rebuilt inside `run_with_cache`,
+        # because this checkpoint lacks it -- `attn_scores` is rebuilt inside `capture`,
         # which owns that path. Asking `resolve_point` here would read a declaration about the
         # point as a fact about the model and drop a point most checkpoints can produce.
         #
@@ -148,7 +148,7 @@ def capture(
     num_gpus: int = 1,
 ) -> tuple[dict[str, np.ndarray], list[dict]]:
     import torch
-    from interp_engine import EagerModel, deepgemm_fallback_kwargs, run_with_cache
+    from interp_engine import EagerModel, capture, deepgemm_fallback_kwargs
 
     # Empty for every checkpoint but an FP8 one on a GPU the `deep-gemm` Hub build does not target,
     # where it is the difference between measuring the row and losing it: the library refuses that
@@ -186,7 +186,7 @@ def capture(
     for s in saes:
         requests.append((s.point, s.layer))
 
-    cache = run_with_cache(model, ids, requests)
+    cache = capture(model, ids, requests)
 
     arrays: dict[str, np.ndarray] = {}
     for point, layer in requests:

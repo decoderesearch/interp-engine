@@ -16,10 +16,12 @@ that is what a pin is — and releasing it does not hand the card to whatever th
 over in the meantime. A pin does not outlive the drawing it was taken on: change a trait, and the
 point it describes may not exist any more. With **interp-engine** selected it ends
 with the call that reads the point, against a checkpoint of the architecture the pane is drawing,
-over a tab per way of making it: `vllm`, `eager`, `vllm async`. The first two are the _same snippet_
+over a tab per backend, in two sections by machine: `eager` under CPU, and `vllm` and `vllm static`
+under CUDA. `vllm` and `eager` are the _same snippet_
 — since engine 1.1 the sync free functions dispatch on the model, so the backend is one argument and
-nothing else changes, which is the thing worth showing and which two side-by-side snippets hid. The
-third is the async method form a server holding the model in its own event loop writes. Only under
+nothing else changes, which is the thing worth showing and which two side-by-side snippets hid. Under
+the tabs a `sync` / `async` switch picks the form of the call; `async` is the method form a server
+holding the model in its own event loop writes, and every tab has it. Only under
 that name: the code is this engine's API, and printing it beside a TransformerLens or nnterp label
 would answer a question asked in one vocabulary with a snippet written in another. Where vLLM has no
 path to the point, its tabs say so up front and give the engine's own words, which distinguish
@@ -441,7 +443,7 @@ reader who was merely curious. So the notebook is committed and the snippet is n
 
 **On the two vLLM tabs the clipboard does not hold what the card shows.** A notebook kernel runs its
 cells inside an event loop, and there the sync free functions raise `NestedEventLoop` rather than nest
-a second one — so `run_with_cache` on a vLLM model, which reaches the engine through that bridge, is
+a second one — so `capture` on a vLLM model, which reaches the engine through that bridge, is
 handed over as `await model.capture(...)` instead, with the substitution written into the snippet as a
 comment. `eager` is copied as it stands, because its free functions keep in-process bodies for an
 `EagerModel` and never reach the bridge. `data/snippets.ts` builds both forms; the card shows `code`
@@ -449,11 +451,11 @@ and the button carries `notebook`.
 
 Three templates, in `notebooks/` at the repository root:
 
-| Template                          | Tabs it serves       | Installs              |
-| --------------------------------- | -------------------- | --------------------- |
-| `interp_engine_vllm.ipynb`        | `vllm`, `vllm async` | `interp-engine[vllm]` |
-| `interp_engine_vllm_static.ipynb` | `vllm static`        | `interp-engine[vllm]` |
-| `interp_engine_eager.ipynb`       | `eager`              | `interp-engine`       |
+| Template                          | Tab it serves | Installs              |
+| --------------------------------- | ------------- | --------------------- |
+| `interp_engine_vllm.ipynb`        | `vllm`        | `interp-engine[vllm]` |
+| `interp_engine_vllm_static.ipynb` | `vllm static` | `interp-engine[vllm]` |
+| `interp_engine_eager.ipynb`       | `eager`       | `interp-engine`       |
 
 Between the eager one and the other two the extra is the whole difference, and it is not a small one:
 gigabytes of CUDA wheel, a torch Colab has to be restarted to swap, and a GPU runtime the backend
@@ -466,8 +468,8 @@ point means editing the load and re-running, and the static buffers want more of
 hooked backend does. None of that applies to the hooked template, and all of it belongs before the
 paste rather than in a footnote after it.
 
-`vllm async` maps to the vLLM template rather than to a fourth one: it is a method on a vLLM model, so
-it needs the same extra, and its top-level `await` is something Colab's kernel runs as it stands. Each
+A tab's two forms share one template: the awaited method needs the same extra as the free function,
+and its top-level `await` is something Colab's kernel runs as it stands. Each
 template puts what the reader needs *before* the paste rather than after it — which runtime to pick and
 what a free T4 does and does not fit, a Hugging Face login for the gated families commented out with
 its token in Colab's Secrets rather than in a cell, and the diagram's own URL scheme, so a notebook

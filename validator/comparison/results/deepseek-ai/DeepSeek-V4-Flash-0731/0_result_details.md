@@ -9,8 +9,8 @@ Generated from the `<engine>.json` files beside this one, which hold the same nu
 | engine | verdict | capture | dtype | version | agreed | differs | failed | not compared |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | [interp-engine eager](eager.json) *(reference)* | ref | ok | bfloat16 | v1.11.1 | — | — | — | — |
-| [interp-engine vllm](vllm.json) | ✅ | ok | bfloat16 | v0.28.0 | 54 | 0 | 0 | 12 |
-| [interp-engine vllm-static](vllm-static.json) | ✅ | ok | bfloat16 | v0.28.0 | 52 | 0 | 0 | 12 |
+| [interp-engine vllm](vllm.json) | ✅ | ok | bfloat16 | v1.6.0+dirty | 54 | 0 | 0 | 12 |
+| [interp-engine vllm-static](vllm-static.json) | ✅ | ok | bfloat16 | v1.6.0+dirty | 52 | 0 | 0 | 12 |
 | [tlens_v2](tlens_v2.json) | unsupported | skip: MemoryError: deepseek-ai/DeepSeek-V4-Flash-0731 needs ~1084 GiB to load+convert into HookedTransformer (2x bfloat16 weights) but only 351 GiB of host memory is available | bfloat16 | v3.8.1 | 0 | 0 | 0 | 16 |
 | [tlens_v3](tlens_v3.json) | ⚠️ | ok | bfloat16 | v3.8.1 | 44 | 0 | 0 | 16 |
 | [nnsight](nnsight.json) | unsupported | skip: RenamingError: Could not check the IO of deepseek-ai/DeepSeek-V4-Flash-0731 | bfloat16 | v0.7.0 | 0 | 0 | 0 | 20 |
@@ -19,7 +19,7 @@ Generated from the `<engine>.json` files beside this one, which hold the same nu
 
 ✅ agrees · ⚠️ differs in value · ❌ structurally wrong, or the engine did not deliver it · 🐞 differs because the reference is wrong here, with an issue filed against it (`ref🐞` marks the reference's own column) · `ref` the reference produced this point (nothing scores it — it *is* the baseline) · `n/a` this engine declines the point · `no ref` the reference declined it · `—` no comparison here — the point is not asked of this engine, or it is listed under *Not compared* · † a waiver carried the pass (listed below)
 
-| point<br>layer | interp-engine eager<br>[v1.11.1](eager.json) | interp-engine vllm<br>[v0.28.0](vllm.json) | interp-engine vllm-static<br>[v0.28.0](vllm-static.json) | tlens_v3<br>[v3.8.1](tlens_v3.json) |
+| point<br>layer | interp-engine eager<br>[v1.11.1](eager.json) | interp-engine vllm<br>[v1.6.0+dirty](vllm.json) | interp-engine vllm-static<br>[v1.6.0+dirty](vllm-static.json) | tlens_v3<br>[v3.8.1](tlens_v3.json) |
 | --- | --- | --- | --- | --- |
 | `mlp_out`<br>layer 0 | ref | ✅ | ✅ | ✅ |
 | `mlp_out`<br>layer 21 | ref | ✅ | ✅ | ✅ |

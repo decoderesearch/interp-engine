@@ -295,6 +295,7 @@ def report_model(facts: mem.ModelMemoryFacts, args: argparse.Namespace) -> dict[
             static_points=static_points,
             max_gpus=args.max_gpus,
             min_kv_sequences=args.min_sequences,
+            drafter_bytes=int(args.drafter_gib * mem.GIB),
         )
         if not fitted:
             if not facts.trunk_dims_known:
@@ -428,6 +429,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="your tensors are allocated BEFORE load_model, so vLLM sees them as already used",
     )
+    p.add_argument("--drafter-gib", type=float, default=0.0, help="a speculative drafter's checkpoint size, as stored")
     p.add_argument("--jacobian-lens", action="store_true", help="reserve for a Jacobian lens read-out")
     p.add_argument("--lens-dtype", default="float32")
     p.add_argument("--detail", action="store_true", help="per-term breakdown for the smallest fitting card")

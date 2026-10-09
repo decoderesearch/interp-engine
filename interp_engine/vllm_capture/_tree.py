@@ -812,6 +812,43 @@ def _split_feed_forward_reason(layer: torch.nn.Module | None, name: str) -> str 
     )
 
 
+#: The points a layer's own key/value projection feeds. Absent, as tensors, on a layer that attends
+#: over another layer's keys and values.
+_KV_OWNED_POINTS = frozenset({"k_norm_in", "k_norm_out", "value"})
+
+
+def _kv_shared_reason(layer: torch.nn.Module | None, name: str) -> str | None:
+    """Why the key-norm and value points are refused on a layer that reuses another layer's K/V.
+
+    vLLM builds Gemma-4's shared tail with the same attention class as the rest: ``k_norm`` and
+    ``v_norm`` exist, and the forward skips them (``if not self.is_kv_shared_layer``), handing the
+    unread k/v slots of the packed ``qkv_proj`` to an attention op that reads the source layer's
+    cache. A hook on those norms never fires, and a static tap on them copies nothing -- so the
+    hooked arm came back empty and the static arm came back with a buffer nothing had written to,
+    which is the worse of the two. Refused here, on the flag vLLM sets, so both arms decline the
+    same layers the eager backend does (``ArchSpec._kv_shared_refusal``).
+    """
+    if name not in _KV_OWNED_POINTS or layer is None:
+        return None
+    attn = next((getattr(layer, attr) for attr in _ATTN_ATTRS if hasattr(layer, attr)), None)
+    if attn is None or not getattr(attn, "is_kv_shared_layer", False):
+        return None
+    target = getattr(getattr(attn, "attn", None), "kv_sharing_target_layer_name", None) or ""
+    source = target.rsplit(".self_attn", 1)[0].rsplit(".", 1)[-1] if ".self_attn" in target else ""
+    where = (
+        f"Capture {name!r} at layer {source} instead -- it is the same tensor."
+        if source.isdigit()
+        else "Capture it at the layer that computed them instead."
+    )
+    return (
+        f"{type(layer).__name__} attends over another layer's keys and values and runs neither its "
+        "key norm nor its value norm: the k and v it splits out of the packed qkv projection are "
+        "slots the checkpoint never loaded, handed to an attention op that reads the source layer's "
+        "cache. The module this point would tap is present and never called, so a tap on it would "
+        f"return memory nothing wrote. {where} The eager backend refuses this name on the same layers."
+    )
+
+
 def _has_position_mixer(layer: torch.nn.Module) -> bool:
     """Whether this block mixes positions at all -- attention, a state-space mixer or a short conv.
 
@@ -858,11 +895,16 @@ def absent_point_reason(model: torch.nn.Module, name: str, layer: torch.nn.Modul
     *fraction* of what the point names -- Gemma-4's dense MLP beside its experts, see
     :func:`_split_feed_forward_reason`. That one is the only case here the sweep could not have
     caught, because both engines produce the same half.
+
+    A module present and skipped by the forward is the fifth -- Gemma-4's key and value norms on
+    its KV-shared tail, see :func:`_kv_shared_reason`.
     """
     if (fused_o := _fused_o_proj_reason(layer, name)) is not None:
         return fused_o
     if (split := _split_feed_forward_reason(layer, name)) is not None:
         return split
+    if (shared := _kv_shared_reason(layer, name)) is not None:
+        return shared
     if (mhc := _absent_mhc_reason(layer, name)) is not None:
         return mhc
     if (streams := _multi_stream_residual_reason(layer, name)) is not None:

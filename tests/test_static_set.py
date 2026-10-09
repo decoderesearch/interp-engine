@@ -1140,9 +1140,44 @@ def test_encode_harvest_applies_capture_scale():
 
     worker = SimpleNamespace(model_runner=SimpleNamespace(model=Root()))
     raw = torch.ones(2, 8)
-    payload = _encode_harvest({"embeddings": [raw.clone()]}, worker)
+    payload = _encode_harvest({"embeddings": [raw.clone()]}, None, worker)
     out = decode_tensor_payload(payload["embeddings"])
     torch.testing.assert_close(out, raw * 4.0)
+
+
+def test_collect_static_sends_only_the_requested_rows_and_refuses_a_short_harvest():
+    from types import SimpleNamespace
+
+    from interp_engine.vllm_capture._payload import decode_tensor_payload
+    from interp_engine.vllm_capture.static import worker_collect_static
+
+    class Trunk(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.embed_tokens = torch.nn.Embedding(4, 2)
+            self.layers = torch.nn.ModuleList([torch.nn.Linear(2, 2)])
+
+    class Root(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.model = Trunk()
+
+    static = StaticState()
+    worker = SimpleNamespace(model_runner=SimpleNamespace(model=Root()), _ie_static=static)
+    rows = torch.arange(10.0).reshape(5, 2)
+    static.harvest["r"] = {"resid_post.0": [rows[:3].clone(), rows[3:].clone()]}
+    static.cap_points["r"] = {"resid_post.0"}
+    static.cap_rows["r"] = ([4, 1], 5)
+    out = decode_tensor_payload(worker_collect_static(worker, "r")["resid_post.0"])
+    torch.testing.assert_close(out, rows[[4, 1]])
+    assert "r" not in static.cap_rows and "r" not in static.harvest
+
+    static.harvest["s"] = {"resid_post.0": [rows[:3].clone()]}
+    static.cap_points["s"] = {"resid_post.0"}
+    static.cap_rows["s"] = ([4], 5)
+    with pytest.raises(RuntimeError, match="harvested 3 rows"):
+        worker_collect_static(worker, "s")
+    assert "s" not in static.cap_rows and "s" not in static.harvest and "s" not in static.cap_points
 
 
 def test_resid_post_orthogonal_wrap_projects_against_the_sum_and_adds_into_hidden():

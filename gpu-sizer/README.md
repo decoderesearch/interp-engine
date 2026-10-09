@@ -142,6 +142,10 @@ python gpu-sizer/fit.py Qwen/Qwen3-4B --local --reserve-gib 8 --snippet
 python gpu-sizer/fit.py meta-llama/Llama-3.3-70B-Instruct --jacobian-lens
 ```
 
+A speculative drafter is its own flag, `--drafter-gib` (its checkpoint size, as stored), not a
+reservation. vLLM loads it with the model, before it sizes the cache, so it comes out of the KV cache
+and not out of the margin.
+
 **Whether you allocate before or after `load_model` changes the answer.** vLLM sizes its cache against
 what the process is already using, so memory taken before startup shrinks the cache, while memory
 taken after eats the safety margin. The second is the common case and the dangerous one.

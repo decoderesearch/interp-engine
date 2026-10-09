@@ -1,6 +1,6 @@
 """What the unified free functions share to serve either backend.
 
-``run_with_cache``, ``generate_stream``, ``capture_residuals`` and the rest each keep their
+``capture``, ``generate_stream``, ``capture_residuals`` and the rest each keep their
 eager body and gain a second arm that goes through :class:`~interp_engine.sync.SyncModel`. This
 module holds the two things all of those arms need: coercing whatever the caller passed as
 tokens into the shape each backend wants, and the capability table that decides what an arm
@@ -16,7 +16,7 @@ through the body:
         return _thing_eager(model, tokens, ...)
 
 Eager first in the sense that its body is untouched: ``engine_adapter.py`` calls
-``run_with_cache`` rather than ``await model.capture`` specifically because eager can hand back
+``capture`` rather than ``await model.capture`` specifically because eager can hand back
 a tensor on the device the SAE encode is about to run on, where the protocol method must return
 CPU tensors. Routing eager through the facade would quietly add a device round-trip to a serving
 path, so it does not.
@@ -140,16 +140,30 @@ CAPABILITIES: dict[str, Capability] = {
     "position_ids": Capability(
         what="position ids other than the ones its attention mask gives",
         why="each row runs as its own request, and the backend counts that request's positions from 0",
-        instead="omitting position_ids, which counts each row from its first unmasked token on both backends",
+        instead="omitting position_ids, which counts each row from its first unmasked token on every backend",
     ),
-    "masked_steer_positions": Capability(
-        what="steering that skips some prompt positions",
+    "padded_steer_positions": Capability(
+        what="steering that skips listed positions of a left-padded row",
+        why="each row runs as its unmasked tokens alone, so a listed column no longer names the same token",
+        instead="a SteerMask preset, which each row resolves against its own tokens, or one call per prompt",
+    ),
+    "lora_read": Capability(
+        what="a LoRA read of an activation (a LoRA adapter over a prompt given as embeddings)",
+        why="this backend has no generation path that carries both an adapter and an embeds prompt",
+        instead=(
+            "backend='vllm' or 'vllm-static' built with enable_prompt_embeds=True and max_lora_rank, or backend='eager'"
+        ),
+    ),
+    "steered_prompt_embeds": Capability(
+        what="a steered generation from a prompt given as embeddings",
         why=(
-            "the per-request steer hook applies to every row of the request it is registered for, "
-            "and the wire format carries no position selection"
+            "the vLLM arm builds its per-request steer around an ids prompt -- the position mask is "
+            "resolved against the ids -- and that path has not been carried to an embeds prompt, "
+            "which has no ids to resolve against"
         ),
         instead=(
-            "steering every position, or generating with model.generate_steered, which does resolve a position_mask"
+            "generating from ids inside the steer() block, or from embeds outside one; eager "
+            "steers an embeds prompt through the same hooks it steers ids with"
         ),
     ),
     "full_logits_per_step": Capability(

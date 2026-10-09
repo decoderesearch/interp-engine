@@ -27,9 +27,9 @@ from harness import GPT2, ModelSpec, load_model, require_hf_token
 from interp_engine import (
     SteerSpec,
     attn_capture_layers,
+    capture,
     per_head_value,
     recompute_attn_from_payloads,
-    run_with_cache,
     steer,
 )
 from interp_engine.facts import (
@@ -201,7 +201,7 @@ def test_value_still_works_on_an_unshared_layer_at_its_own_head_width(gemma4):
     ids = gemma4.tokenizer("The capital of France is Paris.", add_special_tokens=False, return_tensors="pt")[
         "input_ids"
     ].to(gemma4.device)
-    cache = run_with_cache(gemma4, ids, [("value", layer)])
+    cache = capture(gemma4, ids, [("value", layer)])
     value = per_head_value(gemma4, cache, layer)
     assert value.shape[-2:] == (gemma4.n_kv_heads, 512)
 
@@ -267,7 +267,7 @@ def _watch(module) -> dict:
 def test_value_is_flat_although_the_norm_that_produced_it_saw_heads(tiny_gemma4):
     """`[batch, pos, n_kv_heads * head_dim]`, which is what the point means on every other family."""
     for layer in _both_kinds(tiny_gemma4):
-        cache = run_with_cache(tiny_gemma4, _tokens(), [("value", layer)])
+        cache = capture(tiny_gemma4, _tokens(), [("value", layer)])
         heads = tiny_gemma4.arch.kv_heads_for_layer(layer)
         head_dim = tiny_gemma4.arch.value_head_dim_for_layer(layer)
         assert cache.get("value", layer).shape == (1, 5, heads * head_dim), f"layer {layer}"
@@ -280,7 +280,7 @@ def test_the_flattening_is_a_reshape_of_the_norms_own_output(tiny_gemma4):
         assert norm is not None
         seen = _watch(norm)
         try:
-            cache = run_with_cache(tiny_gemma4, _tokens(), [("value", layer)])
+            cache = capture(tiny_gemma4, _tokens(), [("value", layer)])
         finally:
             seen["handle"].remove()
         produced = seen["v"]
@@ -291,7 +291,7 @@ def test_the_flattening_is_a_reshape_of_the_norms_own_output(tiny_gemma4):
 def test_per_head_value_splits_it_back_into_the_heads_the_norm_saw(tiny_gemma4):
     """The round trip, which is what the DFA path needs and what the flat capture had broken."""
     for layer in _both_kinds(tiny_gemma4):
-        cache = run_with_cache(tiny_gemma4, _tokens(), [("value", layer)])
+        cache = capture(tiny_gemma4, _tokens(), [("value", layer)])
         heads = tiny_gemma4.arch.kv_heads_for_layer(layer)
         head_dim = tiny_gemma4.arch.value_head_dim_for_layer(layer)
         assert per_head_value(tiny_gemma4, cache, layer).shape == (1, 5, heads, head_dim)
@@ -311,10 +311,10 @@ def test_a_steer_at_value_writes_flat_and_hands_the_attention_back_its_shape(tin
     """
     layer = _both_kinds(tiny_gemma4)[0]
     assert tiny_gemma4.arch.kv_heads_for_layer(layer) > 1
-    clean = run_with_cache(tiny_gemma4, _tokens(), [("value", layer)]).get("value", layer)
+    clean = capture(tiny_gemma4, _tokens(), [("value", layer)]).get("value", layer)
     vector = torch.arange(clean.shape[-1], dtype=clean.dtype) / clean.shape[-1]
     with steer(tiny_gemma4, [SteerSpec(vector=vector, layer=layer, coeff=2.0, point="value")]):
-        steered = run_with_cache(tiny_gemma4, _tokens(), [("value", layer)]).get("value", layer)
+        steered = capture(tiny_gemma4, _tokens(), [("value", layer)]).get("value", layer)
     assert torch.allclose(steered, clean + 2.0 * vector, atol=1e-5)
 
 
@@ -518,7 +518,7 @@ def test_a_model_with_uniform_dims_reports_them_for_every_layer():
 def test_value_is_unchanged_on_a_model_that_shares_nothing():
     model = load_model(GPT2, device="cpu", attn_implementation="eager")
     ids = torch.tensor([[464, 3139, 286, 4881]])
-    cache = run_with_cache(model, ids, [("value", 0)])
+    cache = capture(model, ids, [("value", 0)])
     assert per_head_value(model, cache, 0).shape[-2:] == (model.n_kv_heads, model.head_dim)
 
 

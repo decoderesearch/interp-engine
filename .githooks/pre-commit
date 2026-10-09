@@ -5,7 +5,7 @@
 # the visualizer's own checks -- are in pre-push, because they take a minute and a commit is not
 # where you want to spend it.
 #
-# Two things are fixed here:
+# Three things are fixed here:
 #
 #   1. `ruff format` over the staged Python. CI's format gate is a `--check`, so a file that was
 #      never formatted is a red build that a person then fixes by running the formatter -- an
@@ -14,6 +14,7 @@
 #      modules and is committed (see visualizer-web/scripts/build-knowledge.mjs for why it has to
 #      be). Forgetting it is the failure this hook was written for: nothing local complains, the
 #      page still builds, and the bot answers out of the previous release.
+#   3. The API contract generated from api/engine.yaml: the Python Protocol.
 
 # shellcheck source=./common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
@@ -63,6 +64,26 @@ if ((${#format[@]})); then
     git add -- "${format[@]}"
   else
     missing_tool uv "ruff format" "Install uv: https://docs.astral.sh/uv/getting-started/installation/"
+  fi
+fi
+
+touches_api=0
+for f in "${STAGED[@]}"; do
+  case "$f" in
+  api/engine.yaml | api/generate.py)
+    touches_api=1
+    break
+    ;;
+  esac
+done
+
+if ((touches_api)); then
+  if have uv; then
+    say "regenerating the API contract from api/engine.yaml"
+    uv run --quiet python api/generate.py
+    git add -- interp_engine/api.py
+  else
+    missing_tool uv "the API contract regeneration" "Run: make api"
   fi
 fi
 

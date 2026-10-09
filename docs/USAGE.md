@@ -145,7 +145,7 @@ Three things to know about what comes back:
   form, or the `(name, layer)` tuple the API used to take, but the keys are always addresses, since
   that is the only form that can carry every coordinate. This is a plain dict, so a string you asked
   with is **not** a valid key on the way back out: convert with `to_address("resid_post.10")` to look
-  one up, or `format_address(key)` to print one. (The eager `Cache` from `run_with_cache` is the
+  one up, or `format_address(key)` to print one. (The eager `Cache` from `capture` is the
   exception — it accepts either form on lookup.)
 - **Shape is `[n_prompt_tokens, width]`, on CPU, with no batch dimension** — on either backend.
   `width` is `d_model` for the residual and MLP points, and `n_heads * head_dim` for `z`, which is
@@ -307,6 +307,17 @@ async def capture_generation():
 The captured row count is `len(prompt) + len(generated) - 1`, one short of the total, because the
 final sampled token is never fed back through the model. That is autoregression, not a backend quirk.
 
+`capture_generation_stream` is the same call as a stream of `(new_rows, token_ids)`: the rows
+captured since the last yield, and every id sampled so far. Concatenating the rows gives
+`capture_generation`'s tensors. How often it yields is the backend's — vLLM yields as its decode-time
+capture drains, so a read-out can follow the generation token by token; eager yields once, at the
+end. A consumer pairs a position with its id itself, and has both only once each has arrived.
+
+```python
+async for new_rows, token_ids in model.capture_generation_stream(token_ids, ["resid_post.10"], max_tokens=8):
+    ...
+```
+
 ## Steer
 
 A steering spec is backend-agnostic: build one and either backend can apply it.
@@ -330,7 +341,8 @@ async def steer_generation():
     await model.shutdown()
 ```
 
-Steering is applied at each named layer's `resid_post`. `AddSpec` adds `scale * vector`;
+Steering is applied at each named layer's `resid_post`. `AddSpec` adds `scale * vector`; with
+`normalize=True` the vector is made unit length first, so `scale` is the length added;
 `OrthogonalDecompSpec` rescales only the component along `vector`, keeping the orthogonal part. Note
 that passing `steering_spec=` to a capture means the activations come from the *steered* forward —
 not from a second, unsteered one.
@@ -344,8 +356,29 @@ be written is refused on this side of the wire, with the reason: the mHC write a
 the hyper-connection's parameters rather than activations, and an additive edit to a doubly stochastic
 matrix leaves it neither stochastic nor a mixture of anything.
 
-`AddSpec`, `OrthogonalDecompSpec` and `ProjectionCapSpec` are all applied by both backends, from the
-same arithmetic — `steer_delta` is one function per method, and the vLLM worker computes it too.
+A spec names one point. To steer several points, give a list of specs wherever a spec is taken:
+`steering_spec=`, `steer()`, and the server's `steering` field. `SteeringSpec.at` makes a spec from an
+address:
+
+```python
+from interp_engine import AddSpec, ProjectionCapSpec, SteeringSpec
+
+specs = [
+    SteeringSpec.at("resid_post.10", AddSpec(vector=vector, scale=4.0)),
+    SteeringSpec.at("mlp_out.12", ProjectionCapSpec(vector=other, max=2.0)),
+]
+_, acts = await model.capture_generation(token_ids, ["resid_post.10"], steering_spec=specs)
+```
+
+The ops apply in list order. Two ops at the same site compose: each reads what the one before it
+wrote. Each op checks its vector when it is made. It refuses inf or nan, and it refuses a zero vector
+if the op uses only the direction or normalizes it.
+
+Three more ops are the lens's interventions: `NormScaledAddSpec` adds `strength * ‖h‖ * vector`
+(`normalize=True` makes `vector` unit length), capped at `max_fraction * ‖h‖`, so one strength
+means the same fraction of the residual at every layer; `AblateSpec` removes the component along `vector`; `SwapSpec` moves that component onto
+`target`. All six ops are applied by every backend from the same arithmetic — `steer_delta` is one
+function per method, and the vLLM worker computes it too.
 
 The same spec also works as a **context**, which is the form the sync free functions pick up. Every
 forward inside the block is steered, on either backend:
@@ -365,6 +398,18 @@ with steer(model, spec):
 On vLLM the block registers the steer against each request it opens rather than installing a global
 hook, so a request co-batched with yours is unaffected. (`set_steering` is the global form, and is
 single-request use only for exactly that reason.)
+
+The block can leave positions alone. `position_mask=[0]` (or `SteerMask.SPECIAL_TOKENS`) skips those
+prompt positions; `generated=False` confines the steer to the prompt, so generated tokens show what a
+steered prompt does downstream without being written themselves. Eager needs `prompt_token_ids` for
+the second, since its hooks see rows rather than tokens. Both scopes reach every capture and
+generation on every backend; on vLLM the request carries them to the worker, which skips the masked
+prompt rows on the prefill and leaves decode steps alone under `generated=False`.
+
+```python
+with steer(model, spec, prompt_token_ids=ids, position_mask=[0], generated=False):
+    completion, acts = await model.capture_generation(ids, ["resid_post.10"], max_tokens=8)
+```
 
 The eager backend also takes the lower-level `SteerSpec` list the spec compiles to, which the block
 refuses on vLLM — a list of those carries no layer grouping for the worker to register:
@@ -430,23 +475,23 @@ want it. The sync free functions are the same call on both backends — they dis
 hand them, so switching backend is the `backend=` argument and nothing else:
 
 ```python
-from interp_engine import capture_attention, capture_generation, generate_stream, load_model, run_with_cache
+from interp_engine import capture, capture_attention, capture_generation, generate_stream, load_model
 
 model = load_model("openai-community/gpt2", backend="eager")  # or backend="vllm"
 tokens = model.to_tokens("The capital of France is")
 
-cache = run_with_cache(model, tokens, ["resid_post.5"])
+cache = capture(model, tokens, ["resid_post.5"])
 completion, gen_cache = capture_generation(model, tokens, ["resid_post.5"], max_tokens=8)
 attn = capture_attention(model, tokens, [5])                  # {5: {"scores", "probs", "value"}}
 for step in generate_stream(model, tokens, max_tokens=8, n_logprobs=5):
     print(step.token_str, step.logprobs, end="")
 ```
 
-`run_with_cache` and `capture_generation` return a `Cache`, which keeps the batch dimension and
+`capture` and `capture_generation` return a `Cache`, which keeps the batch dimension and
 accepts either an `Address` or its string form on lookup. `generate_stream` yields a `GenStep` per
 token, which is richer than the text deltas the protocol's streaming method gives you.
 
-`run_with_cache` also takes a padded batch with its `attention_mask`, on both backends. Each row
+`capture` also takes a padded batch with its `attention_mask`, on both backends. Each row
 counts its positions from 0 at its first real token, as HF `generate` does, so a left-padded row
 gives the same values as the prompt alone. `position_ids_from_mask(mask)` returns those positions.
 Do not read values at masked positions: eager computes them from pad tokens, and vLLM fills them

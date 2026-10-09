@@ -64,10 +64,20 @@ projects, two locks, two venvs. Run `uv sync` in this directory, not at the root
 
 Because the engine here is a checkout rather than a release, `engine_versions.py` records its commit
 and a `dirty` flag alongside the version string, and the version string is whatever the root
-`pyproject.toml` currently says. A cell captured from an unreleased tree therefore renders under a
-version nobody can fetch — the commit is the only thing telling them apart. Keep those cells
-uncommitted: the engine ships, then the cells get captured. `LOCAL_ENGINE=<path>` still exists for
-scoring a *different* checkout than the one at `..`, and writes under the gitignored scratch paths.
+`pyproject.toml` currently says. So a cell captured from an unreleased tree renders as
+`v1.7.1+dirty` — it says what it is, and the commit tells two captures of one version apart.
+
+**Capture and render those cells anyway.** Results that exist and are not on the table teach
+nobody, and the label already stops a reader mistaking one for a release. Waiting for a tag is the
+worse failure: the table reads "nobody has run this" when the real answer is "somebody ran it and
+kept it to themselves."
+
+**Committing them is the user's call, so ask.** Rendering a dirty cell locally costs nothing;
+committing one puts a verdict from a tree that exists on one machine into the published table, and
+whether that is wanted depends on how close a release is. Show the table, say which cells are
+dirty, and let the user decide. `LOCAL_ENGINE=<path>` scores a *different* checkout than the one at
+`..` and writes to gitignored scratch paths; `ALLOW_LOCAL_RESULTS=1` lets that run write into
+`comparison/results` when the point is to see the real table.
 
 ## Agent instructions live in the nearest AGENTS.md
 

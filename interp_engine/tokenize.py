@@ -46,8 +46,12 @@ class NoChatTemplateError(ValueError):
     """
 
 
-def _tokenizer_prepends_bos(tokenizer: Any) -> bool:
-    """Whether the HF tokenizer auto-prepends BOS (TLens: ``len(encode("")) > 0``)."""
+def detect_prepends_bos(tokenizer: Any) -> bool:
+    """Whether the tokenizer auto-prepends BOS (TLens: ``len(encode("")) > 0``).
+
+    Public because a backend that tokenizes through its own framework holds no :class:`Tokenize`
+    and still has to answer the question the same way.
+    """
     try:
         return len(tokenizer.encode("")) > 0
     except Exception:
@@ -126,7 +130,7 @@ class Tokenize:
             elif getattr(tokenizer, "bos_token", None) is not None:
                 tokenizer.pad_token = tokenizer.bos_token
         self.default_prepend_bos = default_prepend_bos
-        self.tokenizer_prepends_bos = _tokenizer_prepends_bos(tokenizer)
+        self.tokenizer_prepends_bos = detect_prepends_bos(tokenizer)
         self.device = device
 
     # --- core tokenization (TLens-parity) -----------------------------------
@@ -297,6 +301,28 @@ class Tokenize:
             )
         )
 
+    def _prefix_ids(
+        self,
+        messages: list[dict[str, str]],
+        j: int,
+        **template_kwargs: Any,
+    ) -> list[int]:
+        """The ids of ``messages[:j]``, rendered closed.
+
+        Some templates (Qwen3.5/3.6) refuse a list with no user message, so a leading system
+        message cannot be rendered alone. Its ids are then the render through message ``j``, less
+        the tokens that message ``j`` rendered alone shares with that render's tail.
+        """
+        closed: dict[str, Any] = {"add_generation_prompt": False, "continue_final_message": False}
+        try:
+            return self._render_ids(messages[:j], **closed, **template_kwargs)
+        except Exception:
+            if j >= len(messages) or any(m.get("role") == "user" for m in messages[:j]):
+                raise
+        through = self._render_ids(messages[: j + 1], **closed, **template_kwargs)
+        alone = self._render_ids(messages[j : j + 1], **closed, **template_kwargs)
+        return through[: len(through) - _common_suffix_len(alone, through)]
+
     def message_partition(
         self,
         messages: list[dict[str, str]],
@@ -344,12 +370,7 @@ class Tokenize:
         bounds = [0]
         full_ids: list[int] = []
         for j in range(1, len(messages) + 1):
-            full_ids = self._render_ids(
-                messages[:j],
-                add_generation_prompt=False,
-                continue_final_message=False,
-                **template_kwargs,
-            )
+            full_ids = self._prefix_ids(messages, j, **template_kwargs)
             bounds.append(len(full_ids))
         return full_ids, list(zip(bounds, bounds[1:]))
 
@@ -425,12 +446,7 @@ class Tokenize:
             elif j == n and continue_final_message:
                 ids_j = full_ids
             else:
-                ids_j = self._render_ids(
-                    messages[:j],
-                    add_generation_prompt=False,
-                    continue_final_message=False,
-                    **template_kwargs,
-                )
+                ids_j = self._prefix_ids(messages, j, **template_kwargs)
             b = _common_prefix_len(ids_j, full_ids)
             b = min(b, total)
             if prefix_end:
@@ -610,12 +626,7 @@ class Tokenize:
                     ).upto(k + 1)
                 )
             else:
-                ids_empty = self._render_ids(
-                    emptied[: k + 1],
-                    add_generation_prompt=False,
-                    continue_final_message=False,
-                    **template_kwargs,
-                )
+                ids_empty = self._prefix_ids(emptied, k + 1, **template_kwargs)
         except Exception:  # noqa: BLE001 - some templates reject empty content
             return 0, 0
         # ids_empty[:start] matches full_ids[:start] (identical prior messages + same header);

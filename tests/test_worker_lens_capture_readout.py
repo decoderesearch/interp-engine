@@ -270,6 +270,31 @@ def test_clearing_the_jacobians_leaves_every_layer_untransported(worker):
         assert torch.equal(top_idx[row], expected)
 
 
+def test_a_named_set_is_read_apart_from_the_default(worker):
+    """A type names its J_bar set; the default set stays when another is installed or dropped."""
+    torch.manual_seed(13)
+    block = torch.randn(1, D_MODEL)
+    stage_rows(worker, "r", {layer: block.clone() for layer in LAYERS})
+    other = {layer: torch.randn(D_MODEL, D_MODEL) for layer in FITTED}
+    worker_set_lens_jacobians(worker, {str(layer): _payload(m) for layer, m in other.items()}, "jpp")
+    options = spec(top_n=VOCAB)
+    options["types"] = [
+        {"layers": LAYERS, "jacobian": True},
+        {"layers": LAYERS, "jacobian": True, "jacobian_set": "jpp"},
+    ]
+    out = worker_lens_capture_readout(worker, "r", options, None, True)
+    got = [decode_tensor_payload(r["top_idx"]) for r in out["results"]]
+
+    w_u = worker.model_runner.model.w_u
+    for result, held in zip(got, (jacobians(), other), strict=True):
+        for row, layer in enumerate(LAYERS):
+            rows = block.float() @ held[layer].T if layer in held else block.float()
+            assert torch.equal(result[row], (rows @ w_u.T).topk(VOCAB, dim=-1).indices[0])
+
+    worker_set_lens_jacobians(worker, None, "jpp")
+    assert set(worker._np_lens_jacobians) == {"default"}
+
+
 def test_a_non_square_jacobian_is_refused_at_upload():
     with pytest.raises(ValueError, match="square"):
         worker_set_lens_jacobians(make_worker(), {"0": _payload(torch.zeros(D_MODEL, D_MODEL + 1))})

@@ -23,7 +23,7 @@ import pytest
 import torch
 from harness import GPT2, load_model
 
-from interp_engine import Address, EagerModel, InterpModel, VLLMModel, run_with_cache
+from interp_engine import Address, EagerModel, InterpModel, VLLMModel, capture
 from interp_engine import decode_residuals as decode_residuals_raw
 
 PROMPT = "The capital of France is"
@@ -94,17 +94,30 @@ def test_capture_keys_are_addresses_whatever_shape_was_requested() -> None:
     assert set(got) == {Address("resid_post", 0), Address("mlp_out", 3), Address("z", 2)}
 
 
-def test_eager_capture_agrees_with_run_with_cache() -> None:
+def test_eager_capture_method_agrees_with_capture() -> None:
     """The async wrapper must be the same numbers as the free function, just reshaped."""
     model = load_model(GPT2, device="cpu")
     tokens = model.to_tokens(PROMPT)
     points = [Address("resid_post", 4), Address("z", 2)]
 
     got = asyncio.run(model.capture(tokens[0].tolist(), points))
-    cache = run_with_cache(model, tokens, points)
+    cache = capture(model, tokens, points)
 
     for point in points:
         assert torch.equal(got[point], cache[point][0].cpu())
+
+
+def test_eager_capture_rows_returns_those_positions_in_that_order() -> None:
+    model = load_model(GPT2, device="cpu")
+    ids = model.to_tokens(PROMPT)[0].tolist()
+    point = Address("resid_post", 4)
+
+    full = asyncio.run(model.capture(ids, [point]))[point]
+    picked = asyncio.run(model.capture(ids, [point], rows=[len(ids) - 1, 0]))[point]
+
+    assert torch.equal(picked, full[[len(ids) - 1, 0]])
+    with pytest.raises(ValueError, match="outside"):
+        asyncio.run(model.capture(ids, [point], rows=[len(ids)]))
 
 
 def test_eager_capture_generation_length_is_prompt_plus_generated_minus_one() -> None:
@@ -156,7 +169,7 @@ def test_eager_decode_residuals_matches_true_next_token() -> None:
 
     tokens = model.to_tokens(PROMPT)
     last = model.n_layers - 1
-    resid = run_with_cache(model, tokens, [("resid_post", last)]).get("resid_post", last)[0]
+    resid = capture(model, tokens, [("resid_post", last)]).get("resid_post", last)[0]
 
     via_method = asyncio.run(model.decode_residuals(resid))
     assert torch.equal(via_method, decode_residuals_raw(model, resid, softcap=None))

@@ -27,7 +27,7 @@ import pytest
 import torch
 from harness import GEMMA_IT, GPT2, QWEN_THINKING, ModelSpec, load_model, require_hf_token
 
-from interp_engine import run_with_cache
+from interp_engine import capture
 from interp_engine.attn_scores import IMPLEMENTATION, capture_attn_scores
 
 PROMPT = "The capital of France is Paris, and the capital of Italy is"
@@ -51,7 +51,7 @@ def _ids(model):
 def test_the_softmax_of_the_scores_is_the_probabilities():
     """The whole contract in one line, and it covers the scaling and the mask at the same time."""
     model = _load(FP32)
-    cache = run_with_cache(model, _ids(model), [("attn_scores", 2), ("attn_probs", 2)])
+    cache = capture(model, _ids(model), [("attn_scores", 2), ("attn_probs", 2)])
     scores, probs = cache.get("attn_scores", 2), cache.get("attn_probs", 2)
     torch.testing.assert_close(torch.softmax(scores.float(), dim=-1), probs.float(), rtol=1e-5, atol=1e-6)
 
@@ -59,7 +59,7 @@ def test_the_softmax_of_the_scores_is_the_probabilities():
 def test_the_layout_matches_the_probabilities():
     """`[batch, n_heads, query, key]`, so the two are indexable the same way."""
     model = _load(FP32)
-    cache = run_with_cache(model, _ids(model), [("attn_scores", 2), ("attn_probs", 2)])
+    cache = capture(model, _ids(model), [("attn_scores", 2), ("attn_probs", 2)])
     assert cache.get("attn_scores", 2).shape == cache.get("attn_probs", 2).shape
 
 
@@ -70,7 +70,7 @@ def test_the_causal_mask_is_in_the_scores():
     but a caller diffing raw scores against TL has to compare the visible band only.
     """
     model = _load(FP32)
-    scores = run_with_cache(model, _ids(model), [("attn_scores", 0)]).get("attn_scores", 0)
+    scores = capture(model, _ids(model), [("attn_scores", 0)]).get("attn_scores", 0)
     seq = scores.shape[-1]
     future = torch.triu(torch.ones(seq, seq, dtype=torch.bool), diagonal=1)
     assert (scores[..., future] < -1e30).all()
@@ -80,7 +80,7 @@ def test_the_causal_mask_is_in_the_scores():
 def test_the_scores_of_a_masked_out_position_are_not_merely_zero():
     """Guard the guard: zeros would also softmax to something, just not to the model's pattern."""
     model = _load(FP32)
-    scores = run_with_cache(model, _ids(model), [("attn_scores", 0)]).get("attn_scores", 0)
+    scores = capture(model, _ids(model), [("attn_scores", 0)]).get("attn_scores", 0)
     assert not torch.allclose(scores[0, 0, 0, 1:], torch.zeros_like(scores[0, 0, 0, 1:]))
 
 
@@ -89,7 +89,7 @@ def test_a_gqa_model_reports_one_row_per_query_head():
     head with the wrong key head and returns the same shape."""
     model = _load(replace(GEMMA_IT, dtype="float32"))
     layer = model.arch.softmax_attention_layers()[0]
-    cache = run_with_cache(model, _ids(model), [("attn_scores", layer), ("attn_probs", layer)])
+    cache = capture(model, _ids(model), [("attn_scores", layer), ("attn_probs", layer)])
     scores = cache.get("attn_scores", layer)
     assert scores.shape[1] == model.n_heads > model.n_kv_heads
     torch.testing.assert_close(
@@ -132,7 +132,7 @@ def test_the_logits_are_identical_to_a_run_with_no_capture():
     ids = _ids(model)
     with torch.no_grad():
         plain = model.hf_model(ids).logits
-    captured = run_with_cache(model, ids, [("attn_scores", 3)])
+    captured = capture(model, ids, [("attn_scores", 3)])
     torch.testing.assert_close(captured.output.logits, plain, rtol=0, atol=0)
 
 
@@ -156,7 +156,7 @@ def test_the_mask_survives_the_registry_swap():
         )
     assert mask is not None, "an unrecognized implementation name yields no mask at all"
 
-    probs = run_with_cache(model, _ids(model), [("attn_scores", 0), ("attn_probs", 0)]).get("attn_probs", 0)
+    probs = capture(model, _ids(model), [("attn_scores", 0), ("attn_probs", 0)]).get("attn_probs", 0)
     assert probs[..., 0, 1:].abs().max() == 0, "the first token attended to its future"
 
 
@@ -166,7 +166,7 @@ def test_the_mask_survives_the_registry_swap():
 def test_a_non_eager_load_is_refused_rather_than_approximated():
     model = load_model(replace(GPT2, dtype="float32"), device="cpu", attn_implementation="sdpa")
     with pytest.raises(ValueError, match="attn_implementation='eager'"):
-        run_with_cache(model, _ids(model), [("attn_scores", 0)])
+        capture(model, _ids(model), [("attn_scores", 0)])
 
 
 def test_a_linear_attention_layer_refuses_by_name():
@@ -174,14 +174,14 @@ def test_a_linear_attention_layer_refuses_by_name():
     model = _load(HYBRID)
     linear = next(layer for layer in range(model.n_layers) if model.arch.is_linear_attention_layer(layer))
     with pytest.raises(ValueError, match="linear-attention layer"):
-        run_with_cache(model, _ids(model), [("attn_scores", linear)])
+        capture(model, _ids(model), [("attn_scores", linear)])
 
 
 def test_the_softmax_layers_of_a_hybrid_trunk_still_work():
     """The other half of the refusal above: one layer in four on Qwen3.5 does have scores."""
     model = _load(HYBRID)
     layer = model.arch.softmax_attention_layers()[0]
-    cache = run_with_cache(model, _ids(model), [("attn_scores", layer), ("attn_probs", layer)])
+    cache = capture(model, _ids(model), [("attn_scores", layer), ("attn_probs", layer)])
     torch.testing.assert_close(
         torch.softmax(cache.get("attn_scores", layer).float(), dim=-1),
         cache.get("attn_probs", layer).float(),

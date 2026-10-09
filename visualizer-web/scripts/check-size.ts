@@ -79,6 +79,9 @@ const MODELS = [
   },
 ];
 
+/** A drafter the size of z-lab/Qwen3.6-27B-DFlash's checkpoint, rounded to whole GiB. */
+const DRAFTER_GIB = 3;
+
 /** The two load-time knobs, spelled as `fit.py` takes them. */
 interface Precision {
   quantization?: string;
@@ -178,6 +181,7 @@ async function python(
   maxModelLen = 0,
   staticPoints: string[] = [],
   { quantization = "", kvCacheDtype = "" }: Precision = {},
+  drafterGib = 0,
 ): Promise<PyReport> {
   // `--json` redirects the human table away from stdout rather than interleaving it, so what comes
   // back is the report and nothing else. The warning about a config-less repo goes to stderr.
@@ -193,6 +197,7 @@ async function python(
       ...staticPoints.flatMap((point) => ["--static-point", point]),
       ...(quantization ? ["--quantization", quantization] : []),
       ...(kvCacheDtype ? ["--kv-cache-dtype", kvCacheDtype] : []),
+      ...(drafterGib ? ["--drafter-gib", String(drafterGib)] : []),
     ],
     { cwd: REPO, maxBuffer: 64 * 1024 * 1024 },
   );
@@ -239,7 +244,11 @@ function compare(
 
     check(`${where}: dtype`, est.spec.dtype, want.dtype);
     check(`${where}: quantization`, est.spec.quantization, want.quantization);
-    check(`${where}: kv_cache_dtype`, est.spec.kvCacheDtype, want.kv_cache_dtype);
+    check(
+      `${where}: kv_cache_dtype`,
+      est.spec.kvCacheDtype,
+      want.kv_cache_dtype,
+    );
     check(
       `${where}: utilization`,
       est.spec.gpuMemoryUtilization,
@@ -330,7 +339,12 @@ async function main(): Promise<void> {
     const maxModelLen = blind ? PINNED_CONTEXT : 0;
 
     for (const backend of REPORT_BACKENDS) {
-      const ours = fitAcross(facts, { backend, dtype, maxModelLen, maxGpus: 8 });
+      const ours = fitAcross(facts, {
+        backend,
+        dtype,
+        maxModelLen,
+        maxGpus: 8,
+      });
       const theirs = (
         maxModelLen ? await python(model.id, maxModelLen) : report
       ).options.filter((option) => option.backend === backend);
@@ -359,6 +373,29 @@ async function main(): Promise<void> {
       await python(model.id, maxModelLen, points)
     ).options.filter((option) => option.backend === "vllm-static");
     compare(facts, "vllm-static", staticOurs, staticTheirs, ` [${points}]`);
+
+    // A speculative drafter: inside the pool on vLLM, where it moves the context and the capacity,
+    // and warned about on eager. Whole GiB, so the CLI's float argument is the same bytes here.
+    const drafterReport = await python(
+      model.id,
+      maxModelLen,
+      [],
+      {},
+      DRAFTER_GIB,
+    );
+    for (const backend of REPORT_BACKENDS) {
+      const ours = fitAcross(facts, {
+        backend,
+        dtype,
+        maxModelLen,
+        maxGpus: 8,
+        drafterBytes: DRAFTER_GIB * 1024 ** 3,
+      });
+      const theirs = drafterReport.options.filter(
+        (option) => option.backend === backend,
+      );
+      compare(facts, backend, ours, theirs, ` [drafter ${DRAFTER_GIB} GiB]`);
+    }
 
     // The on-load quantizer and the KV width, on a checkpoint stored wide. Neither is reached above:
     // with nothing asked both sides price the weights as stored and the cache at the model dtype, so

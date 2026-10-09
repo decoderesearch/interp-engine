@@ -743,6 +743,7 @@ name = "interp-engine"
 version = "1.12.1"
 source = { editable = "../" }
 dependencies = [
+    { name = "accelerate" },
     { name = "einops" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -758,10 +759,13 @@ quant = [
 
 [package.metadata]
 requires-dist = [
+    { name = "accelerate", specifier = ">=1.0" },
     { name = "accelerate", marker = "extra == 'awq'", specifier = ">=1.0" },
     { name = "accelerate", marker = "extra == 'quant'", specifier = ">=1.0" },
     { name = "einops" },
+    { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.115" },
     { name = "gptqmodel", marker = "extra == 'awq'", specifier = ">=5.0" },
+    { name = "httpx", marker = "extra == 'server'", specifier = ">=0.27" },
     { name = "kernels", marker = "extra == 'quant'", specifier = ">=0.15.2,<0.17.0" },
     { name = "numpy", specifier = ">=1.24" },
     { name = "pyright", marker = "extra == 'dev'", specifier = ">=1.1.411,<1.2" },
@@ -771,9 +775,10 @@ requires-dist = [
     { name = "torch", specifier = ">=1.10" },
     { name = "transformer-lens", marker = "extra == 'parity'", specifier = ">=3.0,<4" },
     { name = "transformers", specifier = ">=4.57.1" },
+    { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.30" },
     { name = "vllm", marker = "sys_platform == 'linux' and extra == 'vllm'", specifier = "==0.28.0" },
 ]
-provides-extras = ["dev", "vllm", "quant", "awq", "parity"]
+provides-extras = ["dev", "vllm", "quant", "awq", "parity", "server"]
 
 [[package]]
 name = "interp-engine-validator"

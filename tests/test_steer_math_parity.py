@@ -22,20 +22,27 @@ import torch
 from interp_engine.steer import (
     OrthogonalProjector,
     SteerSpec,
+    ablate_delta,
+    norm_scaled_add_delta,
     projection_cap_delta,
     steer_delta,
     steering_spec_to_eager_specs,
+    swap_delta,
     unit_vector,
 )
 from interp_engine.steer_specs import (
+    AblateSpec,
     AddSpec,
     LayerSteeringSpec,
+    NormScaledAddSpec,
     OrthogonalDecompSpec,
     ProjectionCapSpec,
     SteeringSpec,
     SteerMethod,
+    SwapSpec,
     steering_spec_to_worker_specs,
 )
+from interp_engine.vllm_capture.lens.intervene import lens_wire_to_steer_spec
 from interp_engine.vllm_capture.steering import _make_steer_modifier
 
 D_MODEL = 64
@@ -86,6 +93,102 @@ def test_projection_cap_matches_the_worker(lo: float | None, hi: float | None) -
     )
     worker = _worker_delta({"op": "projection_cap", "vector": vector.tolist(), "min": lo, "max": hi}, residual)
     torch.testing.assert_close(eager, worker)
+
+
+@pytest.mark.parametrize(("strength", "max_fraction"), [(0.5, 1.0), (4.0, 1.0), (4.0, 0.25), (-2.0, 0.5)])
+def test_norm_scaled_add_matches_the_worker(strength: float, max_fraction: float) -> None:
+    """The lens's steer: norm-relative strength, norm-relative cap. Strengths past the cap clamp."""
+    residual, vector = _residual(), _vector(0.05)
+    eager = steer_delta(
+        SteerSpec(vector=vector, layer=0, coeff=strength, method="norm_scaled_add", max_fraction=max_fraction),
+        residual,
+        vector,
+    )
+    worker = _worker_delta(
+        {"op": "norm_scaled_add", "vector": vector.tolist(), "coeff": strength, "max_fraction": max_fraction},
+        residual,
+    )
+    torch.testing.assert_close(eager, worker)
+    injected = torch.linalg.vector_norm(eager, dim=-1)
+    allowed = max_fraction * torch.linalg.vector_norm(residual, dim=-1)
+    assert (injected <= allowed * (1 + 1e-5)).all(), "the cap is a fraction of each row's own norm"
+
+
+def test_ablate_matches_the_worker_and_removes_the_component() -> None:
+    residual, vector = _residual(), _vector()
+    eager = steer_delta(SteerSpec(vector=vector, layer=0, method="ablate"), residual, vector)
+    worker = _worker_delta({"op": "ablate", "vector": vector.tolist()}, residual)
+    torch.testing.assert_close(eager, worker)
+    left = ((residual + eager) * unit_vector(vector)).sum(-1)
+    torch.testing.assert_close(left, torch.zeros_like(left), atol=1e-5, rtol=0)
+
+
+def test_swap_matches_the_worker_and_moves_the_coefficient() -> None:
+    """After a swap the residual's projection onto the target is what it had along the source."""
+    torch.manual_seed(SEED + 2)
+    residual, vector, target = _residual(), _vector(), torch.randn(D_MODEL)
+    eager = steer_delta(SteerSpec(vector=vector, layer=0, method="swap", target=target), residual, vector)
+    worker = _worker_delta({"op": "swap", "vector": vector.tolist(), "target": target.tolist()}, residual)
+    torch.testing.assert_close(eager, worker)
+    # The property is cleanest against a target orthogonal to the source: the source component
+    # goes to zero and the target's grows by exactly the coefficient that was removed.
+    source_unit = unit_vector(vector)
+    perpendicular = target - (target * source_unit).sum() * source_unit
+    swapped = residual + swap_delta(residual, vector, perpendicular)
+    coefficient = (residual * source_unit).sum(-1)
+    torch.testing.assert_close((swapped * source_unit).sum(-1), torch.zeros(residual.shape[0]), atol=1e-5, rtol=0)
+    torch.testing.assert_close(
+        (swapped * unit_vector(perpendicular)).sum(-1),
+        (residual * unit_vector(perpendicular)).sum(-1) + coefficient,
+        atol=1e-5,
+        rtol=1e-5,
+    )
+
+
+def test_the_lens_wire_format_builds_the_same_modifier() -> None:
+    """``steer`` / ``ablate`` / ``swap`` with ``delta`` and ``tgt`` is a renaming, not a third copy."""
+    torch.manual_seed(SEED + 2)
+    residual, vector, target = _residual(), _vector(0.05), torch.randn(D_MODEL)
+    pairs = [
+        (
+            {"op": "steer", "delta": vector.tolist(), "strength": 3.0},
+            norm_scaled_add_delta(residual, vector, strength=3.0),
+        ),
+        ({"op": "ablate", "delta": vector.tolist()}, ablate_delta(residual, vector)),
+        ({"op": "swap", "delta": vector.tolist(), "tgt": target.tolist()}, swap_delta(residual, vector, target)),
+    ]
+    for lens_spec, want in pairs:
+        renamed = lens_wire_to_steer_spec({**lens_spec, "layer": 0})
+        got = _make_steer_modifier(renamed, residual.device, residual.dtype)(residual)
+        torch.testing.assert_close(got, want, msg=lens_spec["op"])
+        assert renamed["layer"] == 0, "the site passes through the rename"
+
+
+def test_the_lens_ops_convert_to_both_backends_and_agree() -> None:
+    torch.manual_seed(SEED + 2)
+    residual, vector, target = _residual(), _vector(0.05), torch.randn(D_MODEL)
+    spec = SteeringSpec(
+        layers={
+            5: LayerSteeringSpec(
+                operations=[
+                    NormScaledAddSpec(vector=vector, strength=2.0, max_fraction=0.5),
+                    AblateSpec(vector=vector),
+                    SwapSpec(vector=vector, target=target),
+                ]
+            )
+        }
+    )
+    from interp_engine.steer_specs import steering_spec_to_worker_specs
+
+    eager_specs = steering_spec_to_eager_specs(spec)
+    worker_specs = steering_spec_to_worker_specs(spec)
+    assert [s.method for s in eager_specs] == ["norm_scaled_add", "ablate", "swap"]
+    assert [s["op"] for s in worker_specs] == ["norm_scaled_add", "ablate", "swap"]
+    assert eager_specs[0].max_fraction == worker_specs[0]["max_fraction"] == 0.5
+    for eager_spec, worker_spec in zip(eager_specs, worker_specs, strict=True):
+        torch.testing.assert_close(
+            steer_delta(eager_spec, residual, eager_spec.vector), _worker_delta(worker_spec, residual)
+        )
 
 
 # ── properties of the rewrite ───────────────────────────────────────────────────────────────

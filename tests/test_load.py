@@ -18,6 +18,12 @@ from interp_engine import load, model, vllm_backend
 from interp_engine.select import BackendSelection
 
 
+@pytest.fixture(autouse=True)
+def _fp8_loads(monkeypatch):
+    """The FP8 configs here stand in for a checkpoint on a transformers whose FP8 quantizer works."""
+    monkeypatch.setattr(model, "_fp8_quantizer_fails", lambda cfg: False)
+
+
 class _Spy:
     """Records the args it was constructed with, standing in for a backend class."""
 
@@ -121,7 +127,7 @@ def test_explicit_vllm_does_not_consult_the_selector():
 
 
 def _selection(*, use_vllm: bool, device: str = "cuda", dtype: str = "auto"):
-    return BackendSelection(use_vllm=use_vllm, device=device, dtype=dtype, reason="test")
+    return BackendSelection(backend="vllm" if use_vllm else "eager", device=device, dtype=dtype, reason="test")
 
 
 def test_auto_routes_to_vllm_when_the_ladder_says_so():

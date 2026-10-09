@@ -84,10 +84,10 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - name: Set up venv (engine + dev tooling + TransformerLens for the parity gate)
+      - name: Set up venv (engine + dev tooling + TransformerLens for the parity gate + the server)
         run: |
           uv venv --python 3.12 .venv-ci
-          uv pip install --python .venv-ci -e '.[dev,parity]'
+          uv pip install --python .venv-ci -e '.[dev,parity,server]'
       # Lint/format gate lives on the cpu job only: it is source-only, so paying for it again on
       # the per-minute GPU runner would buy nothing.
       - name: Check linting

@@ -20,7 +20,7 @@ import pytest
 import torch
 from harness import GPT2, load_model
 
-from interp_engine import Address, run_with_cache
+from interp_engine import Address, capture
 from interp_engine.dispatch import (
     CAPABILITIES,
     CapabilityUnsupported,
@@ -130,9 +130,9 @@ def test_layer_logits_refuses_an_explicit_transform_on_a_non_eager_model() -> No
         layer_logits(NotEager(), [1, 2, 3], {"logit_lens": [0]}, softcap=30.0)  # pyright: ignore[reportArgumentType]
 
 
-def test_run_with_cache_refuses_position_ids_its_mask_does_not_give_on_a_non_eager_model() -> None:
+def test_capture_refuses_position_ids_its_mask_does_not_give_on_a_non_eager_model() -> None:
     with pytest.raises(CapabilityUnsupported, match="position ids"):
-        run_with_cache(
+        capture(
             NotEager(),  # pyright: ignore[reportArgumentType]
             torch.tensor([[1, 2, 3]]),
             ["resid_post.0"],
@@ -143,7 +143,7 @@ def test_run_with_cache_refuses_position_ids_its_mask_does_not_give_on_a_non_eag
 def test_a_batch_is_refused_rather_than_silently_reduced_to_row_zero() -> None:
     """The worst available default: capturing row 0 of a batch looks entirely correct."""
     with pytest.raises(ValueError, match="one prompt at a time"):
-        as_token_ids(torch.zeros(4, 6, dtype=torch.long), model=NotEager(), what="run_with_cache")  # pyright: ignore[reportArgumentType]
+        as_token_ids(torch.zeros(4, 6, dtype=torch.long), model=NotEager(), what="capture")  # pyright: ignore[reportArgumentType]
 
 
 def test_one_row_is_not_a_batch() -> None:
@@ -169,13 +169,13 @@ def test_steer_still_takes_the_eager_only_spec_form_on_eager(eager: Any) -> None
     vector = torch.zeros(eager.d_model)
     with steer(eager, [SteerSpec(vector=vector, layer=1, point="resid_post")]) as hooks:
         assert hooks is not None, "eager yields its HookManager"
-        cache = run_with_cache(eager, ids, [Address("resid_post", 1)])
+        cache = capture(eager, ids, [Address("resid_post", 1)])
     assert cache[Address("resid_post", 1)].shape[1] == ids.shape[1]
 
 
 def test_something_that_is_not_a_model_at_all_is_named_as_such() -> None:
     with pytest.raises(TypeError, match="InterpModel"):
-        run_with_cache("not a model", [1, 2, 3], ["resid_post.0"])  # pyright: ignore[reportArgumentType]
+        capture("not a model", [1, 2, 3], ["resid_post.0"])  # pyright: ignore[reportArgumentType]
 
 
 # ── capture_residuals gates before the forward, not after ───────────────────────────────────

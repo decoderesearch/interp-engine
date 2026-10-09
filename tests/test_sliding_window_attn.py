@@ -26,8 +26,8 @@ from harness import GEMMA_IT, load_model
 
 from interp_engine import (
     EagerModel,
+    capture,
     is_linear_attention_layer,
-    run_with_cache,
     sliding_window_for_layer,
 )
 
@@ -197,7 +197,7 @@ def test_sliding_window_matches_eager_reference():
     seq = ids.shape[1]
     assert seq > window, f"prompt must exceed the window to test it ({seq} <= {window})"
 
-    cache = run_with_cache(model, ids, [("attn_probs", SLIDING_LAYER), ("attn_probs", FULL_LAYER)])
+    cache = capture(model, ids, [("attn_probs", SLIDING_LAYER), ("attn_probs", FULL_LAYER)])
     banded = cache.get("attn_probs", SLIDING_LAYER)[0].float()  # [n_heads, dest, src]
     full = cache.get("attn_probs", FULL_LAYER)[0].float()
 

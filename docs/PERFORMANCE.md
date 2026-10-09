@@ -24,6 +24,8 @@ the cache normally. Worth ~1.75x on time-to-first-token for a repeated long pref
 pins which requests opt out; `tests/test_vllm_capture_gpu.py` pins the effect on a real engine,
 including a control that reproduces the short capture when the salt is removed. Pass
 `extra_vllm_kwargs={"enable_prefix_caching": False}` to get the old engine-wide behaviour back.
+An engine with `enable_prompt_embeds=True` (LoRA reads, NLA) keeps it on too: vLLM hashes each
+block's embeds rows into its key, and embeds requests take the same global-intervention salt.
 
 One further flag is set for you, and only on the architectures that cannot boot without it.
 `kv_cache_dtype` is left to vLLM everywhere else, but a few families serve attention through a KV
@@ -110,9 +112,9 @@ What is genuinely **free** — do not attribute slowness to these:
 `enforce_eager` is required *while capturing*, not permanently, so a generation-only instance
 should turn it off — preferably as `backend="vllm-generate"`, which is the same engine configuration
 reached through a name that says what it gives up. There is already a precedent in-tree:
-`apps/nla/vllm_verbalizer.py` runs its own `VLLMModel` with `enforce_eager=False` (CUDA graphs +
-inductor on) precisely because the verbalizer installs no hooks, with
-`NLA_VERBALIZER_ENFORCE_EAGER=1` as a debug escape hatch. It also passes
+Neuronpedia's `apps/nla/verbalizer.py` loads `backend="vllm-generate"` (CUDA graphs + inductor on)
+precisely because the verbalizer installs no hooks, with `NLA_VERBALIZER_ENFORCE_EAGER=1` as a
+debug escape hatch back to the hooked engine. It also passes
 `compilation_config.cudagraph_capture_sizes` to match graph capture to its expected fan-out.
 
 What it costs, measured (`benchmarks/results-latest.md`, and gpt2 separately for the graph modes).
@@ -164,9 +166,9 @@ them:
   defaults to `"auto"`: `resid_post` at every layer, to read *and* to write, via static `copy_`
   taps. Turns Dynamo off (`VLLM_USE_BREAKABLE_CUDAGRAPH=1`), so the win is replay without compile.
   Because breakable `add_eager` keeps the wrap as ordinary PyTorch on the live tensor, the write path
-  is not limited to additive — `orthogonal`, `projection_cap` and the j-lens `steer`/`ablate`/`swap`
-  ops all ride the same wrap, per-request and with `position_mask` honoured
-  (`register_static_write`). An op outside that set is refused rather than silently skipped. Auto
+  is not limited to additive — `orthogonal`, `projection_cap` and the lens's
+  `norm_scaled_add`/`ablate`/`swap` ops all ride the same wrap, per-request and with `position_mask`
+  and `generated=False` honoured (`register_static_write`). An op outside that set is refused rather than silently skipped. Auto
   covers the write because the two halves are one decision: a read tap alone serves the lens
   read-out and refuses every steer, ablation and swap derived from it, at an address already tapped.
   Pass `static_writes=[]` for the reads without the write sites, and an explicit `static_points`

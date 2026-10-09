@@ -760,7 +760,7 @@ def _steering_demux(rid: str, site: Address, bump: float) -> _Demux:
     demux.cap_points[rid] = {site}
     demux.captures[rid] = {}
     demux.current_meta = ([rid], [TOKENS])
-    demux.steer_mods[rid] = {site: (lambda seg: torch.full_like(seg, bump), (), 0)}
+    demux.steer_mods[rid] = {site: (lambda seg: torch.full_like(seg, bump), (), 0, True)}
     return demux
 
 

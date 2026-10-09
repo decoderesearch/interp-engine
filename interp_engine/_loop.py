@@ -1,7 +1,7 @@
 """Drive the async model surface from synchronous code.
 
 :class:`LoopRunner` owns one event loop on one daemon thread and submits coroutines to it,
-which is what lets the sync free functions (``run_with_cache``, ``steer``, ``generate_stream``)
+which is what lets the sync free functions (``capture``, ``steer``, ``generate_stream``)
 serve a backend whose only surface is ``async``.
 
 A long-lived loop rather than ``asyncio.run`` per call, and that is a correctness requirement
@@ -24,6 +24,8 @@ built its engine. The two ways a caller leaves that loop both raise here rather 
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
+import contextvars
 import threading
 from collections.abc import AsyncIterator, Coroutine, Iterator
 from typing import Any, TypeVar
@@ -161,7 +163,18 @@ class LoopRunner:
             # keeps the refusal clean instead of trailing an unrelated "never awaited" warning.
             coro.close()
             raise
-        return asyncio.run_coroutine_threadsafe(coro, self._ensure()).result()
+        return _submit(self._ensure(), coro, contextvars.copy_context()).result()
+
+    def submit(
+        self, coro: Coroutine[Any, Any, T], context: contextvars.Context | None = None
+    ) -> concurrent.futures.Future[T]:
+        """Start ``coro`` on the loop thread and return its future without waiting.
+
+        For a caller on another event loop, which awaits the result through
+        ``asyncio.wrap_future``. Pass one ``context`` to every step of one stream, so a steer
+        opened in the first step is visible in the next.
+        """
+        return _submit(self._ensure(), coro, context or contextvars.copy_context())
 
     def iterate(self, agen: AsyncIterator[T], *, what: str = "This call") -> Iterator[T]:
         """Consume an async iterator on the loop thread, yielding its items synchronously.
@@ -170,19 +183,23 @@ class LoopRunner:
         that stops early (``break``, or an exception) closes the generator on the way out, so
         a vLLM request's ``finally`` -- which is what deregisters its worker hooks -- still
         runs rather than being abandoned mid-stream.
+
+        One copy of the caller's context serves every step, so what the generator sees does not
+        change between one item and the next.
         """
         refuse_nested(what)
         loop = self._ensure()
+        context = contextvars.copy_context()
         try:
             while True:
                 try:
-                    yield asyncio.run_coroutine_threadsafe(anext_(agen), loop).result()
+                    yield _submit(loop, anext_(agen), context).result()
                 except StopAsyncIteration:
                     return
         finally:
             aclose = getattr(agen, "aclose", None)
             if aclose is not None:
-                asyncio.run_coroutine_threadsafe(aclose(), loop).result()
+                _submit(loop, aclose(), context).result()
 
     def close(self) -> None:
         """Stop the loop and join its thread. Idempotent, and a no-op if never started.
@@ -206,6 +223,36 @@ class LoopRunner:
         loop.call_soon_threadsafe(loop.stop)
         if thread is not None:
             thread.join(timeout=30)
+
+
+def _submit(
+    loop: asyncio.AbstractEventLoop, coro: Coroutine[Any, Any, T], context: contextvars.Context
+) -> concurrent.futures.Future[T]:
+    """Run ``coro`` on ``loop`` inside ``context``, from another thread.
+
+    ``asyncio.run_coroutine_threadsafe`` creates its task in the loop thread's own context, so
+    a ``ContextVar`` set by the caller -- an open :func:`~interp_engine.steer.steer` block -- is
+    invisible to the coroutine. A task created with the caller's context sees it, which is what
+    makes ``with steer(model, spec): sync_model(model).capture(...)`` steer on a backend whose
+    steering travels with the request.
+    """
+    done: concurrent.futures.Future[T] = concurrent.futures.Future()
+
+    def _start() -> None:
+        task = loop.create_task(coro, context=context)
+
+        def _finish(t: asyncio.Task[T]) -> None:
+            if t.cancelled():
+                done.cancel()
+            elif (error := t.exception()) is not None:
+                done.set_exception(error)
+            else:
+                done.set_result(t.result())
+
+        task.add_done_callback(_finish)
+
+    loop.call_soon_threadsafe(_start)
+    return done
 
 
 async def anext_(agen: AsyncIterator[T]) -> T:

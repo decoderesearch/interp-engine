@@ -25,7 +25,8 @@ files and why they are where they are.
   `sync.py`; `tests/test_sync_parity.py` fails on a missing twin.
 - `sync.py` / `_loop.py` — `sync_model(model)`: the protocol without an event loop, one explicit
   wrapper per method over a background loop thread that is created lazily, reused per model, and
-  refuses rather than deadlocks when called from inside a running loop.
+  refuses rather than deadlocks when called from inside a running loop. Each call runs in a copy of
+  the caller's context, so an open `steer()` block is what the method reads on the loop thread.
 - `dispatch.py` — the shared plumbing every free function's two arms sit on: token coercion
   (`TokensLike`, batch refusals) and `CAPABILITIES`, the table each `CapabilityUnsupported` message
   is built from.
@@ -56,7 +57,11 @@ files and why they are where they are.
   `tests/test_steer_math_parity.py` runs against it on CPU; `steer()` is the context both backends
   take, registering per-request on vLLM rather than installing a global hook. The methods are named
   once, in `steer_specs.SteerMethod`: the eager `SteerSpec.method` and the worker dict's `op` both
-  read from it, so a method has one spelling on either backend.
+  read from it, so a method has one spelling on either backend. A block's
+  `position_mask` and `generated=False` are placed by `forward_from` on eager, which every engine
+  loop declares, and travel with the request on vLLM (`worker_register_steering`'s
+  `skip_positions` / `steer_generated`); `tests/test_steer_scope.py` checks the rows on eager, in
+  closed form, and `tests/test_vllm_capture_gpu.py` holds vLLM to them.
 - `mappers.py` — translation between canonical points and other frameworks' names:
   TransformerLens hook strings and nnsight/nnterp accessors, both directions. See [Porting from
   TransformerLens, nnsight or nnterp](PORTING.md#porting-from-transformerlens-nnsight-or-nnterp).

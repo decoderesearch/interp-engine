@@ -12,7 +12,7 @@ import pytest
 import torch
 from harness import CHAT_PARAMS, ModelSpec, load_model, require_cuda
 
-from interp_engine import EagerModel, decode_residuals, per_head_value, run_with_cache
+from interp_engine import EagerModel, capture, decode_residuals, per_head_value
 
 ATOL = 2e-3
 RTOL = 1e-3
@@ -43,7 +43,7 @@ def test_resid_post_parity(gpt2: EagerModel, tlens_gpt2, prompt: str):
     ids = gpt2.to_tokens(prompt)
     _, tl_cache = tlens_gpt2.run_with_cache(ids)
     layers = [0, 5, 11]
-    eng_cache = run_with_cache(gpt2, ids, [("resid_post", layer) for layer in layers])
+    eng_cache = capture(gpt2, ids, [("resid_post", layer) for layer in layers])
     for layer in layers:
         eng = eng_cache.get("resid_post", layer)
         tl = tl_cache[f"blocks.{layer}.hook_resid_post"]
@@ -57,7 +57,7 @@ def test_resid_pre_parity(gpt2: EagerModel, tlens_gpt2, prompt: str):
     ids = gpt2.to_tokens(prompt)
     _, tl_cache = tlens_gpt2.run_with_cache(ids)
     layers = [0, 7, 11]
-    eng_cache = run_with_cache(gpt2, ids, [("resid_pre", layer) for layer in layers])
+    eng_cache = capture(gpt2, ids, [("resid_pre", layer) for layer in layers])
     for layer in layers:
         eng = eng_cache.get("resid_pre", layer)
         tl = tl_cache[f"blocks.{layer}.hook_resid_pre"]
@@ -70,7 +70,7 @@ def test_attention_parity(gpt2: EagerModel, tlens_gpt2, prompt: str):
     ids = gpt2.to_tokens(prompt)
     _, tl_cache = tlens_gpt2.run_with_cache(ids)
     layers = [0, 6, 11]
-    eng_cache = run_with_cache(gpt2, ids, [("attn_probs", layer) for layer in layers])
+    eng_cache = capture(gpt2, ids, [("attn_probs", layer) for layer in layers])
     for layer in layers:
         eng = eng_cache.get("attn_probs", layer)  # [1, heads, q, k]
         tl = tl_cache["pattern", layer]  # [1, heads, q, k]
@@ -83,7 +83,7 @@ def test_per_head_value_dfa_parity(gpt2: EagerModel, tlens_gpt2, prompt: str):
     ids = gpt2.to_tokens(prompt)
     _, tl_cache = tlens_gpt2.run_with_cache(ids)
     layer = 3
-    eng_cache = run_with_cache(gpt2, ids, [("value", layer)])
+    eng_cache = capture(gpt2, ids, [("value", layer)])
     eng_v = per_head_value(gpt2, eng_cache, layer)  # [1, pos, n_kv, head_dim]
     tl_v = tl_cache["v", layer]  # [1, pos, n_heads, d_head]
     assert eng_v.shape == tl_v.shape
@@ -109,7 +109,7 @@ def test_neuron_basis_parity(gpt2: EagerModel, tlens_gpt2, prompt: str):
     _, tl_cache = tlens_gpt2.run_with_cache(ids)
     layers = [0, 6, 11]
     wanted = [(point, layer) for layer in layers for point in ("mlp_pre", "mlp_act")]
-    eng_cache = run_with_cache(gpt2, ids, wanted)
+    eng_cache = capture(gpt2, ids, wanted)
     for point, layer in wanted:
         eng = eng_cache.get(point, layer)
         tl = tl_cache[point_to_tlens_hook(point, layer)]
@@ -192,7 +192,7 @@ def test_transformerlens_and_eager_agree_on_every_mapped_hook(gpt2: EagerModel, 
         if address.name in hyper_connection_names():
             continue  # a row for another trunk; gpt2 has one stream
         try:
-            eng = run_with_cache(gpt2, ids, [address])[address]
+            eng = capture(gpt2, ids, [address])[address]
         except ValueError:
             refused[name] = address.name
             continue
@@ -224,7 +224,7 @@ def test_the_block_level_input_hooks_are_the_norms_input_not_the_sublayers(gpt2:
     ids = gpt2.to_tokens(prompt)
     legacy = _legacy_cache_with_block_inputs(tlens_gpt2, ids)
     points = [(point, 6) for point in ("resid_mid", "resid_pre", "mlp_in", "attn_in")]
-    eng = run_with_cache(gpt2, ids, points)
+    eng = capture(gpt2, ids, points)
     for hook, carries, used_to_map_to in (
         ("hook_mlp_in", "resid_mid", "mlp_in"),
         ("hook_attn_in", "resid_pre", "attn_in"),
@@ -278,7 +278,7 @@ def test_small_model_loads_and_captures(spec: ModelSpec):
     # probabilities, so `attn_probs` has to name a layer that runs one. (This read layer 3's
     # attention and called it layer 0's until capture learned to map the index.)
     attn_layer = model.arch.softmax_attention_layers()[0]
-    cache = run_with_cache(model, ids, [("resid_post", 0), ("attn_probs", attn_layer)])
+    cache = capture(model, ids, [("resid_post", 0), ("attn_probs", attn_layer)])
     assert cache.get("resid_post", 0).shape[-1] == model.d_model
     assert cache.get("attn_probs", attn_layer).shape[1] == model.n_heads
 
@@ -310,5 +310,5 @@ def test_xl_model_loads_and_captures(hf_id: str, reason: str, device: str):
         pytest.skip(f"{hf_id} unavailable ({reason}): {exc}")
 
     ids = model.to_tokens("Hello world")
-    cache = run_with_cache(model, ids, [("resid_post", 0), ("attn_probs", 0)])
+    cache = capture(model, ids, [("resid_post", 0), ("attn_probs", 0)])
     assert cache.get("resid_post", 0).shape[-1] == model.d_model

@@ -34,6 +34,10 @@ from interp_engine import facts
 from interp_engine.facts import resolve_facts
 
 
+class ModuleNotFound(AttributeError):
+    """This checkpoint's layer has no module for the role asked about. A refusal, not a bug."""
+
+
 @dataclass(frozen=True)
 class Quirks:
     """Structured, code-read description of the handful of things config inspection misses.
@@ -466,7 +470,7 @@ class ArchSpec:
             return found[1]
         if (mixer := self._mixer_playing(layer, "mlp")) is not None:
             return mixer
-        raise AttributeError(f"No MLP submodule found on layer {layer} ({self.architecture})")
+        raise ModuleNotFound(f"No MLP submodule found on layer {layer} ({self.architecture})")
 
     def has_mlp_module(self, layer: int) -> bool:
         """Whether the block wraps its MLP in a submodule, rather than inlining the projections.
@@ -503,7 +507,7 @@ class ArchSpec:
                 "this layer. A pure state-space trunk has none on any layer; a hybrid one has them on "
                 "the layers that carry an MLP alongside the mixer."
             )
-        raise AttributeError(
+        raise ModuleNotFound(
             f"No MLP submodule or inlined MLP projections found on layer {layer} ({self.architecture})"
         )
 
@@ -576,7 +580,7 @@ class ArchSpec:
         if which == "down":
             attr = facts.mlp_down_proj_attr(mlp)
             if attr is None:
-                raise AttributeError(f"No MLP down projection found on layer {layer} ({self.architecture})")
+                raise ModuleNotFound(f"No MLP down projection found on layer {layer} ({self.architecture})")
             return getattr(mlp, attr)
         if which == "pre_linear" and not facts.is_gated_mlp(mlp):
             raise ValueError(
@@ -596,7 +600,7 @@ class ArchSpec:
         attr = facts.mlp_pre_linear_attr(mlp) if which == "pre_linear" else None
         attr = attr or (facts.mlp_pre_act_attr(mlp) if which == "pre_act" else None)
         if attr is None:
-            raise AttributeError(f"No MLP {which} projection found on layer {layer} ({self.architecture})")
+            raise ModuleNotFound(f"No MLP {which} projection found on layer {layer} ({self.architecture})")
         return getattr(mlp, attr)
 
     def fused_gate_up(self, layer: int) -> tuple[nn.Module, facts.GateUpLayout] | None:
@@ -660,7 +664,7 @@ class ArchSpec:
         # away. See :func:`facts.moe_router_owner`.
         owner = facts.moe_router_owner(self.block(layer), mlp)
         if owner is None:
-            raise AttributeError(
+            raise ModuleNotFound(
                 f"No router submodule found on layer {layer}'s {type(mlp).__name__} or on the block "
                 f"itself ({self.architecture}); tried {facts.MOE_ROUTER_ATTRS}"
             )
@@ -685,11 +689,11 @@ class ArchSpec:
                 else "not even 'router_logits' is readable, since this replacement is not one whose "
                 "output layout is known"
             )
-            # Where the family's convention is verified, `run_with_cache` rebuilds the weights and
+            # Where the family's convention is verified, `capture` rebuilds the weights and
             # indices from those logits, so the refusal has to name the way through rather than reading
             # as a dead end -- it is only this address that does not exist.
             derived = (
-                " 'expert_weights' and 'expert_indices' are rebuilt from them by run_with_cache; ask it "
+                " 'expert_weights' and 'expert_indices' are rebuilt from them by capture(); ask it "
                 "for the points rather than resolving them to a module."
                 if facts.routing_convention(self.architecture) and facts.inline_routing_logits_index(mlp) is not None
                 else ""
@@ -748,7 +752,7 @@ class ArchSpec:
         attn = self.attn_module(layer)
         found = _first_attr(attn, facts.ATTN_Q_PROJ_ATTRS)
         if found is None:
-            raise AttributeError(f"No query projection found on layer {layer} ({self.architecture})")
+            raise ModuleNotFound(f"No query projection found on layer {layer} ({self.architecture})")
         return found[1]
 
     def attn_out_gate_proj(self, layer: int) -> nn.Module | None:
@@ -881,7 +885,7 @@ class ArchSpec:
             )
         found = _first_attr(attn, attrs)
         if found is None:
-            raise AttributeError(f"No {which}_norm found on layer {layer} ({self.architecture})")
+            raise ModuleNotFound(f"No {which}_norm found on layer {layer} ({self.architecture})")
         return found[1]
 
     def attn_out_proj(self, layer: int) -> nn.Module:
@@ -903,7 +907,7 @@ class ArchSpec:
         pair = facts.factored_projection(attn, "o")
         if pair is not None:
             return pair.down
-        raise AttributeError(f"No attention output projection found on layer {layer}")
+        raise ModuleNotFound(f"No attention output projection found on layer {layer}")
 
     def is_linear_attention_layer(self, layer: int) -> bool:
         """Whether ``layer`` computes no softmax attention (state-space, recurrent, conv, MLP-only)."""

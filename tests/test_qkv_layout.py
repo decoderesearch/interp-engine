@@ -41,7 +41,7 @@ import pytest
 import torch
 from harness import GPT2, ModelSpec, load_model, parity_required
 
-from interp_engine import per_head_value, run_with_cache, split_fused_qkv
+from interp_engine import capture, per_head_value, split_fused_qkv
 from interp_engine.facts import EAGER_QKV_LAYOUTS, QKVLayout, eager_qkv_layout, vllm_qkv_layout
 
 PROMPT = "The capital of France is Paris."
@@ -75,7 +75,7 @@ def _capture(model, layer: int = 0):
     grabbed: dict[str, torch.Tensor] = {}
     handle = fused_module.register_forward_hook(lambda _m, _i, out: grabbed.setdefault("fused", out.detach().clone()))
     try:
-        cache = run_with_cache(model, ids, [("z", layer), ("attn_probs", layer)])
+        cache = capture(model, ids, [("z", layer), ("attn_probs", layer)])
     finally:
         handle.remove()
     return grabbed["fused"], cache.get("z", layer), cache.get("attn_probs", layer)
@@ -126,7 +126,7 @@ def test_per_head_value_agrees_with_the_split(spec: ModelSpec, expected: QKVLayo
     """`per_head_value` is the DFA entry point, so it must apply the same layout."""
     model = load_model(spec, device="cpu", attn_implementation="eager", required=parity_required())
     ids = model.tokenizer(PROMPT, return_tensors="pt")["input_ids"].to(model.device)
-    cache = run_with_cache(model, ids, [("value", 0), ("z", 0), ("attn_probs", 0)])
+    cache = capture(model, ids, [("value", 0), ("z", 0), ("attn_probs", 0)])
 
     value = per_head_value(model, cache, 0)
     assert value.shape[-2:] == (model.n_kv_heads, model.head_dim)
@@ -145,7 +145,7 @@ def test_the_raw_value_point_is_the_value_and_not_the_whole_fused_slab(spec: Mod
     """
     model = load_model(spec, device="cpu", attn_implementation="eager", required=parity_required())
     ids = model.tokenizer(PROMPT, return_tensors="pt")["input_ids"].to(model.device)
-    cache = run_with_cache(model, ids, [("value", 0)])
+    cache = capture(model, ids, [("value", 0)])
 
     value = cache.get("value", 0)
     assert value.shape[-1] == model.n_kv_heads * model.head_dim
@@ -312,7 +312,7 @@ def test_a_random_checkpoints_layout_reproduces_its_own_attention(
     grabbed: dict[str, torch.Tensor] = {}
     handle = fused_module.register_forward_hook(lambda _m, _i, out: grabbed.setdefault("fused", out.detach()))
     try:
-        cache = run_with_cache(model, torch.tensor([[3, 7, 11, 5, 9]]), [("z", 0), ("attn_probs", 0)])
+        cache = capture(model, torch.tensor([[3, 7, 11, 5, 9]]), [("z", 0), ("attn_probs", 0)])
     finally:
         handle.remove()
 

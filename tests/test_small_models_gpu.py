@@ -28,7 +28,7 @@ from harness import (
     parity_required,
 )
 
-from interp_engine import EagerModel, run_with_cache
+from interp_engine import EagerModel, capture
 
 pytestmark = [
     pytest.mark.gpu,
@@ -77,7 +77,7 @@ def test_capture_widths_and_devices_on_cuda(spec: ModelSpec):
     cuda_model = _cuda_model(spec)
     ids = _ids(cuda_model)
     seq = ids.shape[1]
-    cache = run_with_cache(
+    cache = capture(
         cuda_model,
         ids,
         [("resid_post", LAYER), ("mlp_in", LAYER), ("attn_in", LAYER), ("z", LAYER), ("attn_out", LAYER)],
@@ -112,7 +112,7 @@ def test_attention_rows_normalized_on_cuda(spec: ModelSpec):
     # probabilities at all. Take the first layer that runs a softmax, which is LAYER itself on
     # the two plain decoders.
     layer = cuda_model.arch.softmax_attention_layers()[0] if cuda_model.arch.is_linear_attention_layer(LAYER) else LAYER
-    cache = run_with_cache(cuda_model, _ids(cuda_model), [("attn_probs", layer)])
+    cache = capture(cuda_model, _ids(cuda_model), [("attn_probs", layer)])
     attn = cache.get("attn_probs", layer)  # [1, heads, q, k]
     assert attn.shape[1] == cuda_model.n_heads
     assert (attn >= -1e-6).all(), "negative attention weight"

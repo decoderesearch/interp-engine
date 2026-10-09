@@ -53,10 +53,10 @@ The identity `probs @ value == z` needs the per-head values the family actually 
 attention, not the raw `value` point.
 
 ```python
-from interp_engine import load_model, per_head_value, run_with_cache
+from interp_engine import capture, load_model, per_head_value
 
 model = load_model("google/gemma-2-2b-it", backend="eager")
-cache = run_with_cache(model, model.to_tokens("Hello"), ["value.10", "attn_probs.10"])
+cache = capture(model, model.to_tokens("Hello"), ["value.10", "attn_probs.10"])
 
 v = per_head_value(model, cache, 10)      # [batch, src, n_kv_heads, head_dim]
 probs = cache.get("attn_probs", 10)       # [batch, n_heads, dest, src]
@@ -66,10 +66,10 @@ On a gated-attention model (Qwen3-Next, Qwen3.5) the gate sits inside `z`, so DF
 `probs @ value` alone is off by exactly that factor:
 
 ```python
-from interp_engine import attn_out_gate, load_model, run_with_cache
+from interp_engine import attn_out_gate, capture, load_model
 
 model = load_model("Qwen/Qwen3-Next-80B-A3B-Instruct", backend="eager")
-cache = run_with_cache(model, model.to_tokens("Hello"), ["attn_gate.10"])
+cache = capture(model, model.to_tokens("Hello"), ["attn_gate.10"])
 gate = attn_out_gate(model, cache, 10)  # [batch, pos, n_heads, head_dim]
 ```
 
@@ -79,10 +79,10 @@ Splitting with the wrong layout returns a plausibly-scaled, meaningless tensor r
 raising, so use the helper.
 
 ```python
-from interp_engine import load_model, run_with_cache, split_fused_qkv
+from interp_engine import capture, load_model, split_fused_qkv
 
 model = load_model("openai-community/gpt2", backend="eager")
-cache = run_with_cache(model, model.to_tokens("Hello"), ["value.5"])
+cache = capture(model, model.to_tokens("Hello"), ["value.5"])
 qkv = split_fused_qkv(model, cache.get("value", 5))
 qkv["q"], qkv["k"], qkv["v"]
 ```

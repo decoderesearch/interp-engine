@@ -38,7 +38,7 @@ import torch
 from harness import GEMMA_IT, GPT2, QWEN_THINKING, ModelSpec, load_model, require_hf_token
 from synthetic_families import kv_shared_gemma4_on_meta
 
-from interp_engine import rms_norm_parts, run_with_cache
+from interp_engine import capture, rms_norm_parts
 from interp_engine.capture import AddressLike, _to_token_major
 from interp_engine.facts import QKNormShape, has_qk_norm, qk_norm_shape, rms_norm_eps
 
@@ -58,7 +58,7 @@ def _load(spec: ModelSpec):
 
 def _capture(model, points: Sequence[AddressLike]):
     ids = model.tokenizer(PROMPT, add_special_tokens=False, return_tensors="pt")["input_ids"].to(model.device)
-    return run_with_cache(model, ids, points)
+    return capture(model, ids, points)
 
 
 def _softmax_layer(model) -> int:

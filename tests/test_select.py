@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from typing import Any
 from unittest.mock import patch
 
+import pytest
 import torch
 
 from interp_engine import select
@@ -209,3 +210,29 @@ def test_native_dtype_reads_nested_text_config_first():
 
 def test_native_dtype_of_none_config_is_none():
     assert select._native_dtype(None) is None
+
+
+# --- a named backend is checked against the machine before anything loads --------------------
+
+
+def test_the_selection_names_the_backend_load_model_takes():
+    with probes(cuda=True):
+        assert _select().backend == "vllm"
+    with probes(cuda=False):
+        assert _select().backend == "eager"
+
+
+def test_vllm_on_a_box_with_no_cuda_is_refused_at_selection():
+    """Refused here, and not later in the loader with vLLM's own error."""
+    with probes(cuda=False), pytest.raises(RuntimeError, match="no CUDA GPU"):
+        _select(force_backend="vllm")
+
+
+def test_vllm_without_the_extra_names_the_install():
+    with probes(cuda=True), pytest.raises(RuntimeError, match=r"interp-engine\[vllm\]"):
+        _select(force_backend="vllm", vllm_available=False)
+
+
+def test_an_unknown_backend_name_is_a_caller_error():
+    with probes(cuda=True), pytest.raises(ValueError, match="not a backend"):
+        _select(force_backend="npengine")

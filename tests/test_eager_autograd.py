@@ -20,7 +20,7 @@ from harness import GPT2, ModelSpec, load_model
 
 from interp_engine.address import Address
 from interp_engine.autograd_support import GradientsUnsupported
-from interp_engine.capture import run_with_cache
+from interp_engine.capture import capture
 from interp_engine.lens import decode_residuals
 from interp_engine.model import EagerModel
 
@@ -44,7 +44,7 @@ def _tokens(model: EagerModel) -> torch.Tensor:
 
 class TestGradientsFlowThroughTheForward:
     def test_a_mid_layer_capture_carries_a_graph(self, grad_gpt2: EagerModel) -> None:
-        cache = run_with_cache(grad_gpt2, _tokens(grad_gpt2), [("resid_post", MID_LAYER)], detach=False)
+        cache = capture(grad_gpt2, _tokens(grad_gpt2), [("resid_post", MID_LAYER)], detach=False)
         resid = cache.get("resid_post", MID_LAYER)
         assert resid.requires_grad
         assert resid.grad_fn is not None
@@ -54,7 +54,7 @@ class TestGradientsFlowThroughTheForward:
         embed_weight.grad = None
         input_ids = _tokens(grad_gpt2)
 
-        cache = run_with_cache(grad_gpt2, input_ids, [("resid_post", MID_LAYER)], detach=False)
+        cache = capture(grad_gpt2, input_ids, [("resid_post", MID_LAYER)], detach=False)
         cache.get("resid_post", MID_LAYER).sum().backward()
 
         assert embed_weight.grad is not None
@@ -71,7 +71,7 @@ class TestGradientsFlowThroughTheForward:
         param = next(below.parameters())
         param.grad = None
 
-        cache = run_with_cache(grad_gpt2, _tokens(grad_gpt2), [("resid_post", MID_LAYER)], detach=False)
+        cache = capture(grad_gpt2, _tokens(grad_gpt2), [("resid_post", MID_LAYER)], detach=False)
         cache.get("resid_post", MID_LAYER).sum().backward()
 
         assert param.grad is not None
@@ -82,7 +82,7 @@ class TestGradientsFlowThroughTheForward:
         param = next(above.parameters())
         param.grad = None
 
-        cache = run_with_cache(grad_gpt2, _tokens(grad_gpt2), [("resid_post", MID_LAYER)], detach=False)
+        cache = capture(grad_gpt2, _tokens(grad_gpt2), [("resid_post", MID_LAYER)], detach=False)
         cache.get("resid_post", MID_LAYER).sum().backward()
 
         assert param.grad is None or float(param.grad.abs().sum()) == 0
@@ -111,7 +111,7 @@ class TestTheServingDefaultBuildsNoTape:
         assert gpt2.grad_support.downstream is True
 
     def test_a_default_capture_has_no_graph(self, gpt2: EagerModel) -> None:
-        cache = run_with_cache(gpt2, _tokens(gpt2), [("resid_post", MID_LAYER)])
+        cache = capture(gpt2, _tokens(gpt2), [("resid_post", MID_LAYER)])
         resid = cache.get("resid_post", MID_LAYER)
         assert not resid.requires_grad
         assert resid.grad_fn is None

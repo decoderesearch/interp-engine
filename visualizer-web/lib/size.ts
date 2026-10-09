@@ -67,6 +67,12 @@ export function isVllm(backend: Backend): boolean {
  */
 const CAPTURE_SIZES = [16384, 8192, 4096, 2048, 1024];
 const CONTEXT_LADDER = [131072, 65536, 32768, 16384, 8192, 4096, 2048];
+/**
+ * Prompt lengths the eager search steps through: the ladder above and two short rungs. A 1k
+ * prompt is an ordinary capture; a 1k `max_model_len` is not a server, so vLLM stops at 2k.
+ * Mirrors `memory.PROMPT_LADDER`.
+ */
+const PROMPT_LADDER = [...CONTEXT_LADDER, 1024, 512];
 
 // ------------------------------------------------------------------ reservations
 
@@ -164,6 +170,11 @@ export interface WorkloadSpec {
   /** Static tap points to declare at every layer. Empty is `"auto"`. `staticSites` overrides it. */
   staticPoints: string[];
   enforceEager: boolean | null;
+  /**
+   * A speculative drafter's weights, as its checkpoint stores them; 0 for none. Not a reservation:
+   * vLLM loads it before it sizes the pool. See {@link drafterBytes}.
+   */
+  drafterBytes: number;
   batchSize: number;
   /** Eager only: the prompt being priced. This is what the quadratic terms scale with. */
   seqLen: number;
@@ -186,6 +197,7 @@ export function workload(overrides: Partial<WorkloadSpec> = {}): WorkloadSpec {
     staticSites: 0,
     staticPoints: [],
     enforceEager: null,
+    drafterBytes: 0,
     batchSize: 1,
     seqLen: 0,
     requiresGrad: false,
@@ -193,6 +205,24 @@ export function workload(overrides: Partial<WorkloadSpec> = {}): WorkloadSpec {
     nCapturePoints: 0,
     ...overrides,
   };
+}
+
+/** Backends that run a speculative drafter: vLLM's `speculative_config`. Eager has none. */
+export const SPECULATIVE_BACKENDS: Backend[] = [...VLLM_BACKENDS];
+
+/**
+ * Per-card bytes a drafter of `stored` bytes takes on `backend`; 0 where none runs.
+ *
+ * vLLM shards a draft model over the same ranks as the target. A draft model's own KV cache is not
+ * priced. Mirrors `memory.drafter_bytes`.
+ */
+export function drafterBytes(
+  stored: number,
+  backend: Backend,
+  numGpus = 1,
+): number {
+  if (!stored || !SPECULATIVE_BACKENDS.includes(backend)) return 0;
+  return Math.floor(stored / Math.max(Math.trunc(numGpus), 1));
 }
 
 /**
@@ -991,6 +1021,12 @@ export function estimate(
       "weight bytes are unknown, so every figure below is only the non-weight terms",
     );
   }
+  const drafter = drafterBytes(spec.drafterBytes, spec.backend, tp);
+  if (spec.drafterBytes && !drafter) {
+    warnings.push(
+      `backend='${spec.backend}' runs no speculative drafter, so its ${gib(spec.drafterBytes)} GiB are not priced`,
+    );
+  }
   if (refused) {
     warnings.push(
       `quantization='${spec.quantization}' is refused on backend='${spec.backend}': ${refused}`,
@@ -1211,6 +1247,16 @@ export function estimate(
       (tp > 1 ? `, sharded over TP=${tp}` : "") +
       ` [${facts.weights.source}]`,
   });
+  if (drafter) {
+    terms.push({
+      name: "drafter",
+      bytes: drafter,
+      side: "pool",
+      note:
+        "speculative drafter's weights, loaded before vLLM sizes its cache" +
+        (tp > 1 ? `, sharded over TP=${tp}` : ""),
+    });
+  }
 
   const sites = resolvedStaticSites(spec, facts);
   const rowBuffers = staticRowBuffers(spec, facts);
@@ -1275,6 +1321,7 @@ export function estimate(
     quantCharge +
     reservedInside +
     perCardWeights +
+    drafter +
     buffers +
     graphs +
     kvFloor;
@@ -1300,6 +1347,7 @@ export function estimate(
       quantCharge -
       reservedInside -
       perCardWeights -
+      drafter -
       buffers -
       graphs,
     0,
@@ -1510,6 +1558,7 @@ export interface FitOptions {
   nCapturePoints?: number;
   requiresGrad?: boolean;
   attnImplementation?: string;
+  drafterBytes?: number;
 }
 
 /**
@@ -1545,6 +1594,7 @@ export function fit(
     nCapturePoints = 0,
     requiresGrad = false,
     attnImplementation = "",
+    drafterBytes = 0,
   } = options;
 
   // `estimate` refuses to report `fits` on a model whose dims are unknown, or under a quantization
@@ -1564,7 +1614,7 @@ export function fit(
     const pinned = seqLen || maxModelLen;
     const prompts = pinned
       ? [pinned]
-      : [advertised, ...CONTEXT_LADDER.filter((n) => n < advertised)];
+      : [advertised, ...PROMPT_LADDER.filter((n) => n < advertised)];
     for (const prompt of prompts) {
       // `sdpa` rather than the engine's `eager` default: the quadratic attention matrix is the
       // largest avoidable term here, and a sizer recommending a configuration should recommend the
@@ -1583,6 +1633,7 @@ export function fit(
           requiresGrad,
           attnImplementation: attnImplementation || "sdpa",
           maxModelLen,
+          drafterBytes,
         }),
         res,
       );
@@ -1634,6 +1685,7 @@ export function fit(
           numGpus,
           staticSites,
           staticPoints,
+          drafterBytes,
         }),
         res,
       );

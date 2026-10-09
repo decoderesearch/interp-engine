@@ -8,7 +8,7 @@ through :func:`sync_model`, which caches one per model so the loop thread is sha
     sync = sync_model(model)
     acts = sync.capture(sync.to_tokens("Hello")[0].tolist(), ["resid_post.10"])
 
-Most callers never name this class: the free functions (``run_with_cache``, ``steer``,
+Most callers never name this class: the free functions (``capture``, ``steer``,
 ``generate_stream``) dispatch through it themselves, and they are the documented surface. It is
 public because a caller holding a protocol-typed model sometimes wants the whole surface
 synchronously rather than one function at a time.
@@ -21,7 +21,7 @@ would pass that test vacuously and lose every type.
 
 The eager backend is bridged the same way as vLLM even though its work is synchronous
 underneath. One code path means one set of thread semantics and one shape of traceback; the
-hot eager capture path does not come through here anyway, because ``run_with_cache`` keeps its
+hot eager capture path does not come through here anyway, because ``capture`` keeps its
 own in-process body (see :mod:`interp_engine.capture`).
 """
 
@@ -38,9 +38,12 @@ from interp_engine.protocol import InterpModel
 from interp_engine.sampling import RecommendedSampling, SamplingSettings
 
 if TYPE_CHECKING:
+    from interp_engine.api import DirectionSet, EngineDescription
     from interp_engine.autograd_support import GradSupport
     from interp_engine.protocol import Point
     from interp_engine.residual_basis import ResidualBasis
+    from interp_engine.steer import GenStep
+    from interp_engine.tokenize import Tokenize
 
 #: Where :func:`sync_model` caches the facade on the model. Private, and an attribute rather
 #: than a module-level map so it cannot outlive the model it belongs to.
@@ -103,12 +106,31 @@ class SyncModel:
         return self._model.tokenizer
 
     @property
+    def tok(self) -> Tokenize:
+        return self._model.tok
+
+    @property
     def n_layers(self) -> int:
         return self._model.n_layers
 
     @property
     def d_model(self) -> int:
         return self._model.d_model
+
+    @property
+    def n_heads(self) -> int:
+        return self._model.n_heads
+
+    @property
+    def n_kv_heads(self) -> int:
+        return self._model.n_kv_heads
+
+    @property
+    def head_dim(self) -> int:
+        return self._model.head_dim
+
+    def is_linear_attention_layer(self, layer: int) -> bool:
+        return self._model.is_linear_attention_layer(layer)
 
     @property
     def grad_support(self) -> GradSupport:
@@ -134,6 +156,16 @@ class SyncModel:
     def residual_basis(self) -> ResidualBasis:
         return self._model.residual_basis
 
+    # --- capability (already sync on every backend, and never touches the loop) ---
+    def refuses(self, point: Address | str | Point, layer: int | None = None) -> str | None:
+        return self._model.refuses(point, layer)
+
+    def serves(self, point: Address | str | Point, layer: int | None = None) -> bool:
+        return self._model.serves(point, layer)
+
+    def describe(self) -> EngineDescription:
+        return self._model.describe()
+
     # --- sampling -----------------------------------------------------------
     @property
     def recommended_sampling(self) -> RecommendedSampling:
@@ -152,6 +184,14 @@ class SyncModel:
         )
 
     # --- tokenization (already sync on both backends) -----------------------
+    @property
+    def tokenizer_prepends_bos(self) -> bool:
+        return self._model.tokenizer_prepends_bos
+
+    @property
+    def default_prepend_bos(self) -> bool:
+        return self._model.default_prepend_bos
+
     def to_tokens(self, text: str | list[str], **kwargs: Any) -> torch.Tensor:
         return self._model.to_tokens(text, **kwargs)
 
@@ -185,10 +225,23 @@ class SyncModel:
         *,
         steering_spec: Any = None,
         detach: bool = True,
+        rows: Sequence[int] | None = None,
     ) -> dict[Address, torch.Tensor]:
         return self._runner.run(
-            self._model.capture(prompt_token_ids, points, steering_spec=steering_spec, detach=detach),
+            self._model.capture(prompt_token_ids, points, steering_spec=steering_spec, detach=detach, rows=rows),
             what="capture()",
+        )
+
+    def project(
+        self,
+        prompt_token_ids: Sequence[int],
+        directions: Sequence[DirectionSet],
+        *,
+        steering_spec: Any = None,
+    ) -> list[torch.Tensor]:
+        return self._runner.run(
+            self._model.project(prompt_token_ids, directions, steering_spec=steering_spec),
+            what="project()",
         )
 
     def capture_generation(
@@ -211,6 +264,28 @@ class SyncModel:
                 steering_spec=steering_spec,
             ),
             what="capture_generation()",
+        )
+
+    def capture_generation_stream(
+        self,
+        prompt_token_ids: Sequence[int],
+        points: Sequence[Address | str | Point],
+        *,
+        max_tokens: int = 8,
+        temperature: float = 0.0,
+        seed: int | None = None,
+        steering_spec: Any = None,
+    ) -> Iterator[tuple[dict[Address, torch.Tensor], list[int]]]:
+        return self._runner.iterate(
+            self._model.capture_generation_stream(
+                prompt_token_ids,
+                points,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                seed=seed,
+                steering_spec=steering_spec,
+            ),
+            what="capture_generation_stream()",
         )
 
     def capture_attention(
@@ -270,6 +345,65 @@ class SyncModel:
             what="generate_stream()",
         )
 
+    def generate_steps(
+        self,
+        prompt_token_ids: Sequence[int],
+        *,
+        max_tokens: int = 64,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
+        stop_at_eos: bool = True,
+        n_logprobs: int = 0,
+        seed: int | None = None,
+    ) -> Iterator[GenStep]:
+        return self._runner.iterate(
+            self._model.generate_steps(
+                prompt_token_ids,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_k=top_k,
+                top_p=top_p,
+                presence_penalty=presence_penalty,
+                stop_at_eos=stop_at_eos,
+                n_logprobs=n_logprobs,
+                seed=seed,
+            ),
+            what="generate_steps()",
+        )
+
+    def generate_steps_from_embeds(
+        self,
+        prompt_embeds: torch.Tensor,
+        *,
+        max_tokens: int = 64,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
+        stop_at_eos: bool = True,
+        n_logprobs: int = 0,
+        seed: int | None = None,
+    ) -> Iterator[GenStep]:
+        return self._runner.iterate(
+            self._model.generate_steps_from_embeds(
+                prompt_embeds,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_k=top_k,
+                top_p=top_p,
+                presence_penalty=presence_penalty,
+                stop_at_eos=stop_at_eos,
+                n_logprobs=n_logprobs,
+                seed=seed,
+            ),
+            what="generate_steps_from_embeds()",
+        )
+
     # --- lens ---------------------------------------------------------------
+    def unembed_rows(self, token_ids: Sequence[int]) -> torch.Tensor:
+        return self._runner.run(self._model.unembed_rows(token_ids), what="unembed_rows()")
+
     def decode_residuals(self, residuals: torch.Tensor, *, detach: bool = True) -> torch.Tensor:
         return self._runner.run(self._model.decode_residuals(residuals, detach=detach), what="decode_residuals()")

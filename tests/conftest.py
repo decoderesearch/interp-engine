@@ -16,6 +16,9 @@ from harness import GPT2, hf_token_present, load_model, parity_required
 
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+# The `torch.cuda.is_available()` skip marks start the CUDA driver at collection, but torch does not
+# mark CUDA started. vLLM then forks its engine core, and the child fails CUDA init.
+os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
 
 _HF_TOKEN_ABSENT_MSG = (
     "HF_TOKEN (and HUGGING_FACE_HUB_TOKEN) is not set: gated-model tests "

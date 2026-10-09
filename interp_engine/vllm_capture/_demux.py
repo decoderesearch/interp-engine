@@ -81,7 +81,6 @@ class _Demux:
         self.cap_points: dict[str, set[Address]] = {}
         self.captures: dict[str, dict[str, list[torch.Tensor]]] = {}
         self.steer_mods: dict[str, dict[Address, Any]] = {}
-        self.lens_mods: dict[str, dict[Address, tuple]] = {}
         # How many capture rows each lens read-out request has consumed, so the worker can
         # place a drain's rows on the global position axis (see worker_lens_capture_readout).
         self.lens_cursor: dict[str, int] = {}
@@ -125,12 +124,7 @@ def _resolve_rid(demux: _Demux, full_id: str) -> str:
 
 def _maybe_unregister(demux: _Demux, req_id: str) -> None:
     """Drop ``req_id`` from the registered set once it has no remaining registrations."""
-    if (
-        req_id not in demux.cap_points
-        and req_id not in demux.steer_mods
-        and req_id not in demux.lens_mods
-        and req_id not in demux.attn_layers
-    ):
+    if req_id not in demux.cap_points and req_id not in demux.steer_mods and req_id not in demux.attn_layers:
         demux.registered.discard(req_id)
 
 

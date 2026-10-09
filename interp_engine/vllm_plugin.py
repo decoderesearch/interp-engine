@@ -52,11 +52,13 @@ from interp_engine.vllm_capture import (
     worker_collect_attn,
     worker_collect_attn_request,
     worker_collect_capture,
+    worker_collect_projected,
     worker_collect_request,
     worker_collect_static,
     worker_demux_debug,
     worker_drain_request,
     worker_drain_static,
+    worker_embed_rows,
     worker_install_capture,
     worker_install_lens_intervention,
     worker_install_steering,
@@ -66,7 +68,6 @@ from interp_engine.vllm_capture import (
     worker_lm_head_rows,
     worker_register_attn,
     worker_register_capture,
-    worker_register_lens,
     worker_register_static_capture,
     worker_register_static_write,
     worker_register_steering,
@@ -201,19 +202,22 @@ class InterpWorkerExtension:
     ) -> dict[str, tuple]:
         return worker_lens_readout(self, residual_payload, top_n, softcap, word_mask_payload, rows_per_group)
 
-    def set_lens_jacobians(self, payloads: dict[str, tuple] | None) -> dict[str, int]:
-        return worker_set_lens_jacobians(self, payloads)
+    def set_lens_jacobians(self, payloads: dict[str, tuple] | None, name: str = "default") -> dict[str, int]:
+        return worker_set_lens_jacobians(self, payloads, name)
 
     def lens_capture_readout(
         self, req_id: str, spec: dict, word_mask_payload: tuple | None, final: bool
     ) -> dict[str, Any]:
         return worker_lens_capture_readout(self, req_id, spec, word_mask_payload, final)
 
-    def lens_transport(self, payload: tuple, layers: list[int]) -> dict[str, Any]:
-        return worker_lens_transport(self, payload, layers)
+    def lens_transport(self, payload: tuple, layers: list[int], name: str = "default") -> dict[str, Any]:
+        return worker_lens_transport(self, payload, layers, name)
 
     def lm_head_rows(self, token_ids: list[int]) -> dict:
         return worker_lm_head_rows(self, token_ids)
+
+    def embed_rows(self, token_ids: list[int]) -> tuple:
+        return worker_embed_rows(self, token_ids)
 
     # --- per-request demux: concurrent capture + steering --------------------
     def register_capture(self, req_id: str, points: list[str]) -> None:
@@ -225,15 +229,18 @@ class InterpWorkerExtension:
     def drain_request(self, req_id: str) -> dict[str, tuple]:
         return worker_drain_request(self, req_id)
 
-    def register_steering(
-        self, req_id: str, specs: list[dict], skip_positions: list[int] | None = None, prompt_len: int = 0
-    ) -> None:
-        return worker_register_steering(self, req_id, specs, skip_positions, prompt_len)
+    def collect_projected(self, req_id: str, sets: list[dict], static: bool) -> dict[str, tuple]:
+        return worker_collect_projected(self, req_id, sets, static)
 
-    def register_lens(
-        self, req_id: str, specs: list[dict], steer_generated: bool, skip_positions: list[int], prompt_len: int
+    def register_steering(
+        self,
+        req_id: str,
+        specs: list[dict],
+        skip_positions: list[int] | None = None,
+        prompt_len: int = 0,
+        steer_generated: bool = True,
     ) -> None:
-        return worker_register_lens(self, req_id, specs, steer_generated, skip_positions, prompt_len)
+        return worker_register_steering(self, req_id, specs, skip_positions, prompt_len, steer_generated)
 
     def unregister_steering(self, req_id: str) -> None:
         return worker_unregister_steering(self, req_id)
@@ -268,8 +275,10 @@ class InterpWorkerExtension:
     def unregister_static_write(self, req_id: str) -> None:
         return worker_unregister_static_write(self, req_id)
 
-    def register_static_capture(self, req_id: str, points: list[str]) -> None:
-        return worker_register_static_capture(self, req_id, points)
+    def register_static_capture(
+        self, req_id: str, points: list[str], rows: list[int] | None = None, n_prompt: int | None = None
+    ) -> None:
+        return worker_register_static_capture(self, req_id, points, rows, n_prompt)
 
     def collect_static(self, req_id: str) -> dict[str, tuple]:
         return worker_collect_static(self, req_id)

@@ -63,9 +63,8 @@ from interp_engine.vllm_capture._tree import (
 from interp_engine.vllm_capture.attn import _attn_op_module, _attn_sinks
 from interp_engine.vllm_capture.capture import worker_addresses
 from interp_engine.vllm_capture.graphs import graph_debug, refuse_writes_reason
-from interp_engine.vllm_capture.lens import _make_lens_modifier
 from interp_engine.vllm_capture.mhc import mhc_taps, require_available, require_steerable
-from interp_engine.vllm_capture.steering import _compose_modifiers, _make_steer_modifiers
+from interp_engine.vllm_capture.steering import _make_steer_modifiers
 
 # --- the per-request combined hook body ---------------------------------------
 
@@ -97,38 +96,24 @@ def _process_point(demux: _Demux, site: Address, full: torch.Tensor) -> torch.Te
         end = start + seq_lens[i]
         rid = _resolve_rid(demux, full_id)
         steer_entry = demux.steer_mods.get(rid, {}).get(site)
-        lens_entry = demux.lens_mods.get(rid, {}).get(site)
         wanted = [a for a in demux.cap_points.get(rid, ()) if hook_site(a) == site]
 
-        if steer_entry is not None or lens_entry is not None:
+        if steer_entry is not None:
             if modified is None:
                 modified = full.clone()
             seg = modified[start:end]
-            delta = torch.zeros_like(seg)
-            if steer_entry is not None:
-                steer_fn, steer_skip, steer_prompt_len = steer_entry
-                num_tokens = end - start
-                sdelta = delta + steer_fn(seg)  # broadcast add ([width] or [T,width]) -> [T,width]
-                # Leave skipped prompt positions unsteered on the full prefill only.
+            steer_fn, steer_skip, steer_prompt_len, steer_generated = steer_entry
+            num_tokens = end - start
+            # A decode step is one row; a steer confined to the prompt leaves it alone.
+            if steer_generated or num_tokens > 1:
+                delta = torch.zeros_like(seg) + steer_fn(seg)  # broadcast ([width] or [T,width]) -> [T,width]
+                # Leave masked prompt positions unsteered on the full prefill only.
                 if steer_skip and num_tokens == steer_prompt_len:
-                    smask = _position_mask(steer_skip, num_tokens, sdelta)
-                    sdelta = torch.where(smask, torch.zeros_like(sdelta), sdelta)
-                delta = sdelta
-            if lens_entry is not None:
-                lfn, steer_generated, skip_set, prompt_len = lens_entry
-                num_tokens = end - start
-                is_prefill = num_tokens > 1
-                if steer_generated or is_prefill:
-                    ldelta = lfn(seg)
-                    # Skip BOS positions on the full prefill (huge attention-sink norm).
-                    if is_prefill and skip_set and num_tokens == prompt_len:
-                        ldelta = torch.where(
-                            _position_mask(skip_set, num_tokens, ldelta), torch.zeros_like(ldelta), ldelta
-                        )
-                    delta = delta + ldelta
-            seg2 = seg + delta
-            modified[start:end] = seg2
-            captured = seg2
+                    smask = _position_mask(steer_skip, num_tokens, delta)
+                    delta = torch.where(smask, torch.zeros_like(delta), delta)
+                seg = seg + delta
+                modified[start:end] = seg
+            captured = seg
         else:
             captured = full[start:end]
 
@@ -530,6 +515,11 @@ def worker_register_capture(worker: object, req_id: str, points: list[str]) -> N
 
 def worker_collect_request(worker: object, req_id: str) -> dict[str, tuple]:
     """Collect + deregister ``req_id``'s captures (concatenated per point) -> payloads."""
+    return {key: encode_tensor_payload(t) for key, t in collect_request_rows(worker, req_id).items()}
+
+
+def collect_request_rows(worker: object, req_id: str) -> dict[str, torch.Tensor]:
+    """:func:`worker_collect_request` before encoding: the rows stay on the worker's device."""
     demux = _get_demux(worker)
     caps = demux.captures.pop(req_id, {})
     pts = demux.cap_points.pop(req_id, set())
@@ -537,11 +527,11 @@ def worker_collect_request(worker: object, req_id: str) -> dict[str, tuple]:
         _release_hook(demux, site)
     _maybe_unregister(demux, req_id)
     model = _worker_model(worker)
-    out: dict[str, tuple] = {}
+    out: dict[str, torch.Tensor] = {}
     for key, tensors in caps.items():
         if tensors:
             whole = gather_capture(model, key, torch.cat(tensors, dim=0))
-            out[key] = encode_tensor_payload(scale_capture(model, key, whole))
+            out[key] = scale_capture(model, key, whole)
     return out
 
 
@@ -665,13 +655,20 @@ def worker_register_steering(
     specs: list[dict],
     skip_positions: list[int] | None = None,
     prompt_len: int = 0,
+    steer_generated: bool = True,
 ) -> None:
-    """Register additive/projection-cap steering for ``req_id`` (see :func:`worker_install_steering`).
+    """Register a steer for ``req_id``, at the point each spec names (see :func:`worker_install_steering`).
 
-    ``skip_positions`` are prompt positions to leave unsteered (e.g. special tokens for
-    ``steer_special_tokens=False``); they are only skipped on the full prefill forward
-    (``num_tokens == prompt_len``), so generated tokens are always steered. Mirrors the
-    lens-intervention BOS skip.
+    Every steering op, the lens's three included: the modifier is :func:`_make_steer_modifier`'s,
+    so what a spec means is decided there and nowhere else. ``skip_positions`` are prompt positions
+    to leave unsteered (a masked BOS, or special tokens); they are skipped on the full prefill
+    forward only (``num_tokens == prompt_len``). ``steer_generated=False`` confines the steer to
+    the prompt: decode steps, one row each, are left alone.
+
+    A spec's point is ``resid_post`` unless it says otherwise. A hyper-connection trunk has no such
+    tensor, which is why a spec can name a point at all: the closest thing there is a *collapse* --
+    what the attention or MLP sublayer reads once the streams are mixed -- and a lens swap on
+    DeepSeek-V4 means writing that. Which points are allowed is :func:`_write_site`'s.
     """
     demux = _get_demux(worker)
     _ensure_patched(worker, demux)
@@ -683,52 +680,15 @@ def worker_register_steering(
     for s in specs:
         by_site.setdefault(_write_site(worker, s), []).append(s)
     for site, group in by_site.items():
-        mods[site] = (_make_steer_modifiers(group, demux.dev, demux.dt), skip_set, int(prompt_len))
-        _ensure_hook(worker, demux, site)
-
-
-def worker_register_lens(
-    worker: object,
-    req_id: str,
-    specs: list[dict],
-    steer_generated: bool,
-    skip_positions: list[int],
-    prompt_len: int,
-) -> None:
-    """Register jlens steer/ablate/swap interventions for ``req_id``, at the point each spec names.
-
-    ``resid_post`` unless a spec says otherwise, which is where a lens read-out is taken and so where
-    a lens intervention belongs on a conventional trunk. A hyper-connection trunk has no such tensor,
-    and that is why a spec can name a point at all: the closest thing there is a *collapse* -- what
-    the attention or MLP sublayer actually reads once the streams are mixed -- and jlens swap/steer on
-    DeepSeek-V4 means writing that. Which points are allowed, and the refusals for the rest, are
-    :func:`_write_site`'s, shared with additive steering.
-    """
-    demux = _get_demux(worker)
-    _ensure_patched(worker, demux)
-    _ensure_dev(worker, demux)
-    demux.registered.add(req_id)
-    lm = demux.lens_mods.setdefault(req_id, {})
-    skip_set = {int(i) for i in (skip_positions or [])}
-    by_site: dict[Address, list[dict]] = {}
-    for s in specs:
-        by_site.setdefault(_write_site(worker, s), []).append(s)
-    for site, group in by_site.items():
-        lm[site] = (
-            _compose_modifiers([_make_lens_modifier(s, demux.dev, demux.dt) for s in group]),
-            bool(steer_generated),
-            skip_set,
-            int(prompt_len),
-        )
+        modify = _make_steer_modifiers(group, demux.dev, demux.dt)
+        mods[site] = (modify, skip_set, int(prompt_len), bool(steer_generated))
         _ensure_hook(worker, demux, site)
 
 
 def worker_unregister_steering(worker: object, req_id: str) -> None:
-    """Remove ``req_id``'s steering + lens registrations (refcount hooks down)."""
+    """Remove ``req_id``'s steering registrations (refcount hooks down)."""
     demux = _get_demux(worker)
     for site in demux.steer_mods.pop(req_id, {}):
-        _release_hook(demux, site)
-    for site in demux.lens_mods.pop(req_id, {}):
         _release_hook(demux, site)
     _maybe_unregister(demux, req_id)
 

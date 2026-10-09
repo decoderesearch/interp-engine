@@ -311,7 +311,7 @@ must split", on a family whose `fused_qkv` is false — so `value` no longer ask
 **Reading a norm costs a rank, and the point does not pay it.** A norm over `head_dim` can only be
 given the per-head view, so both engines hand `v_norm` a `(…, n_kv_heads, head_dim)` tensor where a
 `v_proj` would have produced the flat one — and `value` would then be 4-D on this family and 3-D on the
-next, against a `Width.HEADS` declaration and `run_with_cache`'s `[batch, seq, width]`. Flattened back
+next, against a `Width.HEADS` declaration and `capture`'s `[batch, seq, width]`. Flattened back
 on both sides (`hooks.flat_per_head`, `vllm_capture._hooks.flat_value`), including on the way *into* a
 steer, so a vector measured on a capture of `value` is the shape the write expects; the module gets its
 own rank back before the attention reshapes it. Eagerly the head count is checked rather than assumed,
@@ -501,7 +501,7 @@ router_logits)`. `facts.ROUTER_OUTPUTS` holds the exceptions; `facts.assert_rout
 - **A fused kernel can leave the router module unused.** transformers' MXFP4 path for gpt-oss replaces
   the _block's_ forward and routes inline (`F.linear` on `self.router.weight`, then a Triton top-k), so
   the router is in the tree, correct, and never called. `arch.moe_router` detects the replaced forward
-  and refuses with the remedy (`Mxfp4Config(dequantize=True)`); more generally, `run_with_cache` now
+  and refuses with the remedy (`Mxfp4Config(dequantize=True)`); more generally, `capture` now
   raises when a resolved module did not run, rather than returning a short cache. `router_logits` is the
   exception, and it does not need the remedy: `mlp_forward` returns `(routed_out, router_logits)`, so the
   point resolves to the _block's_ `output:1` instead (`arch.inline_routing_logits`) and is bit-identical
@@ -510,7 +510,7 @@ router_logits)`. `facts.ROUTER_OUTPUTS` holds the exceptions; `facts.assert_rout
   index — a four-wide top-k against the logits' 32 — and gpt-oss carries a second, unverified kernel
   swap (`@use_kernel_forward_from_hub("MegaBlocksMoeMLP")`) whose layout nothing here has confirmed.
   `expert_weights` and `expert_indices` have no boundary on that path even so, and are _rebuilt_ from
-  those logits by `run_with_cache` (`interp_engine.moe_routing`) — the one place a routing convention is
+  those logits by `capture` (`interp_engine.moe_routing`) — the one place a routing convention is
   reimplemented, allowed because the derivation is a top-k on an already-captured tensor and because it
   is verified against `GptOssTopKRouter` on the real checkpoint rather than read off the source. They
   still refuse from `resolve_point`, which answers with addresses and has none to give.
@@ -811,8 +811,9 @@ Two things a randomly-initialised model cannot show you, both worth knowing when
 - **`head_dim ≠ d_model/n_heads`** on Gemma (GQA + explicit `head_dim`): the attention-output /
   `z` width is `n_heads*head_dim`, not `d_model`. Attention-SAE code must use `head_dim`.
 - **Embedding scaling** (Gemma multiplies embeddings by `sqrt(d_model)`): free when you hook real
-  modules, but if you ever feed embeddings _in_ (NLA `prompt_embeds`), you must apply the scale
-  yourself — `resolve_embed_scale` in the NLA path exists for exactly this.
+  modules. When you feed embeddings _in_ (`generate_steps_from_embeds`, which NLA's concept
+  injection rides), the rows must carry the scale already — they are the `embeddings` point, and
+  the NLA path's `resolve_embed_scale` applies it.
 - **Multimodal `*ForConditionalGeneration`**: dims live under `config.text_config` (top-level are
   `None`); the text trunk nests under `model.language_model`. `resolve_arch` handles both; just
   don't assume top-level `num_hidden_layers`. The vLLM worker resolves its _own_ module handles

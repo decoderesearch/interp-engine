@@ -31,6 +31,7 @@ import {
   GIB,
   QUANTIZATIONS,
   QUANTIZATION_NAMES,
+  SPECULATIVE_BACKENDS,
   concurrentSequences,
   estimate,
   fitAcross,
@@ -233,6 +234,7 @@ export function Sizer({
   // block has no single `resid_post` to tap, so the default there is the whole stream stack.
   const [staticPoints, setStaticPoints] = useState<string[]>([]);
   const [reserveGib, setReserveGib] = useState(0);
+  const [drafterGib, setDrafterGib] = useState(0);
   const [lens, setLens] = useState(false);
   const [selected, setSelected] = useState("");
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -280,6 +282,7 @@ export function Sizer({
     setContext(0);
     setStaticPoints([]);
     setReserveGib(0);
+    setDrafterGib(0);
     setLens(false);
     setSelected("");
   }
@@ -350,10 +353,21 @@ export function Sizer({
             kvCacheDtype,
             maxModelLen: context,
             staticPoints,
+            drafterBytes: Math.round(drafterGib * GIB),
             res,
           })
         : [],
-    [facts, backend, dtype, quantization, kvCacheDtype, context, staticPoints, res],
+    [
+      facts,
+      backend,
+      dtype,
+      quantization,
+      kvCacheDtype,
+      context,
+      staticPoints,
+      drafterGib,
+      res,
+    ],
   );
 
   const tiers = useMemo(() => byTier(results), [results]);
@@ -389,16 +403,18 @@ export function Sizer({
 
         {facts && <ModelSummary facts={facts} />}
 
-        {facts && variants.modelId === facts.modelId && variants.list.length > 0 && (
-          <Variants
-            variants={variants.list}
-            busy={busy}
-            onPick={(id) => {
-              setQuery(id);
-              void resolve(id);
-            }}
-          />
-        )}
+        {facts &&
+          variants.modelId === facts.modelId &&
+          variants.list.length > 0 && (
+            <Variants
+              variants={variants.list}
+              busy={busy}
+              onPick={(id) => {
+                setQuery(id);
+                void resolve(id);
+              }}
+            />
+          )}
 
         <TokenOverride token={token} onToken={setToken} />
       </div>
@@ -439,6 +455,8 @@ export function Sizer({
               onContext={setContext}
               reserveGib={reserveGib}
               onReserve={setReserveGib}
+              drafterGib={drafterGib}
+              onDrafter={setDrafterGib}
               lens={lens}
               onLens={setLens}
             />
@@ -449,8 +467,9 @@ export function Sizer({
           <ColumnLabel>
             {facts ? (
               <>
-                3️⃣ Results: GPUs that Fit <Token>{shortModelName(facts.modelId)}</Token>{" "}
-                on interp-engine <Token>{backend}</Token> backend
+                3️⃣ Results: GPUs that Fit{" "}
+                <Token>{shortModelName(facts.modelId)}</Token> on interp-engine{" "}
+                <Token>{backend}</Token> backend
               </>
             ) : (
               "3️⃣ Results: GPUs that Fit"
@@ -489,6 +508,7 @@ export function Sizer({
                     kvCacheDtype={kvCacheDtype}
                     context={context}
                     staticPoints={staticPoints}
+                    drafterGib={drafterGib}
                     res={res}
                   />
                 )
@@ -967,6 +987,8 @@ function Controls({
   onContext,
   reserveGib,
   onReserve,
+  drafterGib,
+  onDrafter,
   lens,
   onLens,
 }: {
@@ -985,6 +1007,8 @@ function Controls({
   onContext: (value: number) => void;
   reserveGib: number;
   onReserve: (value: number) => void;
+  drafterGib: number;
+  onDrafter: (value: number) => void;
   lens: boolean;
   onLens: (value: boolean) => void;
 }) {
@@ -1079,7 +1103,11 @@ function Controls({
           <Field label="quantize on load" hint="no calibration step">
             <Segmented
               options={[
-                { value: "", label: "none", title: "load the checkpoint as it is stored" },
+                {
+                  value: "",
+                  label: "none",
+                  title: "load the checkpoint as it is stored",
+                },
                 ...quantizations.map((name) => ({
                   value: name,
                   label: name,
@@ -1152,6 +1180,23 @@ function Controls({
             onChange={onReserve}
             unit="GiB"
             step={1}
+            placeholder="0"
+          />
+        </Field>
+
+        <Field
+          label="speculative drafter"
+          hint={
+            SPECULATIVE_BACKENDS.includes(backend)
+              ? "its checkpoint, as stored"
+              : "this backend runs none"
+          }
+        >
+          <NumberField
+            value={drafterGib}
+            onChange={onDrafter}
+            unit="GiB"
+            step={0.5}
             placeholder="0"
           />
         </Field>
@@ -1455,6 +1500,22 @@ function Results({
   selected: string;
   onSelect: (name: string) => void;
 }) {
+  const list = useRef<HTMLUListElement>(null);
+  // The row a search picks is often below the fold of a short list on a small model, and a row
+  // that is not on screen reads as no selection at all. Bring it to the middle when it is out of
+  // view -- and only then, so a click on a visible row leaves the scroll where the reader put it.
+  useEffect(() => {
+    const ul = list.current;
+    const row = ul?.querySelector<HTMLElement>("[data-active]");
+    if (!ul || !row) return;
+    const top = row.offsetTop;
+    const visible =
+      top >= ul.scrollTop &&
+      top + row.offsetHeight <= ul.scrollTop + ul.clientHeight;
+    if (visible) return;
+    ul.scrollTop = top - (ul.clientHeight - row.offsetHeight) / 2;
+  }, [selected, tiers]);
+
   if (!facts.trunkDimsKnown) {
     // "Nothing fits" and "nothing could be computed" look identical in an empty list and mean
     // opposite things: the first sends someone to buy a bigger card, and the second is a missing
@@ -1498,13 +1559,19 @@ function Results({
         </span>
       </div>
 
-      <ul className="thin-scrollbar min-h-0 divide-y divide-slate-100 overflow-y-auto">
+      <ul
+        ref={list}
+        className="thin-scrollbar relative min-h-0 divide-y divide-slate-100 overflow-y-auto"
+      >
         {tiers.map((tier) => {
           const est = tier.result.estimate;
           const evidence = tierEvidence(facts, tier);
           const active = tierGpus(tier).some((gpu) => gpu.name === selected);
           return (
-            <li key={`${tier.gib}/${tier.count}`}>
+            <li
+              key={`${tier.gib}/${tier.count}`}
+              data-active={active ? "" : undefined}
+            >
               <button
                 type="button"
                 onClick={() => onSelect(tier.result.gpu.name)}
@@ -1710,6 +1777,7 @@ function NoFit({
   kvCacheDtype,
   context,
   staticPoints,
+  drafterGib,
   res,
 }: {
   facts: ModelMemoryFacts;
@@ -1719,6 +1787,7 @@ function NoFit({
   kvCacheDtype: string;
   context: number;
   staticPoints: string[];
+  drafterGib: number;
   res: Reservations;
 }) {
   const biggest = [...GPUS].sort((a, b) => b.totalBytes - a.totalBytes)[0];
@@ -1732,6 +1801,7 @@ function NoFit({
       kvCacheDtype,
       maxModelLen: context,
       staticPoints,
+      drafterBytes: Math.round(drafterGib * GIB),
       // vLLM's own default rather than a derived ceiling: a fit search would have lowered this to buy
       // margin, and the question here is what the configuration costs, not how to squeeze it.
       gpuMemoryUtilization: isVllm(backend) ? CALIBRATION.max_util : 0,

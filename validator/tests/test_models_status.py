@@ -164,10 +164,20 @@ def test_the_verified_tier_is_exactly_the_committed_comparison_results() -> None
     # assumes the class identifies the wiring, and here it does not. The 26B declares the same class
     # as the 31B and turns on 128 routed experts with `enable_moe_block`, so scoring only the 31B
     # would leave the routing points -- and a feed-forward that is two branches rather than one --
-    # unexercised on the whole family while the table reported the class as covered.
+    # unexercised on the whole family while the table reported the class as covered. The E2B is the
+    # third: the same class again, but with per-layer embeddings, a 512-wide head on its full-attention
+    # layers and K/V shared from layer 15 on, none of which the 26B or 31B has.
+    #
+    # Qwen3.5-0.8B sits beside the 27B for the Llama reason: the same hybrid trunk (gated delta net
+    # beside gated attention) at a size every column reruns in minutes.
     allowed = {
         "LlamaForCausalLM": {"meta-llama/Llama-3.1-8B", "meta-llama/Llama-3.3-70B-Instruct"},
-        "Gemma4ForConditionalGeneration": {"google/gemma-4-26B-A4B-it", "google/gemma-4-31B"},
+        "Qwen3_5ForConditionalGeneration": {"Qwen/Qwen3.5-0.8B", "Qwen/Qwen3.8-27B"},
+        "Gemma4ForConditionalGeneration": {
+            "google/gemma-4-26B-A4B-it",
+            "google/gemma-4-31B",
+            "google/gemma-4-E2B",
+        },
     }
     unexpected = {arch: ids for arch, ids in dupes.items() if set(ids) != allowed.get(arch)}
     assert not unexpected, f"sweep lists more than one checkpoint per architecture: {unexpected}"
