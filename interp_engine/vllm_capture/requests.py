@@ -86,6 +86,32 @@ def _process_point(demux: _Demux, site: Address, full: torch.Tensor) -> torch.Te
     if meta is None:
         return full
     req_ids, seq_lens = meta
+    if _batch_axis(demux, site, full, sum(seq_lens)):
+        rows = full[0]
+        new = _process_rows(demux, site, rows, req_ids, seq_lens)
+        return full if new is rows else new.unsqueeze(0)
+    return _process_rows(demux, site, full, req_ids, seq_lens)
+
+
+def _batch_axis(demux: _Demux, site: Address, full: torch.Tensor, tokens: int) -> bool:
+    """Whether ``full`` is ``[1, tokens, ...]`` rather than tokens first.
+
+    vLLM's Transformers backend calls the HF model with a batch axis, and so do some native families
+    at attention. For a forward of more than one token the shape decides it. For one token it does
+    not: ``[1, 1, d_model]`` with a batch axis has the shape of ``[1, 1, head_dim]`` on a model with one
+    KV head, or of one token on a hyper-connection trunk. So the site keeps the answer from its last
+    forward of more than one token, and a request's prefill always comes before its decode.
+    """
+    if full.dim() < 3 or full.shape[0] != 1:
+        return False
+    if tokens > 1:
+        demux.batch_axis[site] = full.shape[1] >= tokens
+    return demux.batch_axis.get(site, False)
+
+
+def _process_rows(
+    demux: _Demux, site: Address, full: torch.Tensor, req_ids: list[str], seq_lens: list[int]
+) -> torch.Tensor:
     if full.dim() not in (2, 3) or full.shape[0] < sum(seq_lens):
         # Fewer rows than the layout expects (unexpected shape); skip rather than corrupt.
         # More rows is fine: trailing padding after sum(seq_lens) is ignored by the loop.
@@ -266,10 +292,8 @@ def _mk_value_hook(demux: _Demux, site: Address):
     (``_hooks.flat_value``), because a norm over ``head_dim`` is handed the per-head view.
 
     The narrowed slice goes through ``flat_value`` too, and not only for symmetry: where vLLM leaves a
-    batch axis on the hidden state it hands the projection, the slice is ``[1, tokens, width]``, whose
-    first axis is one rather than the token count. :func:`_process_point` reads that as a trunk with
-    one row and returns the tensor untouched rather than steering rows it cannot line up -- so on those
-    families this point was quietly serving nothing at all.
+    batch axis on the hidden state it hands the projection, the slice is ``[1, tokens, width]``, and
+    the packed projection's geometry is what tells that apart from a per-head view.
 
     Either way the adjustment happens *before* steering and is undone after it, so a steer on this
     point writes the value in the shape a capture of it reports, leaves the queries and keys of the same

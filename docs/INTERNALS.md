@@ -119,7 +119,9 @@ index names the layer HF's does, which nothing checked before and which would fa
 than raise. It needs `interp-engine[vllm]`, so it self-skips elsewhere; note that running it via
 `.venv-vllm/bin/python` needs that directory on `PATH` too, because vLLM shells out to `ninja` to
 build a sampler kernel at startup. `tests/test_vllm_wire_grammar.py` covers the same process
-boundary on CPU, over a synthetic demux. `tests/test_multigpu.py` (`-m multigpu`, two CUDA cards)
+boundary on CPU, over a synthetic demux. vLLM's Transformers backend hands each hook `[1, tokens, d]`;
+`tests/test_vllm_batch_axis.py` pins how the demux reads that on CPU, and
+`tests/test_vllm_transformers_backend_gpu.py` runs OLMo-2 on that backend against eager. `tests/test_multigpu.py` (`-m multigpu`, two CUDA cards)
 repeats the comparison at `num_gpus=2`: eager under accelerate's layer placement and vLLM under
 tensor parallelism, where `vllm_capture/_tp.py` gathers the head- and neuron-sharded points across
 ranks, against the one-card eager reference — captures, attention, steering, decode and the lens.

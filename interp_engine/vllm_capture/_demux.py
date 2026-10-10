@@ -94,6 +94,9 @@ class _Demux:
         # Installed hooks: hook site -> [handle, refcount]. Keyed by site and not by address, so
         # two requests reading different streams of one point share a handle -- see `hook_site`.
         self.hooks: dict[Address, list] = {}
+        # Hook site -> whether its tensor arrives with a leading batch axis of one, as seen on the
+        # last forward of more than one token (see requests._batch_axis).
+        self.batch_axis: dict[Address, bool] = {}
         self.dev: Any = None
         self.dt: Any = None
 
