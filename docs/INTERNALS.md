@@ -129,6 +129,16 @@ while the others' replies stay queued, and the next RPC consumes those — so a 
 took every point of a TP=8 cell with it. `resolvable_points` and `resolvable_attn` are the ask-first
 calls; `tests/test_vllm_new_points.py` pins that they install nothing.
 
+**Static writes inside a recorded graph.** vLLM's V2 runner records FULL decode graphs with plain
+`torch.cuda.graph`, so a static write that Python decides at record time is replayed as "no write"
+on every decode step. `vllm_capture/static_program.py` makes the write data instead: one Triton
+kernel per write site reads which writer owns each row, and that writer's ops, from fixed-address
+tables that the host refills between steps. `tests/test_static_program.py` checks the tables on CPU,
+`tests/test_steer_math_parity.py` holds the kernel's single op form to the worker modifiers,
+`tests/test_static_program_gpu.py` replays a graph recorded with nothing registered, and
+`tests/test_static_decode_writes_gpu.py` requires static decode rows to match hooked vLLM for every
+method, with and without `generated`.
+
 **The docs are parsed, not maintained.** The point table in
 [SUPPORTED_POINTS.md](SUPPORTED_POINTS.md) and the footnote markers in
 [ENGINE_HOOK_MAPPINGS.md](ENGINE_HOOK_MAPPINGS.md) are read back and compared against `points.py` by

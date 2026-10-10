@@ -531,3 +531,61 @@ def test_ops_at_one_static_site_compose_as_eager_applies_them(static_path: str) 
     hidden = residual.clone()
     _apply_write(hidden, None, site, residual.shape[0], fused=False, worker=worker)
     torch.testing.assert_close(hidden, _eager_in_order(spec, residual))
+
+
+# ── the static write program: one form for every method, run on CPU ─────────────────────────
+#
+# A CUDA worker serves static writes from device tables, so a FULL decode graph replays each
+# request's own write. The kernel computes every method as `coef(x) * w`; `apply_ops` is its CPU
+# twin, and these rows hold that form to the worker modifier.
+
+
+def _program_specs() -> list[dict]:
+    vector, other = _vector(), _other_vector(7)
+    return [
+        {"op": "additive", "vector": vector.tolist(), "coeff": 2.5},
+        {"op": "orthogonal", "vector": vector.tolist(), "coeff": 0.25},
+        {"op": "projection_cap", "vector": vector.tolist(), "min": -0.5, "max": 0.5},
+        {"op": "projection_cap", "vector": vector.tolist(), "min": None, "max": None},
+        {"op": "norm_scaled_add", "vector": (vector * 0.05).tolist(), "coeff": 4.0, "max_fraction": 0.25},
+        {"op": "norm_scaled_add", "vector": (vector * 0.05).tolist(), "coeff": -0.5, "max_fraction": 1.0},
+        {"op": "ablate", "vector": vector.tolist()},
+        {"op": "swap", "vector": vector.tolist(), "target": other.tolist()},
+    ]
+
+
+@pytest.mark.parametrize("spec", _program_specs(), ids=lambda s: str(s["op"]))
+def test_the_static_program_form_matches_the_worker(spec: dict) -> None:
+    from interp_engine.vllm_capture.static_program import apply_ops, compile_op
+
+    residual = _residual()
+    worker = torch.zeros_like(residual) + _worker_delta(spec, residual)
+    torch.testing.assert_close(apply_ops(residual, [compile_op(spec)]), worker)
+
+
+def test_every_method_has_a_static_program_form() -> None:
+    covered = {str(s["op"]) for s in _program_specs()}
+    assert covered == {m.value for m in SteerMethod}
+
+
+def test_the_static_program_composes_ops_as_the_worker_does() -> None:
+    from interp_engine.vllm_capture.static_program import apply_ops, compile_op
+    from interp_engine.vllm_capture.steering import _make_steer_modifiers
+
+    specs = _program_specs()
+    residual = _residual()
+    modify = _make_steer_modifiers(specs, residual.device, residual.dtype)
+    torch.testing.assert_close(
+        apply_ops(residual, [compile_op(s) for s in specs]), modify(residual), rtol=1e-5, atol=1e-5
+    )
+
+
+def test_a_static_program_stream_writes_one_stream_as_the_worker_does() -> None:
+    from interp_engine.vllm_capture.static_program import apply_ops, compile_op
+
+    torch.manual_seed(SEED + 3)
+    stack = torch.randn(3, 4, D_MODEL)
+    spec = {"op": "projection_cap", "vector": _vector().tolist(), "min": -0.1, "max": 0.1, "stream": 2}
+    got = apply_ops(stack, [compile_op(spec)])
+    torch.testing.assert_close(got, _worker_delta(spec, stack))
+    assert got[:, [0, 1, 3]].abs().max() == 0

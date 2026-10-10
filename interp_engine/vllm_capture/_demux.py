@@ -9,6 +9,7 @@ refcounting -- state manipulation only, no hook bodies.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, cast
 
 import torch
@@ -64,6 +65,10 @@ class _Demux:
         self.runner_api: str | None = None
         # Snapshot of the in-flight forward's row layout: (req_ids, seq_lens) or None.
         self.current_meta: tuple[list[str], list[int]] | None = None
+        # Per request in ``current_meta`` order: the absolute position of its first row, or None.
+        self.current_starts: list[int] | None = None
+        # Called after each snapshot, before the forward. Static writes fill their row map here.
+        self.on_meta: list[Callable[[], None]] = []
         # Diagnostics (see worker_demux_debug).
         self.dbg_exec_calls = 0
         self.dbg_last_meta: tuple[list[str], list[int]] | None = None
@@ -183,6 +188,22 @@ def _meta_from_v1_inputs(input_batch: object, num_scheduled_tokens: object) -> t
     return _pair_meta(getattr(input_batch, "req_ids", None), num_scheduled_tokens)
 
 
+def _starts(computed: object, meta: tuple[list[str], list[int]] | None) -> list[int] | None:
+    """Each request's first absolute position this step, from the runner's per-request computed-token count."""
+    if meta is None or computed is None:
+        return None
+    starts = [int(x) for x in cast(Any, computed)[: len(meta[0])]]
+    return starts if len(starts) == len(meta[0]) else None
+
+
+def _run_on_meta(demux: _Demux) -> None:
+    for callback in demux.on_meta:
+        try:
+            callback()
+        except Exception as exc:  # noqa: BLE001 - a callback must fail closed, not stop the forward
+            demux.dbg_last_error = f"on_meta {type(exc).__name__}: {exc}"
+
+
 def _ensure_patched(worker: object, demux: _Demux) -> None:
     """Patch the model runner once to snapshot each forward's row layout.
 
@@ -212,10 +233,12 @@ def _ensure_patched(worker: object, demux: _Demux) -> None:
             demux.dbg_exec_calls += 1
             try:
                 demux.current_meta = _meta_from_input_batch(input_batch)
+                demux.current_starts = _starts(getattr(input_batch, "num_computed_tokens_np", None), demux.current_meta)
                 demux.dbg_last_meta = demux.current_meta
             except Exception as exc:  # noqa: BLE001 - never break the forward on metadata errors
-                demux.current_meta = None
+                demux.current_meta = demux.current_starts = None
                 demux.dbg_last_error = f"{type(exc).__name__}: {exc}"
+            _run_on_meta(demux)
             return input_batch
 
         model_runner.prepare_inputs = _patched
@@ -229,10 +252,14 @@ def _ensure_patched(worker: object, demux: _Demux) -> None:
             try:
                 nst = args[0] if args else kwargs.get("num_scheduled_tokens")
                 demux.current_meta = _meta_from_v1_inputs(model_runner.input_batch, nst)
+                demux.current_starts = _starts(
+                    getattr(model_runner.input_batch, "num_computed_tokens_cpu", None), demux.current_meta
+                )
                 demux.dbg_last_meta = demux.current_meta
             except Exception as exc:  # noqa: BLE001 - never break the forward on metadata errors
-                demux.current_meta = None
+                demux.current_meta = demux.current_starts = None
                 demux.dbg_last_error = f"{type(exc).__name__}: {exc}"
+            _run_on_meta(demux)
             return out
 
         model_runner._prepare_inputs = _patched

@@ -50,6 +50,7 @@ from interp_engine.vllm_capture._tree import (
     resolve_capture_module,
     scale_capture,
 )
+from interp_engine.vllm_capture.static_program import StaticWriteProgram
 
 #: Post-RoPE q/k/v at ``self_attn.attn``. Not a public capture point; ``capture_attention``
 #: harvests the three roles and recomputes scores/probs.
@@ -749,6 +750,9 @@ class StaticState:
     #: read-out or collect raises this rather than return a sequence with a hole in it.
     failed: dict[str, str] = field(default_factory=dict)
     patched_execute: bool = False
+    #: The write sites' device tables on a CUDA worker. When set, every write goes through it, so a
+    #: FULL graph replays each request's own write. None on CPU, where the Python path serves.
+    program: StaticWriteProgram | None = None
 
 
 def _state(worker: object) -> StaticState | None:
@@ -1156,7 +1160,11 @@ def worker_install_static(worker: object) -> None:
     if mhc_sites:
         _install_mhc_static(worker, mhc_sites)
 
-    _ensure_patched(worker, _get_demux(worker))
+    demux = _get_demux(worker)
+    _ensure_patched(worker, demux)
+    if state.writes and device.type == "cuda":
+        state.program = StaticWriteProgram(sites=list(state.writes.values()), device=device, max_n=max_n)
+        demux.on_meta.append(lambda: _fill_program_rows(worker))
     _patch_execute_model(worker)
     logger.info(
         "interp-engine static: %d read site(s), %d write site(s), max_n=%d",
@@ -1164,6 +1172,25 @@ def worker_install_static(worker: object) -> None:
         len(state.writes),
         max_n,
     )
+
+
+def _fill_program_rows(worker: object) -> None:
+    """Point the next forward's rows at their writers. On any failure, no row is written."""
+    static = _state(worker)
+    program = static.program if static is not None else None
+    if program is None:
+        return
+    demux = _get_demux(worker)
+    meta = demux.current_meta
+    try:
+        if meta is None:
+            program.fill_rows([], [], None, lambda rid: rid)
+        else:
+            program.fill_rows(meta[0], meta[1], demux.current_starts, lambda rid: _resolve_rid(demux, rid))
+    except Exception:
+        logger.exception("static writes: could not map this step's rows to their writers; writing none")
+        program.fill_rows([], [], None, lambda rid: rid)
+        raise
 
 
 def _install_mhc_static(worker: object, mhc_sites: Sequence[_Site]) -> None:
@@ -1198,9 +1225,14 @@ def _static_mhc_recorder(worker: object, site: _Site):
         if n == 0:
             return tensor
         static = _state(worker)
-        reqs = _write_reqs_for(static, site) if static is not None else []
+        program = static.program if static is not None else None
         live = tensor
-        if reqs or site.modify is not None or site.delta_set:
+        if program is not None and program.has_site(site):
+            # A recorded graph must hold the edit whether or not anything is registered now.
+            if torch.cuda.is_current_stream_capturing() or not program.idle(site):
+                live = tensor.clone()
+                program.launch(site, live, None, n)
+        elif (static is not None and _write_reqs_for(static, site)) or site.modify is not None or site.delta_set:
             live = tensor.clone()
             _apply_write(live, None, site, n, fused=False, worker=worker)
         if site.buf is not None:
@@ -1637,6 +1669,12 @@ def _apply_write(
     if n <= 0:
         return
     static = _state(worker) if worker is not None else None
+    program = static.program if static is not None else None
+    if program is not None and program.has_site(site):
+        # A recorded graph launches the kernel on every replay; an eager forward may skip an idle site.
+        if torch.cuda.is_current_stream_capturing() or not program.idle(site):
+            program.launch(site, hidden, residual if fused else None, n)
+        return
     reqs = _write_reqs_for(static, site) if static is not None else []
     if reqs:
         _apply_demuxed_writes(hidden, residual, n, fused, worker, reqs)
@@ -1868,9 +1906,11 @@ def worker_set_static_delta(
 ) -> None:
     """Install static writes from worker specs. Zeros every write site first.
 
-    Additive ``op="additive"`` without a scope fills the static ``delta`` buffer. Every other op attaches
-    a live ``modify`` that reads the residual each forward (breakable ``add_eager``). ``lens_scope``
-    is the write's position scope: ``skip_positions``, ``prompt_len`` and ``steer_generated``.
+    On a CUDA worker the ops go to :class:`~interp_engine.vllm_capture.static_program.StaticWriteProgram`
+    as its global write. Without one, additive ``op="additive"`` without a scope fills the static
+    ``delta`` buffer, and every other op attaches a live ``modify`` that reads the residual each
+    forward. ``lens_scope`` is the write's position scope: ``skip_positions``, ``prompt_len`` and
+    ``steer_generated``.
 
     A ``stream`` disqualifies the static buffer too. The buffer is added whole to a ``[tokens,
     streams, width]`` activation, so it has no way to say "this stream and not the others"; taking
@@ -1885,7 +1925,10 @@ def worker_set_static_delta(
     worker_clear_static_delta(worker)
     from interp_engine.vllm_capture.steering import _make_steer_modifiers
 
-    for site, group in _group_by_site(static, specs).items():
+    groups = _group_by_site(static, specs)
+    if static.program is not None:
+        static.program.set_global(groups, lens_scope)
+    for site, group in groups.items():
         assert site.delta is not None
         constant = _constant_delta(group, site.delta.device, site.delta.dtype) if lens_scope is None else None
         if constant is not None:
@@ -1969,8 +2012,11 @@ def worker_register_static_write(
         skip = tuple(int(i) for i in (lens_scope.get("skip_positions") or skip))
         length = int(lens_scope.get("prompt_len") or length)
         generated = bool(lens_scope.get("steer_generated", False))
+    groups = _group_by_site(static, specs)
+    if static.program is not None:
+        static.program.register(req_id, groups, skip=skip, prompt_len=length, generated=generated)
     by_site: dict[str, _WriteReq] = {}
-    for site, group in _group_by_site(static, specs).items():
+    for site, group in groups.items():
         by_site[format_address(site.address)] = _compile_write_req(
             group, site, skip_positions=skip, prompt_len=length, steer_generated=generated
         )
@@ -1984,6 +2030,8 @@ def worker_unregister_static_write(worker: object, req_id: str) -> None:
     if static is None:
         return
     static.write_reqs.pop(req_id, None)
+    if static.program is not None:
+        static.program.unregister(req_id)
     if req_id not in static.cap_points:
         static.registered.discard(req_id)
 
@@ -1992,6 +2040,8 @@ def worker_clear_static_delta(worker: object) -> None:
     static = _state(worker)
     if static is None:
         return
+    if static.program is not None:
+        static.program.clear_global()
     for site in static.writes.values():
         site.modify = None
         site.lens_scope = None
