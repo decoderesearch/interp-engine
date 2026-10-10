@@ -1087,6 +1087,36 @@ def test_a_stream_stack_steer_reaches_the_collapse_the_very_same_kernel_computes
     assert not torch.allclose(trunk.layers[1].ffn_input_stack, unsteered_stack), "nor did anything downstream"
 
 
+@pytest.mark.gpu
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="records a CUDA graph")
+def test_a_stream_stack_steer_records_into_a_cuda_graph():
+    """vLLM records FULL decode graphs with plain capture, where the host cannot read a tensor.
+
+    Static writes edit the stack while the graph is recorded, so the re-run decision may not read
+    ``changed`` on the host there. It did, and the DeepSeek-V4 static engine failed at start-up.
+    """
+    trunk = _HyperTrunk(n_layers=2).cuda()
+    positions, input_ids = POSITIONS.cuda(), INPUT_IDS.cuda()
+    _, handles = _steering_demux(trunk, {Address("resid_streams", 0): _bump(0.5)})
+    try:
+        with torch.no_grad():
+            eager = trunk(positions, input_ids).clone()
+            side = torch.cuda.Stream()
+            side.wait_stream(torch.cuda.current_stream())
+            with torch.cuda.stream(side):
+                trunk(positions, input_ids)
+            torch.cuda.current_stream().wait_stream(side)
+            graph = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(graph):
+                out = trunk(positions, input_ids)
+            graph.replay()
+            torch.cuda.synchronize()
+    finally:
+        for handle in handles:
+            handle.remove()
+    torch.testing.assert_close(out, eager)
+
+
 def test_only_the_layer_that_is_actually_steered_pays_for_a_second_pre_phase():
     """The extra kernel is per call, so an unsteered forward must not pay for it -- and neither must
     the layers of a steered forward that nobody asked about.

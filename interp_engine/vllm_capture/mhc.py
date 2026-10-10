@@ -648,9 +648,13 @@ class _MhcTaps:
         detectably different from no steer at all. So the rows the recorder actually changed take the
         re-run and every other row keeps the kernel's own output, which is also why a zero delta needs
         no re-run: no row changed.
+
+        Inside a graph capture the host cannot read ``changed``, so the re-run is always recorded and
+        the row mask alone decides at replay.
         """
         changed = (edited != stack).flatten(start_dim=1).any(dim=1)
-        if not bool(changed.any()):
+        capturing = stack.is_cuda and torch.cuda.is_current_stream_capturing()
+        if not capturing and not bool(changed.any()):
             return fused
         bound = signature.bind(*args, **kwargs)
         bound.apply_defaults()
