@@ -80,11 +80,13 @@ from interp_engine.vllm_capture import (
     worker_unregister_steering,
 )
 from interp_engine.vllm_capture.static import patch_worker_for_static
+from interp_engine.vllm_seq_fit import patch_mamba_seq_check
 
 # Worker process imports this module for worker_extension_cls. Patching load_model here
 # (not as an extension method named load_model) is what lets static wraps run before
 # CUDA-graph capture. vLLM refuses an extension attribute that collides with Worker.
 patch_worker_for_static()
+patch_mamba_seq_check()
 
 # Pass as ``worker_extension_cls=`` when constructing your engine. vLLM resolves this
 # qualified name inside each worker process, so it must stay importable under this path.

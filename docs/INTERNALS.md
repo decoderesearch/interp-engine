@@ -83,6 +83,12 @@ files and why they are where they are.
   child dies before it loads anything, and the caller is told to see a root cause that is in another
   process. Called from `_ensure_engine`; a no-op in a script, a server, or a kernel that captured
   the real descriptors itself.
+- `vllm_seq_fit.py` — fits `max_num_seqs` to the Mamba state cache on a hybrid trunk. With full
+  decode CUDA graphs, vLLM needs one Mamba block per sequence, and it knows the block count only
+  inside its EngineCore child, after it measures memory. The worker plugin wraps vLLM's check to
+  write that count to a temporary file; `VLLMModel._start_engine` reads it after the failed start
+  and starts once more with `max_num_seqs` set to it. A caller's explicit `max_num_seqs` gets no
+  retry. `tests/test_vllm_seq_fit.py` covers both halves on CPU.
 
 ## Correctness
 

@@ -18,9 +18,11 @@ macOS/CPU.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import importlib.util
 import logging
 import os
+import tempfile
 import warnings
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mapping, Sequence
 from typing import Any, TypeVar
@@ -82,6 +84,7 @@ from interp_engine.vllm_capture.static import (
     static_unsupported_reason,
 )
 from interp_engine.vllm_plugin import WORKER_EXTENSION_CLS
+from interp_engine.vllm_seq_fit import SEQ_FIT_ENV, read_block_limit
 
 logger = logging.getLogger(__name__)
 
@@ -1128,6 +1131,7 @@ class VLLMModel:
             extra_vllm_kwargs=extra_vllm_kwargs,
             max_lora_rank=max_lora_rank,
         )
+        self._max_num_seqs_pinned = "max_num_seqs" in (extra_vllm_kwargs or {})
         facts = read_residual_facts(hf_model_id, trust_remote_code)
         self._attn_dims = read_attn_dims(hf_model_id, trust_remote_code)
         reads, writes, graph = resolve_static_points(
@@ -1389,9 +1393,42 @@ class VLLMModel:
                     # The line below forks a child that suppresses stdout by descriptor, which a
                     # notebook kernel's stdout does not have. See `notebook_stdout`.
                     ensure_stdout_descriptor()
-                    self.engine = AsyncLLM.from_engine_args(AsyncEngineArgs(**self._engine_kwargs))
+                    self.engine = self._start_engine(AsyncLLM, AsyncEngineArgs)
                     self._engine_loop = asyncio.get_running_loop()
         return self.engine
+
+    def _start_engine(self, async_llm: Any, engine_args: Any) -> Any:
+        """Build the engine. On a hybrid trunk, start again once if ``max_num_seqs`` does not fit.
+
+        See :mod:`interp_engine.vllm_seq_fit`. The retry happens only when a worker recorded the
+        Mamba block count and the caller did not set ``max_num_seqs``.
+        """
+        if getattr(self, "_max_num_seqs_pinned", False):
+            return async_llm.from_engine_args(engine_args(**self._engine_kwargs))
+        fd, path = tempfile.mkstemp(prefix="interp-engine-seq-fit-")
+        os.close(fd)
+        os.environ[SEQ_FIT_ENV] = path
+        try:
+            try:
+                return async_llm.from_engine_args(engine_args(**self._engine_kwargs))
+            except Exception:
+                blocks = read_block_limit(path)
+                if blocks is None:
+                    raise
+            logger.warning(
+                "%s: max_num_seqs %s exceeds the %s Mamba cache blocks left after memory profiling; "
+                "starting the engine again with max_num_seqs=%s. Set max_num_seqs to skip the retry.",
+                self.hf_model_id,
+                self._engine_kwargs.get("max_num_seqs", "(vLLM default)"),
+                blocks,
+                blocks,
+            )
+            self._engine_kwargs["max_num_seqs"] = blocks
+            return async_llm.from_engine_args(engine_args(**self._engine_kwargs))
+        finally:
+            os.environ.pop(SEQ_FIT_ENV, None)
+            with contextlib.suppress(OSError):
+                os.unlink(path)
 
     async def warmup(self) -> None:
         """Build the engine now instead of on the first request, and run one throwaway decode.

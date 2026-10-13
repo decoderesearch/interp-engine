@@ -776,8 +776,9 @@ def test_ensure_engine_sets_breakable_beside_static_env():
     assert "apply_breakable_env" in src
     static_at = src.index("STATIC_ENV")
     breakable_at = src.index("apply_breakable_env")
-    engine_at = src.index("from_engine_args")
+    engine_at = src.index("_start_engine")
     assert static_at < breakable_at < engine_at
+    assert "from_engine_args" in inspect.getsource(VLLMModel._start_engine)
 
 
 def test_a_read_buffer_is_not_used_as_a_boolean_when_sizing_the_write():
