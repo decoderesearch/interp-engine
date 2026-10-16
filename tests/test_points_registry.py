@@ -251,6 +251,13 @@ def test_the_sharded_set_is_the_narrowed_axes_and_not_just_the_non_d_model_ones(
     assert not ({"router_logits", "resid_post", "attn_in", "resid_streams"} & sharded)
 
 
+def test_the_kv_head_points_are_declared_kv_head_wide():
+    """On a GQA model these are ``n_kv_heads * head_dim``, and the TP gather reads this width to
+    pick the KV head count and drop replicated KV heads."""
+    kv = {p.name for p in points.POINTS if p.width is points.Width.KV_HEADS}
+    assert kv == {"k_norm_in", "k_norm_out", "value"}
+
+
 def test_the_mapping_doc_marks_exactly_the_eager_only_points():
     """The footnote markers in the docs table, checked against the table in code.
 

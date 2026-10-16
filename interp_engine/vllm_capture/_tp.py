@@ -29,8 +29,6 @@ from interp_engine.address import parse_address
 from interp_engine.points import Width, point_spec, tp_sharded
 from interp_engine.vllm_capture._tree import _attn_module, _get_layers, _worker_tp_world_size
 
-#: Points whose heads are the *KV* heads, and so may be replicated across ranks rather than sharded.
-_KV_HEAD_POINTS = frozenset({"k_norm_in", "k_norm_out", "value"})
 #: Attention payload roles by which head count they carry.
 _ATTN_ROLE_KV = frozenset({"k", "v"})
 _SHARDED_POINTS = tp_sharded()
@@ -138,7 +136,7 @@ def gather_capture(model: torch.nn.Module, key: str, tensor: torch.Tensor) -> to
     if counts is None:
         return _all_gather(tensor, -1)
     n_heads, n_kv, total_kv, head_dim = counts
-    if address.name in _KV_HEAD_POINTS:
+    if spec is not None and spec.width is Width.KV_HEADS:
         return gather_heads(tensor, per_rank=n_kv, total=total_kv, head_dim=head_dim)
     return gather_heads(tensor, per_rank=n_heads, total=None, head_dim=head_dim)
 

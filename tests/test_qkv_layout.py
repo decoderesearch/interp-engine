@@ -136,7 +136,7 @@ def test_per_head_value_agrees_with_the_split(spec: ModelSpec, expected: QKVLayo
 
 @pytest.mark.parametrize(("spec", "expected"), FUSED_MODELS)
 def test_the_raw_value_point_is_the_value_and_not_the_whole_fused_slab(spec: ModelSpec, expected: QKVLayout):
-    """`value` declares ``Width.HEADS``, so a fused family has to be split before the point is served.
+    """`value` declares ``Width.KV_HEADS``, so a fused family has to be split before the point is served.
 
     It was not: the raw point handed back ``[q | k | v]``, three times too wide on gpt2 -- and on the
     one engine every other one is scored against. Both vLLM backends already returned the value alone,

@@ -554,7 +554,7 @@ def _capture_eager(
         raw = cache.tensors[key]
         if model.arch.quirks.fused_qkv:
             # The value alone, not the `[q | k | v]` slab the fused projection emits. This point
-            # declares `Width.HEADS` and both vLLM backends return exactly that, so leaving the slab
+            # declares `Width.KV_HEADS` and both vLLM backends return exactly that, so leaving the slab
             # here made the reference three times too wide on gpt2, GPT-NeoX and Falcon -- and the
             # engine every other one is scored against was the one disagreeing.
             raw = split_fused_qkv(model, raw)["v"]
@@ -699,7 +699,7 @@ def per_head_value(model: EagerModel, cache: Cache, layer: int) -> torch.Tensor:
     point, is what satisfies ``probs @ value == z``.
 
     A fused qkv is already split by the time the point lands in the cache, so there is nothing to
-    unpack here: the raw point is the value at ``Width.HEADS`` on every family.
+    unpack here: the raw point is the value at ``Width.KV_HEADS`` on every family.
     """
     raw = cache.get("value", layer)  # [batch, seq, n_kv_heads * v_head_dim]
     batch, seq, _ = raw.shape

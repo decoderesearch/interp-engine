@@ -67,7 +67,7 @@ counts.
 | `attn_in`                   | `d_model`               | what the attention module was handed                              |
 | `q_norm_in` / `q_norm_out`  | `n_heads * head_dim`    | the query on either side of QK-norm                               |
 | `k_norm_in` / `k_norm_out`  | `n_kv_heads * head_dim` | the key on either side of QK-norm                                 |
-| `value`                     | `n_heads * head_dim`    | the value projection                                              |
+| `value`                     | `n_kv_heads * head_dim` | the value projection                                              |
 | `attn_scores`               | `n_heads * query * key` | the QK matrix, before the softmax                                 |
 | `attn_probs`                | `n_heads * query * key` | the attention pattern, after it                                   |
 | `z`                         | `n_heads * head_dim`    | per-head attention output, before `W_O`                           |

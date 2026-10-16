@@ -311,7 +311,7 @@ must split", on a family whose `fused_qkv` is false — so `value` no longer ask
 **Reading a norm costs a rank, and the point does not pay it.** A norm over `head_dim` can only be
 given the per-head view, so both engines hand `v_norm` a `(…, n_kv_heads, head_dim)` tensor where a
 `v_proj` would have produced the flat one — and `value` would then be 4-D on this family and 3-D on the
-next, against a `Width.HEADS` declaration and `capture`'s `[batch, seq, width]`. Flattened back
+next, against a `Width.KV_HEADS` declaration and `capture`'s `[batch, seq, width]`. Flattened back
 on both sides (`hooks.flat_per_head`, `vllm_capture._hooks.flat_value`), including on the way *into* a
 steer, so a vector measured on a capture of `value` is the shape the write expects; the module gets its
 own rank back before the attention reshapes it. Eagerly the head count is checked rather than assumed,

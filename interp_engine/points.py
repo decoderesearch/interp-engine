@@ -64,11 +64,13 @@ class Width(Enum):
     """What the last axis of the captured tensor counts -- the axis a shard would narrow.
 
     This is the tensor-parallel question, which is why it is an enum rather than a
-    ``d_model: bool``. ``HEADS``, ``NEURONS`` and ``VOCAB`` are exactly the axes vLLM shards, so
-    under TP rank 0 holds a slice of them -- and for the first two there is no width to check it
-    against either (``n_heads * head_dim`` coincides with ``hidden_size`` on Llama and not on
-    Gemma-3, so a width check would pass on one and fail on the other for reasons unrelated to
-    sharding). :func:`tp_sharded` is that set.
+    ``d_model: bool``. ``HEADS``, ``KV_HEADS``, ``NEURONS`` and ``VOCAB`` are exactly the axes vLLM
+    shards, so under TP rank 0 holds a slice of them -- and for the first three there is no width to
+    check it against either (``n_heads * head_dim`` coincides with ``hidden_size`` on Llama and not
+    on Gemma-3, so a width check would pass on one and fail on the other for reasons unrelated to
+    sharding). :func:`tp_sharded` is that set. ``KV_HEADS`` is its own member because a GQA model
+    has fewer KV heads than query heads, and because vLLM replicates KV heads, not shards them,
+    when there are fewer of them than ranks.
 
     The rest reach a hook at full width, for three different reasons, which is why "is it
     ``D_MODEL``" is *not* the same question: ``D_MODEL`` is all-reduced before the hook sees it,
@@ -81,6 +83,7 @@ class Width(Enum):
 
     D_MODEL = "d_model"
     HEADS = "n_heads * head_dim"
+    KV_HEADS = "n_kv_heads * head_dim"
     NEURONS = "d_mlp"
     ROUTING = "experts"
     SCORES = "n_heads * query * key"
@@ -95,7 +98,7 @@ class Width(Enum):
     @classmethod
     def sharded(cls) -> frozenset[Width]:
         """The widths a tensor-parallel rank holds only a slice of. See the class docstring."""
-        return frozenset({cls.HEADS, cls.NEURONS, cls.VOCAB})
+        return frozenset({cls.HEADS, cls.KV_HEADS, cls.NEURONS, cls.VOCAB})
 
 
 class VllmSupport(Enum):
@@ -151,9 +154,9 @@ POINTS: tuple[PointSpec, ...] = (
     _p("attn_in", _L, Width.D_MODEL, _HOOKS),
     _p("q_norm_in", _L, Width.HEADS, _HOOKS),
     _p("q_norm_out", _L, Width.HEADS, _HOOKS),
-    _p("k_norm_in", _L, Width.HEADS, _HOOKS),
-    _p("k_norm_out", _L, Width.HEADS, _HOOKS),
-    _p("value", _L, Width.HEADS, _HOOKS),
+    _p("k_norm_in", _L, Width.KV_HEADS, _HOOKS),
+    _p("k_norm_out", _L, Width.KV_HEADS, _HOOKS),
+    _p("value", _L, Width.KV_HEADS, _HOOKS),
     _p(
         "attn_scores",
         _L,

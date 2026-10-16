@@ -134,7 +134,7 @@ engine_kwargs = {"worker_extension_cls": WORKER_EXTENSION_CLS, **capture_engine_
 
 The decision rule, in order:
 
-1. Do you need eager-only points (MLP internals, MoE selection), gradients, or module/weight access?
+1. Do you need eager-only points (MLP input branches, MoE selection), gradients, or module/weight access?
    → **eager**, `load_model(..., backend="eager")`. Neither tier of vLLM serves these; see [the
    vocabulary table](#the-point-vocabulary). Attention is *not* on that list any more —
    `capture_attention` serves it on both.
@@ -189,14 +189,16 @@ Canonical names, with the layer after a dot: `resid_post.10`. Extra coordinates 
 | `attn_out` | attention's raw output | both |
 | `mlp_out_post`, `attn_out_post` | that sublayer's **residual contribution** — differs from the raw output only on post-norm architectures | both |
 | `z` | per-head attention output, `n_heads * head_dim` wide (**not** `d_model` on every family) | both |
-| `value`, `attn_probs`, `attn_scores` | per-head values and the attention matrix | both, but through `capture_attention` rather than as points on vLLM |
-| `mlp_act`, `mlp_pre`, `mlp_pre_linear` | MLP internals, `d_mlp` wide | **eager only** |
+| `value` | per-head values, the value projection's output on most families | both (head-sharded; gathered across TP ranks) |
+| `attn_probs`, `attn_scores` | the attention matrix | both, but through `capture_attention` rather than as points on vLLM |
+| `mlp_act` | post-activation neurons, the down projection's input, `d_mlp` wide | both (neuron-sharded; gathered across TP ranks) |
+| `mlp_pre`, `mlp_pre_linear` | the MLP's input branches, `d_mlp` wide | **eager only** |
 | `router_logits` | MoE routing scores, every expert | both |
 | `expert_weights`, `expert_indices` | the top-k the router selected, and its weights | **eager only** |
 | the QK-norm points | inside the attention module | both (head-sharded; gathered across TP ranks) |
 
-Eager-only is not an omission: vLLM's fused MLP and MoE kernels compute those tensors inline, so
-there is no module boundary to hook. This table is the working subset;
+Eager-only is not an omission: vLLM fuses `gate_proj` and `up_proj` into one `gate_up_proj`, and its
+MoE kernel forms the selection inline, so there is no module boundary to hook. This table is the working subset;
 [SUPPORTED_POINTS.md](SUPPORTED_POINTS.md) is all 34 points with the per-backend verdict on each,
 and it is checked against the registry rather than maintained by hand.
 

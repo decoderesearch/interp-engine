@@ -20,8 +20,8 @@ both backends, and are what a sync caller should use when the backend is not kno
 
 Deliberately NOT in the protocol:
 
-- **Per-head points through ``capture``** (``value``, ``attn_probs``). No backend holds these
-  at a module boundary, so each reconstructs them, and the reconstruction is
+- **The attention matrix through ``capture``** (``attn_scores``, ``attn_probs``). No backend
+  holds these at a module boundary, so each reconstructs them, and the reconstruction is
   ``capture_attention`` -- which *is* in the protocol. What is not is asking for them as
   ordinary capture points. Gate on ``refuses(point, layer)`` rather than on the backend name.
 - **vLLM ``SamplingParams`` over embeddings** (``VLLMModel.generate_from_embeds``, deprecated).
@@ -398,17 +398,17 @@ class InterpModel(Protocol):
         token, in order, with no batch dimension on either backend. With ``rows``, only those
         positions come back, in that order (``[len(rows), width]``); on vLLM the worker drops
         the others before they cross the process boundary. ``width`` is
-        :attr:`d_model` for the residual and MLP points and ``n_heads * head_dim`` for
-        ``z``. Requests may be ``Address``es, their canonical string forms, or the
-        ``(name, layer)`` tuples this used to take; the keys coming back are always
-        ``Address``es, since that is the only form that can carry every coordinate.
+        :attr:`d_model` for the residual and sublayer-boundary points, ``d_mlp`` for
+        ``mlp_act``, and ``n_heads * head_dim`` for ``z``. Requests may be ``Address``es, their
+        canonical string forms, or the ``(name, layer)`` tuples this used to take; the keys coming
+        back are always ``Address``es, since that is the only form that can carry every coordinate.
 
         ``points`` names are the canonical ones (``resid_pre``, ``resid_mid``, ``resid_post``,
-        ``mlp_in``, ``mlp_out``, ``attn_out``, ``mlp_out_post``, ``attn_out_post``, ``z``); ``value``,
-        ``attn_probs``, ``attn_scores``, the QK-norm points, the MLP-internal points (``mlp_act``,
-        ``mlp_pre``, ``mlp_pre_linear``) and the MoE routing points (``router_logits``,
-        ``expert_weights``, ``expert_indices``) are eager-only, see the module
-        docstring. The ``*_post`` pair is the
+        ``mlp_in``, ``mlp_out``, ``attn_out``, ``mlp_out_post``, ``attn_out_post``, ``z``,
+        ``value``, ``mlp_act``, ``router_logits``, the QK-norm points); ``mlp_pre``,
+        ``mlp_pre_linear``, ``expert_weights`` and ``expert_indices`` are eager-only, and
+        ``attn_probs`` / ``attn_scores`` come from ``capture_attention``, see the module
+        docstring. :func:`interp_engine.points.eager_only` is the full list. The ``*_post`` pair is the
         sublayer's residual *contribution*, which differs from the raw output only on post-norm
         architectures (Gemma-2/3/4, OLMo-2/3) and aliases it everywhere else. With ``steering_spec`` (a ``SteeringSpec``, or a list for several points) the
         activations are captured from the *steered* forward, not a separate one.

@@ -62,18 +62,19 @@ print(basis.describe())
 ## Refusals
 
 Nothing degrades silently. Unsupported work raises `CapabilityUnsupported`, naming the
-capability, why this backend cannot serve it, and what to call instead.
+capability, why this backend cannot serve it, and what to call instead. A point the backend cannot
+capture raises a `ValueError` quoting that point's reason from the point table.
 
 ```python
-from interp_engine import CAPABILITIES, CapabilityUnsupported, capture, load_model
+from interp_engine import CAPABILITIES, capture, load_model
 
 for name, capability in CAPABILITIES.items():
     print(name, capability.why, capability.instead)
 
 model = load_model("Qwen/Qwen3-8B", backend="vllm")
 try:
-    capture(model, model.to_tokens("Hi"), ["mlp_act.5"])
-except CapabilityUnsupported as exc:
+    capture(model, model.to_tokens("Hi"), ["mlp_pre.5"])
+except ValueError as exc:  # CapabilityUnsupported is a ValueError too
     print(exc)
 ```
 

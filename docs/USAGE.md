@@ -148,8 +148,8 @@ Three things to know about what comes back:
   one up, or `format_address(key)` to print one. (The eager `Cache` from `capture` is the
   exception — it accepts either form on lookup.)
 - **Shape is `[n_prompt_tokens, width]`, on CPU, with no batch dimension** — on either backend.
-  `width` is `d_model` for the residual and MLP points, and `n_heads * head_dim` for `z`, which is
-  *not* `d_model` on every family.
+  `width` is `d_model` for the residual and sublayer-boundary points, `d_mlp` for `mlp_act`, and
+  `n_heads * head_dim` for `z`, which is *not* `d_model` on every family.
 - **Rows are prompt positions in order**, so `acts[address][3]` is the activation at token 3.
 
 ## Naming a point
@@ -167,16 +167,16 @@ Points every backend serves: `resid_pre`, `resid_mid`, `resid_post`, `mlp_in`, `
 `attn_out`, `mlp_out_post`, `attn_out_post`, `z`. [SUPPORTED_POINTS.md](SUPPORTED_POINTS.md) is the
 full list, with the width and the per-backend verdict for each.
 
-Eager-only, because they are formed inside a fused kernel vLLM never unfolds: the MLP internals
-(`mlp_act`, `mlp_pre`, `mlp_pre_linear`) and the MoE *selection* (`expert_weights`,
-`expert_indices`) — its `router_logits` are served on both, since the gate produces them before any
-kernel takes over.
+Eager-only, because they are formed inside a fused kernel vLLM never unfolds: the MLP input branches
+(`mlp_pre`, `mlp_pre_linear`, which vLLM fuses into one `gate_up_proj`) and the MoE *selection*
+(`expert_weights`, `expert_indices`). The neuron basis `mlp_act` is the down projection's input, and
+`router_logits` comes from the gate before any kernel takes over, so both are served on both.
 
-The attention trio (`attn_scores`, `attn_probs`, `value`) is served on both, but not as a point on
-vLLM: no module boundary holds a score matrix the paged kernel never forms, so both backends
-reconstruct it. Ask for it with `capture_attention`, which returns the same
-`{layer: {"scores", "probs", "value"}}` either way — see [Without an event
-loop](#without-an-event-loop).
+The attention matrix (`attn_scores`, `attn_probs`) is served on both, but not as a point on vLLM:
+no module boundary holds a score matrix the paged kernel never forms, so both backends reconstruct
+it. Ask for it with `capture_attention`, which returns the same `{layer: {"scores", "probs",
+"value"}}` either way — see [Without an event loop](#without-an-event-loop). The raw `value` point
+is an ordinary capture point on both.
 
 The `*_post` pair deserves attention: `mlp_out` is the raw module output and `mlp_out_post` is that
 sublayer's *contribution to the residual stream*. They differ only on post-norm architectures
