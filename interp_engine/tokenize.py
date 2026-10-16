@@ -589,8 +589,8 @@ class Tokenize:
     ) -> tuple[int, int]:
         """Return ``(header_len, footer_len)`` for message ``k``'s block ``full_ids[start:end]``.
 
-        Renders message ``k`` with EMPTY content: the tokens it still contributes are exactly
-        the structural wrapper (header + footer). Aligning that wrapper against the real block by
+        Renders message ``k`` with EMPTY content and no tool calls: the tokens it still
+        contributes are exactly the structural wrapper (header + footer). Aligning that wrapper against the real block by
         common prefix / suffix locates the wrapper, and everything between is the content.
 
         The wrapper is rendered CLOSED even for a prefill (a final message held open by
@@ -614,7 +614,8 @@ class Tokenize:
         block = full_ids[start:end]
         block_len = end - start
         emptied = [dict(m) for m in messages]
-        emptied[k] = {**emptied[k], "content": ""}
+        # A tool call is text the model wrote, so it goes with the content, not the wrapper.
+        emptied[k] = {key: v for key, v in emptied[k].items() if key != "tool_calls"} | {"content": ""}
         try:
             if self.formatter is not None:
                 ids_empty = self._encode_rendered(
