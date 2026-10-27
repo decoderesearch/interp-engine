@@ -77,6 +77,24 @@ def _steer(d_model: int, scale: float) -> SteeringSpec:
     return SteeringSpec(layers={MID: LayerSteeringSpec(operations=[AddSpec(vector=vector, scale=scale)])})
 
 
+def _d_mlp() -> int:
+    from transformers import AutoConfig
+
+    return int(AutoConfig.from_pretrained(MODEL).intermediate_size)
+
+
+# One neuron in each rank's half of the MLP, so each rank has to keep its own block of the vector.
+NEURON_STEER = ((5, 20.0), (-5, -20.0))
+
+
+def _neuron_steer(d_mlp: int) -> SteeringSpec:
+    """Raise and lower one neuron each at ``mlp_act``: a write tensor parallelism shards."""
+    vector = torch.zeros(d_mlp)
+    for index, value in NEURON_STEER:
+        vector[index] = value
+    return SteeringSpec.at(Address("mlp_act", MID), AddSpec(vector=vector, scale=1.0))
+
+
 @pytest.fixture(scope="module")
 def loop() -> Iterator[asyncio.AbstractEventLoop]:
     made = asyncio.new_event_loop()
@@ -93,12 +111,24 @@ def tokens() -> list[int]:
     return list(AutoTokenizer.from_pretrained(MODEL)(PROMPT)["input_ids"])
 
 
-def _run_backend(loop, model, tokens: list[int], last: int, spec: SteeringSpec, points: list[Address]) -> dict:
+def _run_backend(
+    loop,
+    model,
+    tokens: list[int],
+    last: int,
+    spec: SteeringSpec,
+    points: list[Address],
+    neuron_spec: SteeringSpec | None = None,
+) -> dict:
     """The same forwards on any backend: plain and steered captures, attention, greedy decode, lens."""
 
     async def go() -> dict:
         plain = _to_cpu(await model.capture(tokens, points))
         steered = _to_cpu(await model.capture(tokens, points, steering_spec=spec))
+        neuron_points = [Address("mlp_act", MID), Address("resid_post", last)]
+        neuron_steered = (
+            _to_cpu(await model.capture(tokens, neuron_points, steering_spec=neuron_spec)) if neuron_spec else None
+        )
         attn = await model.capture_attention(tokens, [MID])
         completion, rows = await model.capture_generation(
             tokens, [Address("resid_post", last)], max_tokens=NEW_TOKENS, temperature=0.0
@@ -107,6 +137,7 @@ def _run_backend(loop, model, tokens: list[int], last: int, spec: SteeringSpec, 
         return {
             "plain": plain,
             "steered": steered,
+            "neuron_steered": neuron_steered,
             "attn": {k: v.detach().float().cpu() for k, v in attn[MID].items()},
             "generated": tuple(int(t) for t in completion.token_ids),
             "decode_rows": _to_cpu(rows),
@@ -124,22 +155,23 @@ def runs(loop, tokens: list[int]) -> Iterator[dict]:
     ref = load_model(MODEL, backend="eager", dtype="float32", device="cuda:0", attn_implementation="eager")
     last = ref.n_layers - 1
     spec = _steer(ref.d_model, STEER_SCALE)
+    neuron_spec = _neuron_steer(_d_mlp())
     points = [Address(p, MID) for p in SHARDED] + [Address("resid_post", MID), Address("resid_post", last)]
     out: dict = {"n_layers": ref.n_layers, "d_model": ref.d_model, "points": points}
-    out["eager1"] = _run_backend(loop, ref, tokens, last, spec, points)
+    out["eager1"] = _run_backend(loop, ref, tokens, last, spec, points, neuron_spec)
     del ref
     torch.cuda.empty_cache()
 
     eager2 = load_model(MODEL, backend="eager", dtype="float32", num_gpus=NUM_GPUS, attn_implementation="eager")
     out["eager2_devices"] = {p.device for p in eager2.hf_model.parameters()}
-    out["eager2"] = _run_backend(loop, eager2, tokens, last, spec, points)
+    out["eager2"] = _run_backend(loop, eager2, tokens, last, spec, points, neuron_spec)
     del eager2
     torch.cuda.empty_cache()
 
     hooked = load_model(MODEL, backend="vllm", num_gpus=NUM_GPUS, **LOAD_KW)
     loop.run_until_complete(hooked.warmup())
     try:
-        out["vllm2"] = _run_backend(loop, hooked, tokens, last, spec, points)
+        out["vllm2"] = _run_backend(loop, hooked, tokens, last, spec, points, neuron_spec)
     finally:
         loop.run_until_complete(hooked.shutdown())
 
@@ -208,6 +240,25 @@ def test_steering_moves_the_residual_the_same_way(runs: dict) -> None:
             assert_cosine(run["steered"][address], ref["steered"][address], f"{name} steered {address}")
             moved = (run["steered"][address] - run["plain"][address]).norm(dim=-1)
             assert bool((moved > 1.0).all()), f"{name} {address}: steering left rows unchanged ({moved.tolist()})"
+
+
+def test_a_neuron_steer_writes_each_ranks_own_neurons(runs: dict) -> None:
+    """An additive write at ``mlp_act`` lands on the steered neurons only, as it does on one card.
+
+    The static run is left out: it declares no ``mlp_act`` write.
+    """
+    ref = runs["eager1"]
+    act = Address("mlp_act", MID)
+    last = Address("resid_post", runs["n_layers"] - 1)
+    for name in ("eager2", "vllm2"):
+        run = runs[name]
+        moved = run["neuron_steered"][act] - run["plain"][act]
+        for index, value in NEURON_STEER:
+            torch.testing.assert_close(moved[:, index], torch.full_like(moved[:, index], value), rtol=1e-3, atol=1e-2)
+        others = moved.clone()
+        others[:, [index for index, _ in NEURON_STEER]] = 0.0
+        assert float(others.abs().max()) < 1e-3, f"{name}: a neuron steer moved other neurons"
+        assert_cosine(run["neuron_steered"][last], ref["neuron_steered"][last], f"{name} neuron-steered {last}")
 
 
 def test_greedy_decode_agrees_with_the_reference(runs: dict, tokens: list[int]) -> None:

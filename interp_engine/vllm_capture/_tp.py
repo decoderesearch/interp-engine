@@ -25,9 +25,15 @@ from __future__ import annotations
 
 import torch
 
-from interp_engine.address import parse_address
+from interp_engine.address import Address, format_address, parse_address
 from interp_engine.points import Width, point_spec, tp_sharded
-from interp_engine.vllm_capture._tree import _attn_module, _get_layers, _worker_tp_world_size
+from interp_engine.steer_specs import SteerMethod, steer_method
+from interp_engine.vllm_capture._tree import (
+    _attn_module,
+    _get_layers,
+    _worker_tp_world_size,
+    resolve_capture_module,
+)
 
 #: Attention payload roles by which head count they carry.
 _ATTN_ROLE_KV = frozenset({"k", "v"})
@@ -139,6 +145,48 @@ def gather_capture(model: torch.nn.Module, key: str, tensor: torch.Tensor) -> to
     if spec is not None and spec.width is Width.KV_HEADS:
         return gather_heads(tensor, per_rank=n_kv, total=total_kv, head_dim=head_dim)
     return gather_heads(tensor, per_rank=n_heads, total=None, head_dim=head_dim)
+
+
+#: Sharded points a write can be cut for: each is the input of a row-parallel projection, which
+#: vLLM splits into one contiguous block per rank, in rank order.
+_SLICEABLE_WRITE_WIDTHS = frozenset({Width.NEURONS, Width.HEADS})
+
+
+def _tp_rank() -> int:
+    from vllm.distributed import get_tensor_model_parallel_rank  # pyright: ignore[reportMissingImports]
+
+    return int(get_tensor_model_parallel_rank())
+
+
+def shard_write_spec(model: torch.nn.Module, site: Address, spec: dict) -> dict:
+    """``spec`` with its vector cut to this rank's slice of ``site``, where tensor parallelism shards it.
+
+    A full-width vector at a sharded point does not broadcast against the slice a rank's hook sees,
+    and that error would come from inside a forward. So the cut happens at registration, where a
+    refusal reaches the caller. Only ``additive`` can be cut: the other ops project onto the whole
+    vector, and a rank holds only part of the activation they would project.
+    """
+    if tp_size() <= 1 or site.name not in _SHARDED_POINTS or site.layer is None:
+        return spec
+    spec_info = point_spec(site.name)
+    width = spec_info.width if spec_info is not None else None
+    if width not in _SLICEABLE_WRITE_WIDTHS:
+        raise ValueError(f"cannot steer {site.name!r} under tensor parallelism: its shards are not contiguous blocks")
+    if steer_method(spec.get("op", SteerMethod.ADDITIVE)) is not SteerMethod.ADDITIVE:
+        raise ValueError(
+            f"only additive steering can write {site.name!r} under tensor parallelism "
+            f"(tp={tp_size()}): the other ops need the whole activation, and each rank holds a slice"
+        )
+    module = resolve_capture_module(model, _get_layers(model)[site.layer], site.name)
+    local = getattr(module, "input_size_per_partition", None)
+    vector = list(spec["vector"])
+    if not isinstance(local, int) or local * tp_size() != len(vector):
+        raise ValueError(
+            f"a steering vector at {format_address(site)} has {len(vector)} values; "
+            f"this model has {local} per rank on {tp_size()} ranks"
+        )
+    start = _tp_rank() * local
+    return {**spec, "vector": vector[start : start + local]}
 
 
 def gather_attn_role(layer: torch.nn.Module, role: str, tensor: torch.Tensor) -> torch.Tensor:

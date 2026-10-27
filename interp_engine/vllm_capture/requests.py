@@ -45,7 +45,7 @@ from interp_engine.vllm_capture._payload import (
     hook_site,
     select_stream,
 )
-from interp_engine.vllm_capture._tp import gather_attn_role, gather_capture
+from interp_engine.vllm_capture._tp import gather_attn_role, gather_capture, shard_write_spec
 from interp_engine.vllm_capture._tree import (
     _GLOBAL_POINTS,
     _KWARG_INPUT_POINTS,
@@ -700,9 +700,11 @@ def worker_register_steering(
     demux.registered.add(req_id)
     mods = demux.steer_mods.setdefault(req_id, {})
     skip_set = {int(i) for i in (skip_positions or [])}
+    model = _worker_model(worker)
     by_site: dict[Address, list[dict]] = {}
     for s in specs:
-        by_site.setdefault(_write_site(worker, s), []).append(s)
+        site = _write_site(worker, s)
+        by_site.setdefault(site, []).append(shard_write_spec(model, site, s))
     for site, group in by_site.items():
         modify = _make_steer_modifiers(group, demux.dev, demux.dt)
         mods[site] = (modify, skip_set, int(prompt_len), bool(steer_generated))
