@@ -543,8 +543,8 @@ def _scheme_only_on_outer_config(hf_model_id: str, *, trust_remote_code: bool) -
 def _segment_skips(cfg: Any) -> bool:
     """Make a skip list match whole dotted segments of the composite's module names.
 
-    transformers reads each name as an unanchored regex prefix, or as a suffix. So Qwen3.6-FP8's
-    ``layers.N.mlp.gate`` also skips ``layers.N.mlp.gate_proj``, and AWQ's ``visual`` (a substring
+    transformers reads each name as a regex prefix, or as a suffix. Before 5.21, Qwen3.6-FP8's
+    ``layers.N.mlp.gate`` also skips ``layers.N.mlp.gate_proj``; AWQ's ``visual`` (a substring
     for vLLM) skips nothing. A name written for the text model, ``model.layers.N``, is also given
     its composite path, ``model.language_model.layers.N``. A name with regex syntax is kept as is.
     """

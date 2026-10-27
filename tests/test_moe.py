@@ -188,8 +188,8 @@ def test_mlp_out_is_the_whole_moe_block():
 # --- the routing decision ----------------------------------------------------
 #
 # The one thing worth resolving below `layer.mlp`. Every family's router returns the whole decision
-# -- as `(router_logits, router_scores, router_indices)` almost everywhere, and reversed on Granite,
-# which is why the order is a table (`facts.ROUTER_OUTPUTS`) rather than a constant. The three points
+# -- as `(router_logits, router_scores, router_indices)` almost everywhere, reversed on Granite before
+# transformers 5.21, which is why the order is a table (`facts.ROUTER_OUTPUTS`). The three points
 # read that tuple rather than recomputing a top-k, which is the only defensible choice given the
 # conventions: Mixtral
 # softmaxes then selects then renormalizes, Qwen3-MoE renormalizes only under `norm_topk_prob`,
@@ -308,17 +308,18 @@ def test_the_routing_points_are_captured_and_reshaped_to_batch_and_position(monk
 
 
 def test_a_family_that_returns_its_router_output_backwards_is_read_backwards():
-    """Granite's router returns ``(top_k_index, top_k_weights, router_logits)``.
+    """Before transformers 5.21, Granite's router returns ``(top_k_index, top_k_weights, router_logits)``.
 
     Reading element 0 as the logits is shape-plausible -- ``[tokens, k]`` where ``[tokens, n_experts]``
     was meant -- and that is exactly how it went unnoticed until vLLM returned a 32-wide tensor for a
-    point eager was serving 8 wide.
+    point eager was serving 8 wide. From 5.21 the router returns the default order.
     """
     model = shrunk_granite_moe()
     router = model.arch.moe_router(0)
-    assert model.resolve_point("router_logits", 0) == (router, "output:2")
-    assert model.resolve_point("expert_weights", 0) == (router, "output:1")
-    assert model.resolve_point("expert_indices", 0) == (router, "output:0")
+    logits, weights, indices = (2, 1, 0) if facts._granite_router_is_reversed() else (0, 1, 2)
+    assert model.resolve_point("router_logits", 0) == (router, f"output:{logits}")
+    assert model.resolve_point("expert_weights", 0) == (router, f"output:{weights}")
+    assert model.resolve_point("expert_indices", 0) == (router, f"output:{indices}")
 
 
 def test_the_backwards_family_captures_logits_as_wide_as_its_expert_bank():
@@ -339,11 +340,15 @@ def test_the_backwards_family_captures_logits_as_wide_as_its_expert_bank():
 def test_an_unregistered_order_is_caught_at_capture_rather_than_served(monkeypatch):
     """The shape check is what makes the next backwards family loud instead of silent.
 
-    Granite with its row removed is the honest way to stage that: it is a real router returning real
-    tensors, and only the table entry that describes them is missing.
+    Granite with the wrong row is the honest way to stage that: it is a real router returning real
+    tensors, and only the table entry that describes them is wrong. Before transformers 5.21 that is
+    the row removed; from 5.21, the old reversed row put back.
     """
     model = shrunk_granite_moe()
-    monkeypatch.delitem(facts.ROUTER_OUTPUTS, "GraniteMoeForCausalLM")
+    if facts._granite_router_is_reversed():
+        monkeypatch.delitem(facts.ROUTER_OUTPUTS, "GraniteMoeForCausalLM")
+    else:
+        monkeypatch.setitem(facts.ROUTER_OUTPUTS, "GraniteMoeForCausalLM", facts._GRANITE_ROUTER_OUTPUT)
     ids = torch.arange(7).unsqueeze(0) % 128
     with pytest.raises(ValueError, match="'router_logits' is 2 wide against 8 experts"):
         capture(model, ids, [("router_logits", 0)])

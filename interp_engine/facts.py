@@ -1307,20 +1307,38 @@ def routing_convention(architecture: str) -> str | None:
 #: ``(router_logits, router_scores, router_indices)`` -- Mixtral, Qwen3-MoE, OLMoE, DeepSeek and
 #: gpt-oss all do -- so that is the default and this table holds only the families that do not.
 #:
-#: IBM's three Granite MoE families return the same three tensors in the opposite order,
-#: ``(top_k_index, top_k_weights, router_logits)``. Nothing about the shapes gives that away from
-#: outside: element 0 is ``[tokens, k]`` where the default reading expects ``[tokens, n_experts]``,
-#: which is a plausible tensor under either name, and it took a cross-engine width mismatch to catch.
+#: Before transformers 5.21, IBM's three Granite MoE families return the same three tensors in the
+#: opposite order, ``(top_k_index, top_k_weights, router_logits)``; from 5.21 they use the default.
+#: Nothing about the shapes gives that away from outside: element 0 is ``[tokens, k]`` where the
+#: default reading expects ``[tokens, n_experts]``, which is a plausible tensor under either name.
 #: :func:`assert_routing_shapes` is the check that makes the next one of these loud instead.
 #: A name for an element that is not one of the three points -- it is a real tensor a router returns
 #: which no canonical point means, and it exists so that a layout can say "the logits are *not* here"
 #: rather than leaving the slot labelled with the point that would then be read out of it.
 _NOT_A_POINT_PROBS = "router_probabilities"
 _DEFAULT_ROUTER_OUTPUT: tuple[str, ...] = ("router_logits", "expert_weights", "expert_indices")
+
+
+def _granite_router_is_reversed() -> bool:
+    """True when the installed transformers returns Granite's router tuple in reverse (before 5.21)."""
+    from importlib.metadata import version
+
+    from packaging.version import Version
+
+    return Version(version("transformers")) < Version("5.21")
+
+
+_GRANITE_ROUTER_OUTPUT: tuple[str, ...] = ("expert_indices", "expert_weights", "router_logits")
 ROUTER_OUTPUTS: dict[str, tuple[str, ...]] = {
-    "GraniteMoeForCausalLM": ("expert_indices", "expert_weights", "router_logits"),
-    "GraniteMoeSharedForCausalLM": ("expert_indices", "expert_weights", "router_logits"),
-    "GraniteMoeHybridForCausalLM": ("expert_indices", "expert_weights", "router_logits"),
+    **(
+        {
+            "GraniteMoeForCausalLM": _GRANITE_ROUTER_OUTPUT,
+            "GraniteMoeSharedForCausalLM": _GRANITE_ROUTER_OUTPUT,
+            "GraniteMoeHybridForCausalLM": _GRANITE_ROUTER_OUTPUT,
+        }
+        if _granite_router_is_reversed()
+        else {}
+    ),
     # Gemma-4 returns the three tensors in the default *order* while element 0 is not the default
     # tensor: `Gemma4TextRouter.forward` softmaxes over all 128 experts and returns those
     # probabilities there. The width check cannot catch it -- probabilities over the bank are exactly

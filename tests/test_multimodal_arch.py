@@ -9,10 +9,12 @@ and reads dims from the nested ``text_config`` — without loading any real weig
 
 from __future__ import annotations
 
+from importlib.metadata import version
 from types import SimpleNamespace
 
 import pytest
 import torch.nn as nn
+from packaging.version import Version
 
 from interp_engine import model as model_mod
 from interp_engine.arch import resolve_arch
@@ -283,7 +285,9 @@ def test_a_skip_list_matches_whole_segments_of_the_composite_names():
     gate_proj = "model.language_model.layers.5.mlp.gate_proj"
     missed = ("model.visual.blocks.0.mlp.linear_fc1", "model.language_model.layers.0.mlp.down_proj")
     assert all(should_convert_module(name, skips) for name in missed)
-    assert not should_convert_module(gate_proj, skips)
+    # transformers 5.21 matches to a segment boundary, so only older versions skip gate_proj too.
+    if Version(version("transformers")) < Version("5.21"):
+        assert not should_convert_module(gate_proj, skips)
     for skipped in (
         *missed,
         "model.language_model.layers.3.self_attn.q_proj",
