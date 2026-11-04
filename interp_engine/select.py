@@ -9,7 +9,9 @@ The ladder:
 - CUDA present -> vLLM when the model architecture is vLLM-supported, otherwise fall
   back to ``EagerModel`` on CUDA (keeps day-one / hybrid / not-yet-in-vLLM models
   servable on the GPU).
-- No CUDA -> MPS with ``EagerModel`` only when the checkpoint's native dtype
+- No CUDA, a Cloud TPU visible through TorchTPU -> ``EagerModel`` on ``tpu``. The vLLM
+  backend here patches CUDA vLLM internals, so a TPU is always eager.
+- No CUDA, no TPU -> MPS with ``EagerModel`` only when the checkpoint's native dtype
   is fp16/fp32-safe (bf16-native models would risk fp16 overflow on MPS, so they
   fall to CPU); otherwise CPU.
 
@@ -61,6 +63,24 @@ def _cuda_available() -> bool:
 
 def _mps_available() -> bool:
     return bool(getattr(torch.backends, "mps", None)) and torch.backends.mps.is_available()
+
+
+def _tpu_available() -> bool:
+    """Whether TorchTPU has registered a usable ``tpu`` device in this process.
+
+    Asked through ``torch.accelerator``, the device-generic API TorchTPU documents as stable,
+    rather than ``torch.tpu``, most of which it marks experimental. TorchTPU registers itself on
+    ``import torch`` through the device-backend autoload entry point, so there is nothing to
+    import here; a torch too old to have ``torch.accelerator`` cannot have TorchTPU either.
+    """
+    accelerator = getattr(torch, "accelerator", None)
+    if accelerator is None:
+        return False
+    try:
+        current = accelerator.current_accelerator()
+    except Exception:  # noqa: BLE001 - a broken backend registration means "no TPU", not a crash
+        return False
+    return current is not None and current.type == "tpu"
 
 
 def _load_config(hf_model_id: str, trust_remote_code: bool) -> PreTrainedConfig | None:
@@ -144,7 +164,7 @@ def select_backend(
 
     Args:
         hf_model_id: The resolved HF repo id (used for the cheap config probe).
-        requested_device: explicit device ("cuda" / "cpu" / "mps"), or None (=> auto).
+        requested_device: explicit device ("cuda" / "tpu" / "cpu" / "mps"), or None (=> auto).
         requested_dtype: explicit dtype name, or "auto" to take the checkpoint's native.
         force_backend: ``"vllm"`` / ``"eager"`` to name the backend, or None (=> auto). A
             named backend this machine cannot run raises here, before any load, with what is
@@ -173,9 +193,17 @@ def select_backend(
     force_no_vllm = normalized_force == "eager"
 
     cuda = _cuda_available()
+    # A CUDA box never asks: CUDA wins the ladder below, and the probe is not free to be wrong about.
+    tpu = not cuda and _tpu_available()
     mps = _mps_available()
 
     if force_vllm and not cuda:
+        if tpu:
+            raise RuntimeError(
+                f"backend='vllm' was requested for {hf_model_id} on a Cloud TPU. This engine's vLLM "
+                "backend patches CUDA vLLM internals and does not run on TPU; use backend='eager', "
+                "which serves every capture point on device='tpu'."
+            )
         raise RuntimeError(
             f"backend='vllm' was requested for {hf_model_id}, but this machine has no CUDA GPU, and "
             "vLLM initializes on CUDA only. Use backend='eager' here, or drop the choice."
@@ -220,6 +248,9 @@ def select_backend(
                 hf_model_id,
             )
         backend_reason = f"CUDA but {why} -> EagerModel on CUDA"
+    elif tpu:
+        backend = "eager"
+        backend_reason = "TPU (TorchTPU), vLLM backend is CUDA-only -> EagerModel"
     else:
         backend = "eager"
         backend_reason = "no CUDA -> EagerModel"
@@ -231,6 +262,9 @@ def select_backend(
     elif backend == "vllm" or cuda:
         device = "cuda"
         device_reason = "cuda"
+    elif tpu:
+        device = "tpu"
+        device_reason = "tpu (TorchTPU)"
     elif mps and (_mps_dtype_safe(native) or (dtype_explicit and requested_dtype == "float16")):
         device = "mps"
         device_reason = f"mps (native dtype {native})"

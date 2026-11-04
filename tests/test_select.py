@@ -23,6 +23,7 @@ def probes(
     *,
     cuda: bool,
     mps: bool = False,
+    tpu: bool = False,
     vllm_arch: bool = True,
     native: torch.dtype | None = torch.float16,
 ):
@@ -30,6 +31,7 @@ def probes(
     with (
         patch.object(select, "_cuda_available", return_value=cuda),
         patch.object(select, "_mps_available", return_value=mps),
+        patch.object(select, "_tpu_available", return_value=tpu),
         patch.object(select, "_load_config", return_value=object()),
         patch.object(select, "_native_dtype", return_value=native),
         patch.object(select, "_vllm_supports_arch", return_value=vllm_arch),
@@ -236,3 +238,58 @@ def test_vllm_without_the_extra_names_the_install():
 def test_an_unknown_backend_name_is_a_caller_error():
     with probes(cuda=True), pytest.raises(ValueError, match="not a backend"):
         _select(force_backend="npengine")
+
+
+# --- Cloud TPU (TorchTPU) -----------------------------------------------------------------------
+#
+# A TPU is reached through TorchTPU's native ``tpu`` device and is always eager: the vLLM backend
+# here patches CUDA vLLM internals. The probe is patched, so these run on any machine.
+
+
+def test_tpu_is_picked_when_there_is_no_cuda():
+    with probes(cuda=False, tpu=True):
+        sel = _select()
+    assert (sel.backend, sel.device, sel.dtype) == ("eager", "tpu", "auto")
+    assert "TorchTPU" in sel.reason
+
+
+def test_tpu_keeps_a_bf16_native_checkpoint_on_the_accelerator():
+    """Unlike MPS, a TPU is bf16-native, so a bf16 checkpoint is no reason to fall to CPU."""
+    with probes(cuda=False, tpu=True, mps=True, native=torch.bfloat16):
+        sel = _select()
+    assert sel.device == "tpu"
+
+
+def test_cuda_outranks_tpu():
+    with probes(cuda=True, tpu=True):
+        sel = _select()
+    assert sel.device == "cuda"
+
+
+def test_the_tpu_probe_is_not_asked_on_a_cuda_box():
+    with probes(cuda=True), patch.object(select, "_tpu_available", side_effect=AssertionError):
+        assert _select().device == "cuda"
+
+
+def test_explicit_tpu_device_forces_eager_even_with_cuda():
+    with probes(cuda=True):
+        sel = _select(requested_device="tpu")
+    assert (sel.backend, sel.device) == ("eager", "tpu")
+
+
+def test_vllm_on_a_tpu_box_names_the_eager_backend():
+    with probes(cuda=False, tpu=True), pytest.raises(RuntimeError, match="does not run on TPU"):
+        _select(force_backend="vllm")
+
+
+def test_tpu_probe_is_false_without_torch_accelerator(monkeypatch):
+    monkeypatch.delattr(torch, "accelerator", raising=False)
+    assert select._tpu_available() is False
+
+
+def test_tpu_probe_survives_a_broken_backend(monkeypatch):
+    def boom():
+        raise RuntimeError("backend failed to initialize")
+
+    monkeypatch.setattr(torch.accelerator, "current_accelerator", boom)
+    assert select._tpu_available() is False

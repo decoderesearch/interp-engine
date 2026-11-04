@@ -106,6 +106,12 @@ export const ENGINE_DOCS = [
     kind: "markdown",
   },
   {
+    path: "docs/TPU.md",
+    title: "Cloud TPU",
+    why: "Running the eager backend on a Google Cloud TPU through TorchTPU: setup, install order, fp32 matmul precision, teardown.",
+    kind: "markdown",
+  },
+  {
     path: "docs/INTERNALS.md",
     title: "Modules and correctness",
     why: "What each file in interp_engine/ owns, and what the test suite checks. Reach for it when the question is about how the engine is built or how it is verified.",

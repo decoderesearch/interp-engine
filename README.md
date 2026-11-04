@@ -38,6 +38,9 @@ pip install 'interp-engine[vllm]'  # preferred install: includes vLLM support (C
 pip install interp-engine          # eager backend only
 ```
 
+On a Google Cloud TPU, the eager backend runs through TorchTPU. Install order and setup are in
+[docs/TPU.md](docs/TPU.md).
+
 ## Simple Usage
 
 ```python

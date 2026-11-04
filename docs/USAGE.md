@@ -17,7 +17,7 @@ it says otherwise.
 ## Install
 
 ```bash
-pip install interp-engine          # eager backend, runs on CPU/CUDA/MPS
+pip install interp-engine          # eager backend, runs on CPU/CUDA/MPS (and Cloud TPU: TPU.md)
 pip install 'interp-engine[vllm]'  # + the vLLM backend (Linux/CUDA only)
 ```
 
@@ -91,7 +91,7 @@ asyncio.run(main())
 ```
 
 `backend="auto"` (the default) runs a ladder: the vLLM backend on CUDA when the architecture is one
-vLLM supports, otherwise eager on CUDA, MPS or CPU. Force it either way with `backend="eager"` or
+vLLM supports, otherwise eager on CUDA, a Cloud TPU ([TPU.md](TPU.md)), MPS or CPU. Force it either way with `backend="eager"` or
 `backend="vllm"`, and pass `device=`/`dtype=` when you do not want the ladder to choose. Any other
 keyword goes verbatim to the backend constructor, which is how backend-specific knobs stay reachable:
 

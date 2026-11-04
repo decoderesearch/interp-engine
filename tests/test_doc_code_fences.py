@@ -46,6 +46,7 @@ DOC_FILES = (
     "docs/COMPATIBILITY.md",
     "docs/ENGINE_HOOK_MAPPINGS.md",
     "docs/INTERNALS.md",
+    "docs/TPU.md",
     "benchmarks/README.md",
 )
 

@@ -15,7 +15,7 @@ SHELL := /bin/bash
 UV = uv
 
 .PHONY: help \
-	install test check check-format check-type bench-report \
+	install test test-tpu check check-format check-type bench-report \
 	api api-check fixtures \
 	validator-install validator-test validator-check \
 	viz-install viz-dev viz-build viz-check viz-knowledge viz-gpus viz-gpus-check \
@@ -33,6 +33,11 @@ install: ## Engine: install dependencies (incl. the dev + parity extras CI uses)
 
 test: ## Engine: run the fast suite (gpu/xl tests self-skip without CUDA)
 	$(UV) run pytest tests -m "not gpu and not xl" -v
+
+# Not `$(UV) run`: that re-syncs the venv to uv.lock, whose torch is not the one TorchTPU installed
+# against, and replaces it. A TPU VM runs from the venv docs/TPU.md builds, activated.
+test-tpu: ## Engine: run the TPU tier on a Cloud TPU VM (TorchTPU venv active; see docs/TPU.md)
+	python -m pytest tests/test_tpu.py tests/test_select.py -m "not gpu and not xl" -v
 
 check-format: ## Engine: ruff lint + format check
 	$(UV) run ruff check .

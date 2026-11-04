@@ -236,9 +236,46 @@ def _release_failed_attempt(exc: Exception) -> Exception:
     caller still names why the last candidate refused.
     """
     exc.__traceback__ = None
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    _empty_device_cache()
     return exc
+
+
+def _empty_device_cache() -> None:
+    """Hand the current accelerator's cached-but-free memory back, whichever accelerator it is.
+
+    ``torch.accelerator`` reaches CUDA, a Cloud TPU (through TorchTPU) and MPS alike; it is absent
+    on an old torch, where CUDA is the only accelerator this could matter for.
+    """
+    empty_cache = getattr(getattr(torch, "accelerator", None), "empty_cache", None)
+    if empty_cache is not None:
+        if torch.accelerator.is_available():
+            empty_cache()
+    elif torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
+def _warn_tpu_fp32_matmul(hf_model_id: str, device: torch.device, dtype: torch.dtype) -> None:
+    """Say so when a float32 model on a TPU will multiply at bfloat16 input precision.
+
+    TorchTPU's default ``float32`` matmul precision is ``"medium"``: one pass through the MXU with
+    the inputs rounded to bfloat16. CUDA's default is true float32. A float32 load is how a caller
+    asks for reference numerics, so leaving this silent would hand back bf16-grade activations under
+    an fp32 label -- the plausible-wrong-number failure this engine exists to prevent. The process-
+    wide setting is the caller's to own, so the engine names it and does not flip it.
+    """
+    if device.type != "tpu" or dtype != torch.float32:
+        return
+    precision = torch.get_float32_matmul_precision()
+    if precision == "highest":
+        return
+    logger.warning(
+        "%s is loaded in float32 on a TPU with torch.get_float32_matmul_precision()=%r, so its "
+        "matmuls run with inputs rounded to bfloat16 and will not match a CPU or CUDA float32 run. "
+        "Call torch.set_float32_matmul_precision('highest') before loading for full float32 "
+        "matmuls (about 6x the MXU cost), or load in bfloat16 if bf16 numerics are what you want.",
+        hf_model_id,
+        precision,
+    )
 
 
 #: transformers' own note that DeepGEMM and Triton disagree end-to-end on B200, and that the pair of
@@ -734,6 +771,7 @@ class EagerModel:
         # any capture, which is the whole point: the weights load fine and the refusal below would
         # otherwise arrive partway through one.
         _check_hub_kernels(hf_model_id, self.quant_method, self.config)
+        _warn_tpu_fp32_matmul(hf_model_id, self.device, self.dtype)
 
         if tokenizer is None:
             tokenizer = _load_tokenizer(hf_model_id, trust_remote)
@@ -1424,8 +1462,7 @@ class EagerModel:
         """
         if self.device.type != "cpu":
             self.hf_model.to("cpu")
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            _empty_device_cache()
 
     def _maybe_steer(self, steering_spec: Any, prompt_token_ids: torch.Tensor) -> AbstractContextManager[Any]:
         """Steering context for ``steering_spec``, or a no-op when there is nothing to steer."""
