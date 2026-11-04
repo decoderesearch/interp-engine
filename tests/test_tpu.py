@@ -75,7 +75,7 @@ def test_fp32_matmul_warning_stays_quiet_otherwise(caplog, matmul_precision, kin
     assert caplog.text == ""
 
 
-def test_empty_device_cache_is_safe_without_an_accelerator():
+def test_empty_device_cache_runs_on_any_machine():
     model_module._empty_device_cache()
 
 
@@ -106,7 +106,9 @@ def _rel_err(got: torch.Tensor, want: torch.Tensor) -> float:
 @pytest.mark.tpu
 @_no_tpu
 def test_auto_selection_picks_the_tpu():
-    sel = select_backend(GPT2.model_id, requested_device=None, requested_dtype="auto", force_backend=None, vllm_available=False)
+    sel = select_backend(
+        GPT2.model_id, requested_device=None, requested_dtype="auto", force_backend=None, vllm_available=False
+    )
     assert (sel.backend, sel.device) == ("eager", "tpu")
 
 

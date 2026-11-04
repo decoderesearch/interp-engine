@@ -40,8 +40,17 @@ asks for reference numerics, so the engine warns at load when a float32 model la
 | the served configuration | `dtype="bfloat16"` | native |
 | something between | `torch.set_float32_matmul_precision("high")` | ~3x, ~fp32-grade but not bit-matched |
 
-`tests/test_tpu.py::test_fp32_highest_matches_cpu_fp32` is the check that `"highest"` really does
-reproduce a CPU fp32 capture.
+Measured on a v6e-1 (TorchTPU 0.2.0, torch 2.15, transformers 5.22.1), gpt2 in float32, as relative
+error of the TPU capture against the same capture on CPU fp32:
+
+| matmul precision | `resid_post@0` | `resid_post@6` | `resid_post@11` | logits |
+| ---------------- | -------------- | -------------- | --------------- | ------ |
+| `"medium"` (TorchTPU default) | 1.7e-3 | 6.6e-4 | 4.5e-3 | 3.1e-3 |
+| `"high"` | 1.4e-5 | 1.4e-5 | 1.6e-5 | 1.7e-5 |
+| `"highest"` | 3.9e-7 | 9.5e-8 | 6.4e-7 | 3.4e-7 |
+
+`tests/test_tpu.py::test_fp32_highest_matches_cpu_fp32` is the check that `"highest"` keeps
+reproducing a CPU fp32 capture.
 
 ## Execution model, briefly
 
@@ -104,7 +113,8 @@ The order matters. TorchTPU has to be installed first so that it chooses the tor
 the engine afterwards must not replace that torch with a CUDA one from PyPI.
 
 ```bash
-sudo apt-get update && sudo apt-get install -y python3.12 python3.12-venv git
+sudo add-apt-repository -y ppa:deadsnakes/ppa   # TPU VM images are Ubuntu 22.04, whose own Python is 3.10
+sudo apt-get update && sudo apt-get install -y python3.12 python3.12-venv git make
 python3.12 -m venv ~/ie && source ~/ie/bin/activate
 pip install --upgrade pip
 pip install torch_tpu --extra-index-url https://download.pytorch.org/whl/cpu
