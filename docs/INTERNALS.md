@@ -137,6 +137,13 @@ while the others' replies stay queued, and the next RPC consumes those — so a 
 took every point of a TP=8 cell with it. `resolvable_points` and `resolvable_attn` are the ask-first
 calls; `tests/test_vllm_new_points.py` pins that they install nothing.
 
+**Cloud TPU.** `tests/test_tpu.py` (`-m tpu`, `make test-tpu`) runs the eager backend on TorchTPU's
+`tpu` device: placement, fp32 and bf16 capture, logit lens, attention rows, steering through
+generation, and a CPU-fp32 parity check under `torch.set_float32_matmul_precision("highest")`. No
+CI runner has a TPU, so like `multigpu` it runs by hand; docs/TPU.md is the route to one. Its
+weight-free half (the fp32-matmul load warning, the device-agnostic cache release) and the TPU rows
+of `tests/test_select.py` run everywhere.
+
 **Static writes inside a recorded graph.** vLLM's V2 runner records FULL decode graphs with plain
 `torch.cuda.graph`, so a static write that Python decides at record time is replayed as "no write"
 on every decode step. `vllm_capture/static_program.py` makes the write data instead: one Triton
