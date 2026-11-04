@@ -33,6 +33,7 @@ import pytest
 import torch
 
 from interp_engine import EagerModel, capture, decode_residuals
+from interp_engine.model import _empty_device_cache
 
 REQUIRE_PARITY_ENV = "IE_REQUIRE_PARITY"
 REQUIRE_VLLM_ENV = "IE_REQUIRE_VLLM"
@@ -215,15 +216,14 @@ def load_model(
 
 
 def evict_models() -> None:
-    """Drop cached models and release VRAM. Idempotent."""
+    """Drop cached models and release accelerator memory (CUDA or TPU). Idempotent."""
     for model in _CACHE.values():
         hf_model = getattr(model, "hf_model", None)
-        if hf_model is not None and next(hf_model.parameters()).device.type == "cuda":
+        if hf_model is not None and next(hf_model.parameters()).device.type != "cpu":
             hf_model.to("cpu")
     _CACHE.clear()
     gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    _empty_device_cache()
 
 
 # --- shared assertions ------------------------------------------------------
